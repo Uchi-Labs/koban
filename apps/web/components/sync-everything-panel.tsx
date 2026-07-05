@@ -1,0 +1,935 @@
+"use client";
+
+import { LogIn, LogOut, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ProviderStatusBadge } from "@/components/provider-status-badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import type { AppSyncRunPayload, SyncSchedulePayload } from "@/lib/app-sync-runs";
+import type { ProviderStatus } from "@ai-finances/schema";
+
+interface SyncEverythingStatus {
+  enrichment: {
+    llm_provider: {
+      configured: boolean;
+      error_message?: string;
+      model?: string;
+      provider: string;
+      status: string;
+    };
+  };
+  ready: {
+    enrichment: boolean;
+    sources: boolean;
+    teller: boolean;
+  };
+  sources: {
+    blocked_count: number;
+    external_source_count: number;
+    installed_count: number;
+    ready_count: number;
+    source_item_count: number;
+  };
+  teller: {
+    enrollment_count: number;
+    ready_for_api: boolean;
+    stored_account_count: number;
+    stored_transaction_count: number;
+  };
+  last_run?: AppSyncRunPayload | null;
+  recent_runs?: AppSyncRunPayload[];
+  schedule?: SyncSchedulePayload;
+}
+
+interface SyncScheduleRunResponse {
+  object: "sync_schedule_run";
+  reason?: string;
+  run: AppSyncRunPayload | null;
+  schedule: SyncSchedulePayload;
+  status: "ran" | "skipped";
+}
+
+export function SyncEverythingPanel({
+  initialSchedule,
+  initialStatus
+}: {
+  initialSchedule: SyncSchedulePayload;
+  initialStatus: SyncEverythingStatus;
+}) {
+  const [status, setStatus] = useState(initialStatus);
+  const [run, setRun] = useState<AppSyncRunPayload | null>(initialStatus.last_run ?? null);
+  const [recentRuns, setRecentRuns] = useState<AppSyncRunPayload[]>(initialStatus.recent_runs ?? []);
+  const [schedule, setSchedule] = useState(initialStatus.schedule ?? initialSchedule);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+
+  const refreshStatus = useCallback(async () => {
+    const response = await fetch("/api/v1/sync-runs", { cache: "no-store" });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const body = (await response.json()) as SyncEverythingStatus;
+    setStatus(body);
+    setRun(body.last_run ?? null);
+    setRecentRuns(body.recent_runs ?? []);
+    if (body.schedule) {
+      setSchedule(body.schedule);
+    }
+  }, []);
+
+  async function syncEverything() {
+    setBusy(true);
+    setError("");
+    setRun(null);
+
+    try {
+      const response = await fetch("/api/v1/sync-runs", {
+        body: JSON.stringify({ enrichment_limit: 50 }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const body = (await response.json()) as AppSyncRunPayload | { error?: string };
+
+      if (!response.ok || !("object" in body)) {
+        throw new Error("error" in body && body.error ? body.error : "Sync everything failed.");
+      }
+
+      setRun(body);
+      setRecentRuns((currentRuns) => mergeRecentRuns(body, currentRuns));
+      await refreshStatus();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Sync everything failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateSchedule(input: { enabled?: boolean; interval_minutes?: number }) {
+    setScheduleBusy(true);
+    setScheduleError("");
+
+    try {
+      const response = await fetch("/api/v1/sync-schedule", {
+        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "PATCH"
+      });
+      const body = (await response.json()) as SyncSchedulePayload | { error?: string };
+
+      if (!response.ok || !("object" in body)) {
+        throw new Error("error" in body && body.error ? body.error : "Sync schedule update failed.");
+      }
+
+      setSchedule(body);
+    } catch (caughtError) {
+      setScheduleError(caughtError instanceof Error ? caughtError.message : "Sync schedule update failed.");
+    } finally {
+      setScheduleBusy(false);
+    }
+  }
+
+  const runDueSchedule = useCallback(async () => {
+    if (busy || scheduleBusy) {
+      return;
+    }
+
+    setScheduleBusy(true);
+    setScheduleError("");
+
+    try {
+      const response = await fetch("/api/v1/sync-schedule", {
+        body: JSON.stringify({ action: "run_due", enrichment_limit: 50 }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST"
+      });
+      const body = (await response.json()) as SyncScheduleRunResponse | { error?: string };
+
+      if (!response.ok || !("object" in body)) {
+        throw new Error("error" in body && body.error ? body.error : "Scheduled sync failed.");
+      }
+
+      setSchedule(body.schedule);
+      if (body.run) {
+        setRun(body.run);
+        setRecentRuns((currentRuns) => mergeRecentRuns(body.run!, currentRuns));
+        await refreshStatus();
+      }
+    } catch (caughtError) {
+      setScheduleError(caughtError instanceof Error ? caughtError.message : "Scheduled sync failed.");
+    } finally {
+      setScheduleBusy(false);
+    }
+  }, [busy, refreshStatus, scheduleBusy]);
+
+  useEffect(() => {
+    if (!schedule.enabled) {
+      return;
+    }
+
+    void runDueSchedule();
+    const interval = window.setInterval(() => {
+      void runDueSchedule();
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [runDueSchedule, schedule.enabled, schedule.next_run_at]);
+
+  return (
+    <Card size="sm" className="sync-everything-panel">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 border-b pb-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-base font-medium">Sync everything</h1>
+          <p className="text-sm text-muted-foreground">
+            Runs Teller, installed evidence sources, semantic updates, and AI enrichment in one local pass.
+          </p>
+        </div>
+        <Button disabled={busy || scheduleBusy || !status.ready.teller} onClick={syncEverything} type="button">
+          <RefreshCw className={cn("size-4", busy && "animate-spin")} />
+          {busy ? "Syncing..." : "Sync everything"}
+        </Button>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Whole app sync readiness">
+          <SyncStatusTile
+            detail={`${status.teller.stored_account_count.toLocaleString()} accounts, ${status.teller.stored_transaction_count.toLocaleString()} transactions`}
+            label="Teller"
+            ready={status.ready.teller}
+          />
+          <SyncStatusTile detail={sourceReadinessDetail(status.sources)} label="Evidence" ready={status.ready.sources} />
+          <SyncStatusTile
+            detail={llmProviderDetail(status.enrichment.llm_provider)}
+            label="AI enrichment"
+            ready={status.ready.enrichment}
+          />
+        </div>
+        {status.enrichment.llm_provider.configured && status.enrichment.llm_provider.status === "error" ? (
+          <p className="text-sm text-destructive">
+            AI provider error: {status.enrichment.llm_provider.error_message ?? "Run provider check from the AI tab."}
+          </p>
+        ) : null}
+
+        <Separator />
+
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3"
+          aria-label="Periodic sync"
+        >
+          <label className="flex items-center gap-2" htmlFor="sync-auto-enabled">
+            <Switch
+              checked={schedule.enabled}
+              disabled={scheduleBusy}
+              id="sync-auto-enabled"
+              onCheckedChange={(checked) => {
+                void updateSchedule({ enabled: checked });
+              }}
+            />
+            <span className="text-sm font-medium">Auto-sync</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Interval</span>
+            <Select
+              disabled={scheduleBusy}
+              value={String(schedule.interval_minutes)}
+              onValueChange={(value) => {
+                void updateSchedule({ interval_minutes: Number(value ?? schedule.interval_minutes) });
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="Sync interval" className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="60">Every hour</SelectItem>
+                <SelectItem value="240">Every 4 hours</SelectItem>
+                <SelectItem value="720">Every 12 hours</SelectItem>
+                <SelectItem value="1440">Daily</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{schedule.enabled ? "Enabled" : "Paused"}</span>
+            <span>{schedule.next_run_at ? `Next ${new Date(schedule.next_run_at).toLocaleString()}` : "No next run"}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            disabled={!schedule.enabled || scheduleBusy || busy}
+            onClick={() => {
+              void runDueSchedule();
+            }}
+            type="button"
+          >
+            {scheduleBusy ? "Checking..." : "Check due sync"}
+          </Button>
+        </div>
+
+        {run ? <SyncRunSummary run={run} /> : null}
+        <RecentSyncRuns runs={recentRuns} />
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {scheduleError ? <p className="text-sm text-destructive">{scheduleError}</p> : null}
+        {!status.ready.teller ? (
+          <p className="text-sm text-destructive">Teller must be configured before whole-app sync can run.</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RecentSyncRuns({ runs }: { runs: AppSyncRunPayload[] }) {
+  return (
+    <div className="flex flex-col gap-2" aria-label="Recent sync runs">
+      <header className="flex items-center justify-between">
+        <h2 className="text-sm font-medium">Recent sync runs</h2>
+        <span className="text-xs tabular-nums text-muted-foreground">{runs.length.toLocaleString()}</span>
+      </header>
+      {runs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No whole-app sync runs have been recorded yet.</p>
+      ) : null}
+      {runs.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {runs.map((run) => (
+            <article
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+              data-status={run.status}
+              key={run.id}
+            >
+              <div className="flex flex-col">
+                <span className="text-sm font-medium capitalize">{run.status}</span>
+                <span className="text-xs text-muted-foreground">{new Date(run.finished_at).toLocaleString()}</span>
+              </div>
+              <span className="text-right text-xs text-muted-foreground">
+                Teller {run.teller.status} · Evidence {run.sources.status} · AI {run.enrichment.status}
+              </span>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SyncStatusTile({ detail, label, ready }: { detail: string; label: string; ready: boolean }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium",
+            ready ? "text-foreground" : "text-destructive"
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full", ready ? "bg-emerald-500" : "bg-destructive")} aria-hidden />
+          {ready ? "Ready" : "Blocked"}
+        </span>
+      </div>
+      <span className="text-xs text-muted-foreground">{detail}</span>
+    </div>
+  );
+}
+
+function llmProviderDetail(provider: SyncEverythingStatus["enrichment"]["llm_provider"]): string {
+  if (!provider.configured) {
+    return "local enrichment fallback";
+  }
+
+  const label = [provider.provider, provider.model].filter(Boolean).join(" ");
+
+  if (provider.status === "connected") {
+    return `${label} connected`;
+  }
+
+  if (provider.status === "error") {
+    return `${label} error`;
+  }
+
+  if (provider.status === "stale") {
+    return `${label} needs check`;
+  }
+
+  return `${label} ${provider.status}`;
+}
+
+function sourceReadinessDetail(sources: SyncEverythingStatus["sources"]): string {
+  const readyCount = sources.ready_count ?? 0;
+  const blockedCount = sources.blocked_count ?? Math.max((sources.external_source_count ?? 0) - readyCount, 0);
+  const parts = [
+    `${sources.installed_count.toLocaleString()} installed`,
+    `${readyCount.toLocaleString()} ready`,
+    `${blockedCount.toLocaleString()} blocked`,
+    `${sources.source_item_count.toLocaleString()} records`
+  ];
+
+  return parts.join(", ");
+}
+
+function SyncRunSummary({ run }: { run: AppSyncRunPayload }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1 rounded-lg border px-3 py-2.5",
+        run.status === "error" ? "border-destructive/40 bg-destructive/5" : "border-border bg-muted/20"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <strong className="text-sm font-medium capitalize">Sync {run.status}</strong>
+        <span className="text-xs text-muted-foreground">{new Date(run.finished_at).toLocaleString()}</span>
+      </div>
+      <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+        <li>
+          Teller: {run.teller?.status ?? "error"}
+          {run.teller?.data
+            ? ` (${(run.teller.data.accountCount ?? 0).toLocaleString()} accounts, ${(run.teller.data.transactionCount ?? 0).toLocaleString()} transactions)`
+            : run.teller?.error
+              ? ` (${run.teller.error})`
+              : ""}
+        </li>
+        <li>
+          Evidence: {run.sources?.status ?? "error"}
+          {run.sources?.data ? sourceSyncDetail(run.sources.data) : run.sources?.error ? ` (${run.sources.error})` : ""}
+        </li>
+        <li>
+          AI: {run.enrichment?.status ?? "error"}
+          {run.enrichment?.data
+            ? aiSyncDetail(run.enrichment.data)
+            : run.enrichment?.error
+              ? ` (${run.enrichment.error})`
+              : ""}
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+function sourceSyncDetail(data: NonNullable<AppSyncRunPayload["sources"]["data"]>): string {
+  const summary = data.summary;
+  const refresh = data.evidenceRefresh;
+  const parts: string[] = [];
+
+  if (summary) {
+    parts.push(`${(summary.itemsWritten ?? 0).toLocaleString()} items`);
+    parts.push(`${(summary.evidenceLinksSuggested ?? 0).toLocaleString()} links`);
+  }
+
+  if (refresh?.error) {
+    parts.push("rematch error");
+  } else if (refresh) {
+    parts.push(`${(refresh.sourceItemCount ?? 0).toLocaleString()} rematched`);
+    parts.push(`${(refresh.evidenceLinksSuggested ?? 0).toLocaleString()} suggested`);
+  }
+
+  const warnings =
+    summary && ((summary.sourcesStale ?? 0) > 0 || (summary.sourcesErrored ?? 0) > 0)
+      ? [`${(summary.sourcesStale ?? 0).toLocaleString()} stale`, `${(summary.sourcesErrored ?? 0).toLocaleString()} errors`]
+      : [];
+
+  if (warnings.length > 0) {
+    parts.push(...warnings);
+  }
+
+  if (parts.length === 0 && typeof data.error === "string") {
+    parts.push(data.error);
+  }
+
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+}
+
+function aiSyncDetail(data: NonNullable<AppSyncRunPayload["enrichment"]["data"]>): string {
+  const parts = [
+    `${(data.suggestionsSeen ?? 0).toLocaleString()} candidates`,
+    `${(data.pendingSuggestions ?? 0).toLocaleString()} pending`
+  ];
+  const warning = providerFallbackWarning(data.provider);
+
+  if (warning) {
+    parts.push(warning);
+  }
+
+  const semanticDetail = semanticSyncDetail(data.semanticIndex);
+
+  if (semanticDetail) {
+    parts.push(...semanticDetail);
+  }
+
+  return ` (${parts.join(", ")})`;
+}
+
+function providerFallbackWarning(provider: Record<string, unknown> | undefined): string | undefined {
+  if (!provider) {
+    return undefined;
+  }
+
+  const suggestionsSeen = typeof provider.suggestionsSeen === "number" ? provider.suggestionsSeen : 0;
+  const suggestionsAccepted = typeof provider.suggestionsAccepted === "number" ? provider.suggestionsAccepted : 0;
+  const suggestionsRejected = typeof provider.suggestionsRejected === "number" ? provider.suggestionsRejected : 0;
+  const hostedSuggestionsWereRejected = suggestionsSeen > 0 && suggestionsAccepted === 0 && suggestionsRejected > 0;
+
+  if (provider.completed !== false && !hostedSuggestionsWereRejected) {
+    return undefined;
+  }
+
+  const errorMessage = typeof provider.errorMessage === "string" ? provider.errorMessage : undefined;
+
+  if (errorMessage) {
+    return `provider fallback: ${compactSyncMessage(errorMessage)}`;
+  }
+
+  if (hostedSuggestionsWereRejected) {
+    return `provider fallback: ${suggestionsRejected.toLocaleString()} hosted suggestions rejected`;
+  }
+
+  return "provider fallback";
+}
+
+function semanticSyncDetail(summary: unknown): string[] {
+  if (!summary || typeof summary !== "object") {
+    return [];
+  }
+
+  const index = summary as {
+    documentsEmbedded?: number;
+    embeddingModel?: string;
+    embeddingProvider?: string;
+    error?: string;
+    modelChanged?: boolean;
+    sourceItemEmbeddings?: number;
+    staleDocuments?: number;
+    transactionEmbeddings?: number;
+  };
+
+  if (index.error) {
+    return ["semantic error"];
+  }
+
+  const parts = [
+    `${(index.transactionEmbeddings ?? 0).toLocaleString()} transaction embeddings`,
+    `${(index.sourceItemEmbeddings ?? 0).toLocaleString()} source embeddings`,
+    `${(index.staleDocuments ?? 0).toLocaleString()} stale docs`
+  ];
+
+  if (index.embeddingModel) {
+    parts.push(`${index.embeddingProvider === "voyage" ? "Voyage" : "local"} ${index.embeddingModel}`);
+  }
+
+  if (index.modelChanged) {
+    parts.push(`${(index.documentsEmbedded ?? 0).toLocaleString()} rebuilt`);
+  }
+
+  return parts;
+}
+
+function compactSyncMessage(message: string): string {
+  const compacted = message.replace(/\s+/g, " ").trim();
+  return compacted.length > 160 ? `${compacted.slice(0, 157)}...` : compacted;
+}
+
+function mergeRecentRuns(run: AppSyncRunPayload, runs: AppSyncRunPayload[]): AppSyncRunPayload[] {
+  const seen = new Set<string>();
+  const merged: AppSyncRunPayload[] = [];
+
+  for (const candidate of [run, ...runs]) {
+    if (seen.has(candidate.id)) {
+      continue;
+    }
+
+    seen.add(candidate.id);
+    merged.push(candidate);
+  }
+
+  return merged.slice(0, 5);
+}
+
+interface AiProviderView {
+  base_url?: string;
+  chatgpt_oauth_connected?: boolean;
+  chatgpt_oauth_enabled?: boolean;
+  configured: boolean;
+  credential_source?: "none" | "openai_api_key" | "chatgpt_oauth" | "ollama" | "local";
+  embedding: {
+    dimensions: number;
+    model: string;
+    provider: "local_hash" | "voyage";
+    sends_text_to_provider: boolean;
+  };
+  error_message?: string;
+  model?: string;
+  provider: "none" | "ollama" | "openai_compatible" | string;
+  status: ProviderStatus;
+  timeout_ms?: number;
+}
+
+interface AiProviderCheckResponse {
+  base_url?: string;
+  checked_at?: string;
+  chatgpt_oauth_connected?: boolean;
+  chatgpt_oauth_enabled?: boolean;
+  completed?: boolean;
+  configured?: boolean;
+  credential_source?: AiProviderView["credential_source"];
+  error?: string;
+  error_message?: string;
+  model?: string;
+  provider?: AiProviderView["provider"];
+  status?: ProviderStatus;
+  timeout_ms?: number;
+}
+
+interface ChatGptOAuthStartResponse {
+  authorization_url?: string;
+  error?: string;
+}
+
+interface ChatGptOAuthStatusResponse {
+  active_credential_source?: AiProviderView["credential_source"];
+  connected?: boolean;
+  enabled?: boolean;
+  error?: string;
+  expires_at?: string;
+}
+
+export function AiProviderPanel({ initialProvider }: { initialProvider: AiProviderView }) {
+  const [provider, setProvider] = useState(initialProvider);
+  const [chatGptOAuth, setChatGptOAuth] = useState({
+    connected: initialProvider.chatgpt_oauth_connected ?? false,
+    enabled: initialProvider.chatgpt_oauth_enabled ?? false
+  });
+  const [busy, setBusy] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthPolling, setOauthPolling] = useState(false);
+  const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
+
+  async function refreshProviderStatus() {
+    const response = await fetch("/api/v1/enrichment/provider", { cache: "no-store" });
+    const body = (await response.json()) as AiProviderCheckResponse;
+
+    if (!response.ok || !body.status) {
+      throw new Error(body.error ?? "Unable to refresh LLM provider.");
+    }
+
+    applyProviderResponse(body);
+  }
+
+  async function checkProvider() {
+    setBusy(true);
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const response = await fetch("/api/v1/enrichment/provider", { method: "POST" });
+      const body = (await response.json()) as AiProviderCheckResponse;
+
+      if (!response.ok || !body.status) {
+        throw new Error(body.error ?? "Unable to check LLM provider.");
+      }
+
+      applyProviderResponse(body);
+      setIsError(body.status === "error");
+      setMessage(
+        body.completed
+          ? `LLM provider check passed${body.checked_at ? ` at ${new Date(body.checked_at).toLocaleString()}` : ""}.`
+          : body.error_message ?? "LLM provider check did not complete."
+      );
+    } catch (caughtError) {
+      setIsError(true);
+      setProvider((current) => ({
+        ...current,
+        error_message: caughtError instanceof Error ? caughtError.message : "Unable to check LLM provider.",
+        status: "error"
+      }));
+      setMessage(caughtError instanceof Error ? caughtError.message : "Unable to check LLM provider.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startChatGptSignIn() {
+    setOauthBusy(true);
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const response = await fetch("/api/auth/chatgpt/start", { method: "POST" });
+      const body = (await response.json()) as ChatGptOAuthStartResponse;
+
+      if (!response.ok || !body.authorization_url) {
+        throw new Error(body.error ?? "Unable to start ChatGPT sign-in.");
+      }
+
+      window.open(body.authorization_url, "_blank", "noopener,noreferrer");
+      setMessage("Complete ChatGPT sign-in in the browser tab.");
+      void pollChatGptOAuthStatus();
+    } catch (caughtError) {
+      setIsError(true);
+      setMessage(caughtError instanceof Error ? caughtError.message : "Unable to start ChatGPT sign-in.");
+    } finally {
+      setOauthBusy(false);
+    }
+  }
+
+  async function pollChatGptOAuthStatus() {
+    setOauthPolling(true);
+
+    try {
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        await delay(2_000);
+        const status = await fetchChatGptOAuthStatus();
+
+        if (status.connected) {
+          await refreshProviderStatus();
+          setIsError(false);
+          setMessage("ChatGPT sign-in connected.");
+          return;
+        }
+      }
+
+      setIsError(true);
+      setMessage("ChatGPT sign-in was not completed.");
+    } catch (caughtError) {
+      setIsError(true);
+      setMessage(caughtError instanceof Error ? caughtError.message : "Unable to confirm ChatGPT sign-in.");
+    } finally {
+      setOauthPolling(false);
+    }
+  }
+
+  async function signOutChatGpt() {
+    setOauthBusy(true);
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const response = await fetch("/api/auth/chatgpt/status", { method: "DELETE" });
+      const body = (await response.json()) as ChatGptOAuthStatusResponse;
+
+      if (!response.ok) {
+        throw new Error(body.error ?? "Unable to sign out of ChatGPT.");
+      }
+
+      setChatGptOAuth({
+        connected: body.connected ?? false,
+        enabled: body.enabled ?? chatGptOAuth.enabled
+      });
+      await refreshProviderStatus();
+      setMessage("ChatGPT OAuth tokens removed.");
+    } catch (caughtError) {
+      setIsError(true);
+      setMessage(caughtError instanceof Error ? caughtError.message : "Unable to sign out of ChatGPT.");
+    } finally {
+      setOauthBusy(false);
+    }
+  }
+
+  function applyProviderResponse(body: AiProviderCheckResponse) {
+    setProvider((current) => ({
+      ...current,
+      base_url: body.base_url,
+      chatgpt_oauth_connected: body.chatgpt_oauth_connected ?? current.chatgpt_oauth_connected,
+      chatgpt_oauth_enabled: body.chatgpt_oauth_enabled ?? current.chatgpt_oauth_enabled,
+      configured: body.configured ?? current.configured,
+      credential_source: body.credential_source ?? current.credential_source,
+      error_message: body.error_message,
+      model: body.model ?? current.model,
+      provider: body.provider ?? current.provider,
+      status: body.status ?? current.status,
+      timeout_ms: body.timeout_ms ?? current.timeout_ms
+    }));
+    setChatGptOAuth((current) => ({
+      connected: body.chatgpt_oauth_connected ?? current.connected,
+      enabled: body.chatgpt_oauth_enabled ?? current.enabled
+    }));
+  }
+
+  async function fetchChatGptOAuthStatus(): Promise<ChatGptOAuthStatusResponse> {
+    const response = await fetch("/api/auth/chatgpt/status", { cache: "no-store" });
+    const body = (await response.json()) as ChatGptOAuthStatusResponse;
+
+    if (!response.ok) {
+      throw new Error(body.error ?? "Unable to read ChatGPT sign-in status.");
+    }
+
+    setChatGptOAuth((current) => ({
+      connected: body.connected ?? current.connected,
+      enabled: body.enabled ?? current.enabled
+    }));
+
+    return body;
+  }
+
+  return (
+    <Card size="sm">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 border-b pb-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-base font-medium">AI enrichment provider</h1>
+          <p className="text-sm text-muted-foreground">
+            The LLM provider powers enrichment. Semantic search uses the embedding provider shown here.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !provider.configured}
+          onClick={checkProvider}
+          type="button"
+        >
+          {busy ? "Checking..." : "Check provider"}
+        </Button>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-sm font-medium">{aiProviderLabel(provider.provider)}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {provider.model
+                ? `${provider.model}${provider.base_url ? ` at ${provider.base_url}` : ""}`
+                : provider.error_message ?? "No model configured"}
+            </span>
+          </div>
+          <ProviderStatusBadge status={busy ? "syncing" : provider.status} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <ProviderMetaTile label="Provider" value={aiProviderLabel(provider.provider)} />
+          <ProviderMetaTile label="Credential" value={credentialSourceLabel(provider.credential_source)} />
+          <ProviderMetaTile label="Model" value={provider.model ?? "—"} />
+          <ProviderMetaTile
+            label="Timeout"
+            value={provider.timeout_ms ? `${(provider.timeout_ms / 1000).toLocaleString()}s` : "—"}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-sm font-medium">Embedding provider</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {embeddingProviderLabel(provider.embedding.provider)} · {provider.embedding.model} ·{" "}
+              {provider.embedding.dimensions.toLocaleString()} dims
+            </span>
+          </div>
+          <ProviderStatusBadge status="connected" />
+        </div>
+
+        {chatGptOAuth.enabled ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-col">
+                <span className="text-sm font-medium">ChatGPT OAuth</span>
+                <span className="text-xs text-muted-foreground">
+                  {chatGptOAuth.connected ? "Signed in" : "Not signed in"}
+                </span>
+              </div>
+              {chatGptOAuth.connected ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={oauthBusy || oauthPolling}
+                  onClick={signOutChatGpt}
+                  type="button"
+                >
+                  <LogOut className="size-4" />
+                  Sign out
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={oauthBusy || oauthPolling}
+                  onClick={startChatGptSignIn}
+                  type="button"
+                >
+                  <LogIn className="size-4" />
+                  {oauthPolling ? "Waiting..." : "Sign in"}
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Experimental: this uses OpenAI&apos;s Codex OAuth client for ChatGPT subscription access. It may
+              violate OpenAI ToS for non-Codex use and can break at any time.
+            </p>
+          </div>
+        ) : null}
+
+        <p className="text-sm text-muted-foreground">
+          {provider.embedding.sends_text_to_provider
+            ? "Voyage embeddings send transaction and source text to Voyage AI."
+            : "Local hash embeddings keep transaction and source text on this device."}
+        </p>
+
+        {message ? (
+          <p className={cn("text-sm", isError ? "text-destructive" : "text-muted-foreground")}>{message}</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProviderMetaTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-card px-3 py-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="truncate text-sm font-medium">{value}</span>
+    </div>
+  );
+}
+
+function aiProviderLabel(provider: AiProviderView["provider"]): string {
+  if (provider === "ollama") {
+    return "Ollama";
+  }
+
+  if (provider === "openai_compatible") {
+    return "OpenAI-compatible";
+  }
+
+  return "Local enrichment fallback";
+}
+
+function credentialSourceLabel(source: AiProviderView["credential_source"]): string {
+  if (source === "openai_api_key") {
+    return "API key";
+  }
+
+  if (source === "chatgpt_oauth") {
+    return "ChatGPT OAuth";
+  }
+
+  if (source === "ollama") {
+    return "Ollama";
+  }
+
+  if (source === "local") {
+    return "Local";
+  }
+
+  return "None";
+}
+
+function embeddingProviderLabel(provider: AiProviderView["embedding"]["provider"]): string {
+  return provider === "voyage" ? "Voyage" : "Local hash";
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}

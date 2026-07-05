@@ -1,0 +1,586 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.62 0.16 245);
+  --chart-2: oklch(0.72 0.16 80);
+  --chart-3: oklch(0.62 0.18 340);
+  --chart-4: oklch(0.58 0.18 295);
+  --chart-5: oklch(0.64 0.13 190);
+  --radius: 0.625rem;
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --muted: oklch(0.97 0 0);
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Ink & Mint — the app's own theme on top of the Rhea preset.
+   Near-black surfaces with a faint cool cast, a mint money-accent,
+   real chart colors. Positive money = mint, negative = ember. */
+.dark {
+  --background: oklch(0.138 0.006 250);
+  --foreground: oklch(0.955 0.004 230);
+  --card: oklch(0.175 0.008 250);
+  --card-foreground: oklch(0.955 0.004 230);
+  --popover: oklch(0.19 0.009 250);
+  --popover-foreground: oklch(0.955 0.004 230);
+  --primary: oklch(0.82 0.14 168);
+  --primary-foreground: oklch(0.17 0.02 168);
+  --secondary: oklch(0.24 0.01 250);
+  --secondary-foreground: oklch(0.955 0.004 230);
+  --muted: oklch(0.235 0.01 250);
+  --muted-foreground: oklch(0.68 0.012 245);
+  --accent: oklch(0.245 0.014 250);
+  --accent-foreground: oklch(0.965 0.004 230);
+  --destructive: oklch(0.66 0.2 22);
+  --border: oklch(0.94 0.01 230 / 9%);
+  --input: oklch(0.94 0.01 230 / 13%);
+  --ring: oklch(0.82 0.14 168 / 55%);
+  --chart-1: oklch(0.72 0.13 235);
+  --chart-2: oklch(0.82 0.14 82);
+  --chart-3: oklch(0.72 0.16 340);
+  --chart-4: oklch(0.7 0.15 295);
+  --chart-5: oklch(0.76 0.12 190);
+  --sidebar: oklch(0.155 0.007 250);
+  --sidebar-foreground: oklch(0.9 0.006 240);
+  --sidebar-primary: oklch(0.82 0.14 168);
+  --sidebar-primary-foreground: oklch(0.17 0.02 168);
+  --sidebar-accent: oklch(0.235 0.012 250);
+  --sidebar-accent-foreground: oklch(0.965 0.004 230);
+  --sidebar-border: oklch(0.94 0.01 230 / 8%);
+  --sidebar-ring: oklch(0.82 0.14 168 / 55%);
+  /* semantic money colors, used by charts and amount text */
+  --positive: oklch(0.8 0.15 165);
+  --negative: oklch(0.68 0.18 15);
+}
+
+/* ── Motion tokens (transitions.dev scale + Emil's curves) ─────────── */
+:root {
+  --duration-stagger: 40ms;
+  --duration-micro: 80ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-strong-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-strong-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --distance-micro: 4px;
+  --distance-base: 8px;
+  --distance-medium: 12px;
+  --scale-large: 0.96;
+  --scale-medium: 0.97;
+  --scale-small: 0.98;
+  --blur-small: 2px;
+  --blur-medium: 3px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ── Surface & light ───────────────────────────────────────────────────
+   Dark UIs get their taste from how light behaves, not from borders.
+   Ambient glow on the page, gradient + top hairline highlight on cards. */
+
+.dark [data-slot="sidebar-inset"] {
+  background:
+    radial-gradient(1100px 520px at 18% -12%, oklch(0.4 0.06 168 / 0.07), transparent 62%),
+    radial-gradient(900px 500px at 95% -20%, oklch(0.45 0.05 250 / 0.05), transparent 55%),
+    var(--background);
+}
+
+.dark [data-slot="card"] {
+  background:
+    linear-gradient(180deg, oklch(1 0 0 / 0.025), transparent 34%),
+    var(--card);
+  border-color: oklch(0.94 0.01 230 / 7%);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.055),
+    0 1px 2px oklch(0 0 0 / 0.35),
+    0 8px 24px -12px oklch(0 0 0 / 0.5);
+}
+
+.dark [data-dashboard-card="layered"] {
+  background:
+    linear-gradient(180deg, oklch(1 0 0 / 0.025), transparent 62%),
+    var(--popover);
+  border-color: oklch(0.94 0.01 230 / 8%);
+}
+
+.dark [data-dashboard-card-plane="primary"] {
+  background:
+    linear-gradient(180deg, oklch(1 0 0 / 0.03), transparent 38%),
+    var(--card);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.055),
+    0 12px 26px -18px oklch(0 0 0 / 0.7);
+}
+
+/* Editorial label style for section/card headers. */
+.card-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Hero money numbers: big, tight, currency + cents de-emphasized. */
+.money-hero {
+  font-size: 2.4rem;
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.money-hero .money-symbol {
+  font-size: 0.58em;
+  font-weight: 550;
+  vertical-align: 0.32em;
+  margin-right: 0.06em;
+  color: oklch(from var(--foreground) l c h / 0.55);
+}
+
+.money-hero .money-cents {
+  font-size: 0.52em;
+  font-weight: 550;
+  color: oklch(from var(--foreground) l c h / 0.45);
+}
+
+/* Page entrance on route navigation (app/template.tsx re-mounts per nav). */
+.page-enter {
+  animation: page-enter var(--duration-fast) var(--ease-smooth-out) both;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(var(--blur-small));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+/* ── Interaction feel ──────────────────────────────────────────────── */
+
+/* Every pressable element confirms the press. */
+button,
+[role="button"],
+[role="tab"],
+a[data-slot="sidebar-menu-button"] {
+  transition:
+    transform var(--duration-quick) var(--ease-strong-out),
+    background-color var(--duration-quick) ease,
+    border-color var(--duration-quick) ease,
+    color var(--duration-quick) ease,
+    opacity var(--duration-quick) ease;
+}
+
+button:active:not(:disabled),
+[role="button"]:active,
+[role="tab"]:active,
+a[data-slot="sidebar-menu-button"]:active {
+  transform: scale(0.97);
+}
+
+/* Origin-aware pop surfaces: grow from the trigger, exit faster than enter. */
+[data-slot="dropdown-menu-content"],
+[data-slot="select-content"],
+[data-slot="popover-content"],
+[data-slot="command-dialog-content"] {
+  transform-origin: var(--transform-origin, center);
+  transition:
+    transform var(--duration-quick) var(--ease-strong-out),
+    opacity var(--duration-quick) var(--ease-strong-out);
+}
+
+[data-slot="dropdown-menu-content"][data-starting-style],
+[data-slot="select-content"][data-starting-style],
+[data-slot="popover-content"][data-starting-style],
+[data-slot="dropdown-menu-content"][data-closed],
+[data-slot="select-content"][data-closed],
+[data-slot="popover-content"][data-closed] {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+[data-slot="dropdown-menu-content"][data-ending-style],
+[data-slot="select-content"][data-ending-style],
+[data-slot="popover-content"][data-ending-style] {
+  opacity: 0;
+  transform: scale(0.99);
+  transition-duration: var(--duration-quick);
+}
+
+/* Dialogs: centered origin, soft scale, faster exit. */
+[data-slot="dialog-content"] {
+  transition:
+    transform var(--duration-fast) var(--ease-smooth-out),
+    opacity var(--duration-fast) var(--ease-smooth-out);
+}
+
+[data-slot="dialog-content"][data-starting-style] {
+  opacity: 0;
+  transform: scale(var(--scale-large));
+}
+
+[data-slot="dialog-content"][data-ending-style] {
+  opacity: 0;
+  transform: scale(0.98);
+  transition-duration: var(--duration-quick);
+}
+
+/* Tooltips: quick in, instant feel. */
+[data-slot="tooltip-content"] {
+  transform-origin: var(--transform-origin, center);
+  transition:
+    transform var(--duration-quick) var(--ease-strong-out),
+    opacity var(--duration-quick) var(--ease-strong-out);
+}
+
+[data-slot="tooltip-content"][data-starting-style],
+[data-slot="tooltip-content"][data-ending-style],
+[data-slot="tooltip-content"][data-closed] {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-125%);
+  }
+  100% {
+    transform: translateX(325%);
+  }
+}
+
+@keyframes chart-wave-slide {
+  0% {
+    stroke-dashoffset: 0;
+    transform: translateX(-80px);
+  }
+  100% {
+    stroke-dashoffset: -440;
+    transform: translateX(80px);
+  }
+}
+
+.animate-bounce-in {
+  animation: bounce-in var(--duration-slow) var(--ease-bounce);
+}
+
+[data-slot="skeleton"] {
+  position: relative;
+  overflow: hidden;
+  --skeleton-width: 66%;
+  --shimmer-duration: calc(var(--duration-very-slow) + var(--duration-very-slow) + var(--duration-very-slow));
+  --shimmer-delay: 0ms;
+}
+
+[data-slot="skeleton"]::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: var(--skeleton-width);
+  transform: translateX(-125%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(from var(--foreground) l c h / 0.08),
+    transparent
+  );
+  animation: skeleton-shimmer var(--shimmer-duration) var(--ease-smooth-out) infinite;
+  animation-delay: var(--shimmer-delay);
+}
+
+[data-slot="skeleton"][data-variant="short"] {
+  --skeleton-width: 48%;
+  --shimmer-delay: var(--duration-micro);
+}
+
+[data-slot="skeleton"][data-variant="long"] {
+  --skeleton-width: 82%;
+  --shimmer-delay: var(--duration-quick);
+}
+
+[data-slot="chart-wave-loader"] .chart-wave-path {
+  color: var(--chart-5);
+  opacity: 0.72;
+  stroke-dasharray: 140 260;
+  animation: chart-wave-slide calc(var(--duration-slow) * 6) linear infinite;
+}
+
+[data-slot="chart-wave-loader"] .chart-wave-path-muted {
+  color: var(--muted-foreground);
+  opacity: 0.22;
+  stroke-dasharray: 100 320;
+  animation-duration: calc(var(--duration-very-slow) * 6);
+}
+
+@property --fade-left-n {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --fade-right-n {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@keyframes scroll-fade-x-left {
+  from {
+    --fade-left-n: 0;
+  }
+  to {
+    --fade-left-n: 1;
+  }
+}
+
+@keyframes scroll-fade-x-right {
+  from {
+    --fade-right-n: 1;
+  }
+  to {
+    --fade-right-n: 0;
+  }
+}
+
+.scroll-fade-tabs-list {
+  --scroll-fade-width: 3rem;
+}
+
+[data-overflowing] {
+  @supports (animation-timeline: scroll()) {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black calc(var(--fade-left-n) * var(--scroll-fade-width, 3rem)),
+      black calc(100% - var(--fade-right-n) * var(--scroll-fade-width, 3rem)),
+      transparent
+    );
+    animation-name: scroll-fade-x-left, scroll-fade-x-right;
+    animation-timing-function: linear, linear;
+    animation-timeline: scroll(self x);
+    animation-range:
+      0 var(--scroll-fade-range, 3rem),
+      calc(100% - var(--scroll-fade-range, 3rem)) 100%;
+    animation-fill-mode: both;
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  .scroll-fade-tabs-list {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scroll-fade-tabs-list::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Transaction rows: compact table rhythm with a faded sticky amount edge.
+   No hardcoded group min-width — the row grid column minimums are the floor;
+   a fixed 44rem floor overflowed the inspector-open pane and the sticky edge
+   covered the category column. Sticky edge still earns its keep below ~30rem. */
+.transaction-date-group {
+  min-width: min(100%, 30rem);
+}
+
+.ledger-transaction-row {
+  --transaction-row-edge-bg: var(--background);
+  /* Minimums must fit the ~600px list pane with the inspector open, or the
+     sticky amount edge permanently covers the category column. */
+  grid-template-columns: 1.75rem minmax(8.5rem, 1.35fr) minmax(3.25rem, 0.4fr) minmax(6.75rem, 0.6fr) minmax(6rem, auto);
+}
+
+.ledger-transaction-row:hover,
+.ledger-transaction-row[data-selected] {
+  --transaction-row-edge-bg: var(--accent);
+}
+
+.transaction-review-row {
+  --transaction-row-edge-bg: var(--card);
+  grid-template-columns: 1rem minmax(10rem, 1fr) minmax(0, 1fr) minmax(10rem, 12rem) minmax(7.5rem, auto);
+}
+
+.transaction-review-row:hover {
+  --transaction-row-edge-bg: var(--muted);
+}
+
+.transaction-row-edge {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  align-self: stretch;
+  display: flex;
+  min-width: 7.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  margin-block: -0.5rem;
+  margin-right: -1rem;
+  padding-block: 0.5rem;
+  padding-right: 1rem;
+  padding-left: 1.75rem;
+  background: var(--transaction-row-edge-bg);
+  transition:
+    background-color var(--duration-quick) ease,
+    color var(--duration-quick) ease;
+}
+
+.transaction-row-edge::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: -1.5rem;
+  width: 1.5rem;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--transaction-row-edge-bg));
+}
+
+@media (min-width: 640px) {
+  .transaction-row-edge {
+    margin-right: -1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+/* Money numbers always read in columns. */
+[data-amount],
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled),
+  [role="button"]:active,
+  [role="tab"]:active,
+  a[data-slot="sidebar-menu-button"]:active {
+    transform: none;
+  }
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="popover-content"],
+  [data-slot="dialog-content"],
+  [data-slot="tooltip-content"] {
+    transition-property: opacity;
+  }
+  .animate-bounce-in,
+  [data-slot="chart-wave-loader"] .chart-wave-path,
+  [data-slot="skeleton"]::after,
+  [data-overflowing] {
+    animation: none;
+  }
+  [data-overflowing] {
+    mask-image: none;
+  }
+}

@@ -1,0 +1,25 @@
+.DS_Store
+
+# secrets & local data
+.env
+.env.*
+!.env.example
+data/local/
+
+# agent working docs (handoffs, plans, research, reference screenshots)
+.agent/
+
+# build & deps
+node_modules/
+.next*/
+dist/
+build/
+*.tsbuildinfo
+
+# test output
+test-results/
+playwright-report/
+apps/web/tests/e2e/.e2e-data/
+
+# local agent state
+.claude/

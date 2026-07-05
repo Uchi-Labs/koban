@@ -1,0 +1,11 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": [
+      ".next/**",
+      ".next-build/**",
+      ".next-e2e/**",
+      ".next-e2e-probe/**"
+    ]
+  }
+}
