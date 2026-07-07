@@ -223,7 +223,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
         <div className="grid gap-3">
           {googleEnabled ? (
             <>
-              <Button disabled={busy} onClick={signInWithGoogle} type="button" variant="outline" className="w-full">
+              <Button disabled={busy} onClick={signInWithGoogle} type="button" variant="outline" size="lg" className="w-full">
                 Continue with Google
               </Button>
               <OrDivider label="or with email" />
@@ -255,6 +255,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
             disabled={busy}
             onClick={() => void signInWithPasskey()}
             type="button"
+            size="lg"
             className="w-full"
           >
             <KeyRound className="size-4" aria-hidden="true" />
@@ -262,7 +263,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
           </Button>
 
           {googleEnabled ? (
-            <Button disabled={busy} onClick={signInWithGoogle} type="button" variant="outline" className="w-full">
+            <Button disabled={busy} onClick={signInWithGoogle} type="button" variant="outline" size="lg" className="w-full">
               Continue with Google
             </Button>
           ) : null}
@@ -310,7 +311,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
       <p className="t-error-msg text-sm text-destructive">{error}</p>
 
       {totpChallenge || passwordExpanded ? (
-        <Button disabled={busy} type="submit" className="w-full">
+        <Button disabled={busy} type="submit" size="lg" className="w-full">
           {busy ? "Working..." : totpChallenge ? "Verify code" : isFirstRun ? "Create account" : "Continue"}
         </Button>
       ) : null}
@@ -342,7 +343,7 @@ export function LegacyTokenForm({ invalid, nextPath }: LegacyTokenFormProps) {
         <Input id="token" name="token" type="password" autoComplete="current-password" required autoFocus />
         <p className="t-error-msg text-sm text-destructive">Token was not accepted.</p>
       </div>
-      <Button type="submit" className="w-full">
+      <Button type="submit" size="lg" className="w-full">
         Continue
       </Button>
     </form>
