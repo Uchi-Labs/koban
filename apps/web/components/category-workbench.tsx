@@ -92,24 +92,14 @@ export function CategoryWorkbench({
         </Button>
       </header>
 
-      <div className="grid flex-1 grid-cols-1 items-start gap-6 p-6 xl:grid-cols-[minmax(24rem,30rem)_minmax(0,1fr)]">
-        <div className="flex flex-col gap-4">
-          <div aria-label="Category totals">
-            <SummaryCard
-              budget={totalBudget}
-              monthLabel={monthLabel}
-              onSelectAll={() => setSelectedId(null)}
-              selectedAll={selectedId === null}
-              spent={allDetail.spentThisMonth}
-              summaries={summaries}
-            />
-          </div>
-          <CategoryTree
+      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6">
+        <div aria-label="Category totals">
+          <SummaryCard
+            budget={totalBudget}
             monthLabel={monthLabel}
-            onCreate={() => setCreating(true)}
-            onEdit={setEditing}
-            onSelect={(id) => setSelectedId((current) => (current === id ? null : id))}
-            selectedId={selectedId}
+            onSelectAll={() => setSelectedId(null)}
+            selectedAll={selectedId === null}
+            spent={allDetail.spentThisMonth}
             summaries={summaries}
           />
         </div>
@@ -122,6 +112,15 @@ export function CategoryWorkbench({
           selectedId={selectedId}
           summaries={summaries}
           transactionsToReview={transactionsToReview}
+        />
+
+        <CategoryTable
+          monthLabel={monthLabel}
+          onCreate={() => setCreating(true)}
+          onEdit={setEditing}
+          onSelect={(id) => setSelectedId((current) => (current === id ? null : id))}
+          selectedId={selectedId}
+          summaries={summaries}
         />
       </div>
 
@@ -171,7 +170,7 @@ function SummaryCard({
   return (
     <button
       className={cn(
-        "flex items-center justify-center gap-10 rounded-2xl border bg-card px-5 py-5 text-left transition-colors",
+        "flex w-full items-center justify-around gap-8 rounded-2xl border bg-card px-8 py-5 text-left transition-colors",
         selectedAll ? "border-ring/50 ring-1 ring-ring/30" : "border-border hover:border-border/80 hover:bg-muted/30"
       )}
       onClick={onSelectAll}
@@ -237,9 +236,13 @@ function SpendDonut({ summaries, total }: { summaries: CategorySummary[]; total:
   );
 }
 
-// ── Left: category tree ──────────────────────────────────────────────────────
+// ── Unified category table (master list) ─────────────────────────────────────
+// One table carries every per-category figure — the budget-progress bar plus the
+// Spent / Budget / Left columns — so there is no longer a separate cramped tree
+// list and a floating table repeating the same categories. Selecting a row drives
+// the detail card (chart + key metrics) above it.
 
-function CategoryTree({
+function CategoryTable({
   monthLabel,
   onCreate,
   onEdit,
@@ -256,21 +259,26 @@ function CategoryTree({
 }) {
   return (
     <section aria-label="Regular categories" className="rounded-2xl border border-border bg-card">
-      <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-2">
-        <h2 className="text-sm font-semibold tracking-tight">Regular Categories</h2>
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-6 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
-            <span className="w-16 text-right">Spent</span>
-            <span className="w-16 text-right">Budget</span>
-          </div>
-          <Button aria-label="New category" onClick={onCreate} size="icon-sm" type="button" variant="ghost">
-            <Plus className="size-4" />
-          </Button>
+      <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2.5">
+        <div className="flex min-w-0 flex-col">
+          <h2 className="text-sm font-semibold tracking-tight">Regular Categories</h2>
+          <p className="text-xs text-muted-foreground">Spend against budget · {monthLabel}</p>
         </div>
+        <Button aria-label="New category" onClick={onCreate} size="icon-sm" type="button" variant="ghost">
+          <Plus className="size-4" />
+        </Button>
       </div>
-      <div className="px-1.5 pb-2">
+      <div className="hidden grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem] items-center gap-3 border-b border-border px-4 pb-2 sm:grid">
+        <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Category</span>
+        <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget used</span>
+        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
+        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
+        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
+        <span aria-hidden="true" />
+      </div>
+      <div className="px-1.5 py-1.5">
         {summaries.map((summary) => (
-          <CategoryTreeRow
+          <CategoryTableRow
             key={summary.id}
             monthLabel={monthLabel}
             onEdit={() => onEdit(summary)}
@@ -287,7 +295,7 @@ function CategoryTree({
   );
 }
 
-function CategoryTreeRow({
+function CategoryTableRow({
   monthLabel,
   onEdit,
   onSelect,
@@ -301,51 +309,75 @@ function CategoryTreeRow({
   summary: CategorySummary;
 }) {
   const pct = summary.budgetAmount ? (summary.spentThisMonth / summary.budgetAmount) * 100 : 0;
+  const remaining = summary.budgetAmount === undefined ? undefined : summary.budgetAmount - summary.spentThisMonth;
+  const category: Category = {
+    archived: false,
+    color: summary.color,
+    emoji: summary.emoji,
+    icon: "circle",
+    id: summary.id,
+    name: summary.name,
+    sortOrder: 0
+  };
 
   return (
     <div
+      aria-label={`View ${summary.name}`}
+      aria-pressed={selected}
       className={cn(
-        "group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl px-2.5 py-1.5 transition-colors",
+        "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_1.75rem] items-center gap-3 rounded-xl px-2.5 py-2 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem]",
         selected ? "bg-accent" : "hover:bg-muted/50"
       )}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      title={`${summary.name} · spent ${formatCurrency(summary.spentThisMonth)} in ${monthLabel}`}
     >
-      <button
-        aria-label={`View ${summary.name}`}
-        aria-pressed={selected}
-        className="flex min-w-0 items-center gap-2.5 py-1 text-left outline-hidden"
-        onClick={onSelect}
-        type="button"
-      >
-        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: summary.color }} />
-        <span aria-hidden="true" className="text-sm leading-none">
-          {summary.emoji}
-        </span>
-        <span className="truncate text-sm font-medium">{summary.name}</span>
-      </button>
-      <div className="flex items-center gap-3">
-        <span className="w-16 text-right text-sm tabular-nums">{formatWhole(summary.spentThisMonth)}</span>
-        <div className="hidden w-24 sm:block">
-          {summary.budgetAmount ? (
-            <BudgetBar pct={pct} />
-          ) : (
-            <span className="block text-right text-[11px] text-muted-foreground">No budget</span>
-          )}
-        </div>
-        <span className="w-16 text-right text-sm tabular-nums text-muted-foreground">
-          {summary.budgetAmount ? formatWhole(summary.budgetAmount) : "—"}
-        </span>
-        <Button
-          aria-label={`Edit ${summary.name}`}
-          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-          onClick={onEdit}
-          size="icon-sm"
-          title={`${summary.name} · spent ${formatCurrency(summary.spentThisMonth)} in ${monthLabel}`}
-          type="button"
-          variant="ghost"
-        >
-          <Pencil className="size-3.5" />
-        </Button>
+      <span className="flex min-w-0 items-center gap-2">
+        <CategoryPill category={category} className="max-w-full" />
+      </span>
+      <div className="hidden sm:block">
+        {summary.budgetAmount ? (
+          <BudgetBar pct={pct} />
+        ) : (
+          <span className="block text-[11px] text-muted-foreground">No budget</span>
+        )}
       </div>
+      <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
+      <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block">
+        {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
+      </span>
+      <span
+        className={cn(
+          "hidden text-right text-sm tabular-nums sm:block",
+          remaining === undefined
+            ? "text-muted-foreground"
+            : remaining < 0
+              ? "text-[var(--negative)]"
+              : "text-[var(--positive)]"
+        )}
+      >
+        {remaining === undefined ? "—" : formatCurrency(remaining)}
+      </span>
+      <Button
+        aria-label={`Edit ${summary.name}`}
+        className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={(event) => {
+          event.stopPropagation();
+          onEdit();
+        }}
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+      >
+        <Pencil className="size-3.5" />
+      </Button>
     </div>
   );
 }
@@ -442,8 +474,6 @@ function DetailPane({
       )}
 
       <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
-
-      <RegularCategoriesTable monthLabel={monthLabel} onSelect={onSelect} selectedId={selectedId} summaries={summaries} />
     </section>
   );
 }
@@ -515,7 +545,7 @@ function KeyMetrics({ detail, transactionsToReview }: { detail: CategoryDetail; 
   }
 
   return (
-    <div className="flex w-full max-w-[38rem] flex-col gap-1">
+    <div className="flex w-full flex-col gap-1">
       <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 px-1 pb-1.5">
         <span className="text-sm font-semibold tracking-tight">Key metrics</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent / year</span>
@@ -531,69 +561,6 @@ function KeyMetrics({ detail, transactionsToReview }: { detail: CategoryDetail; 
       {detail.id === "__all__" && transactionsToReview > 0 ? (
         <p className="px-1 pt-1 text-xs text-muted-foreground">{transactionsToReview.toLocaleString()} transactions still to review.</p>
       ) : null}
-    </div>
-  );
-}
-
-function RegularCategoriesTable({
-  monthLabel,
-  onSelect,
-  selectedId,
-  summaries
-}: {
-  monthLabel: string;
-  onSelect: (id: string | null) => void;
-  selectedId: string | null;
-  summaries: CategorySummary[];
-}) {
-  return (
-    <div className="flex w-full max-w-[38rem] flex-col gap-1">
-      <div className="grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 border-b border-border px-1 pb-2">
-        <span className="text-sm font-semibold tracking-tight">Regular Categories</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
-      </div>
-      {summaries.map((summary) => {
-        const remaining = summary.budgetAmount === undefined ? undefined : summary.budgetAmount - summary.spentThisMonth;
-        const category: Category = {
-          archived: false,
-          color: summary.color,
-          emoji: summary.emoji,
-          icon: "circle",
-          id: summary.id,
-          name: summary.name,
-          sortOrder: 0
-        };
-        return (
-          <button
-            className={cn(
-              "grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 rounded-lg px-1 py-1.5 text-left transition-colors",
-              selectedId === summary.id ? "bg-accent" : "hover:bg-muted/40"
-            )}
-            key={summary.id}
-            onClick={() => onSelect(selectedId === summary.id ? null : summary.id)}
-            title={`${summary.name} · ${monthLabel}`}
-            type="button"
-          >
-            <span className="min-w-0">
-              <CategoryPill category={category} className="max-w-full" />
-            </span>
-            <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
-            <span className="text-right text-sm tabular-nums text-muted-foreground">
-              {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
-            </span>
-            <span
-              className={cn(
-                "text-right text-sm tabular-nums",
-                remaining === undefined ? "text-muted-foreground" : remaining < 0 ? "text-[var(--negative)]" : "text-[var(--positive)]"
-              )}
-            >
-              {remaining === undefined ? "—" : formatCurrency(remaining)}
-            </span>
-          </button>
-        );
-      })}
     </div>
   );
 }
