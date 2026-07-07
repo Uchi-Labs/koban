@@ -18,6 +18,15 @@ const securityHeaders = [
     value: "max-age=31536000; includeSubDomains"
   },
   {
+    // Enforced, but ONLY the upgrade directive: rewrites any http:// subresource
+    // to https:// before the request is made. It never blocks, so it can't break
+    // legitimate cross-origin calls (the full restrictive policy stays report-only
+    // below until its violation reports are clean). This clears Chrome's mixed-
+    // content "Not Secure" downgrade on the authenticated app.
+    key: "Content-Security-Policy",
+    value: "upgrade-insecure-requests"
+  },
+  {
     key: "Content-Security-Policy-Report-Only",
     value: [
       "default-src 'self'",
