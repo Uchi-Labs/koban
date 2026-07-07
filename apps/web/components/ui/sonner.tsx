@@ -25,7 +25,8 @@ export function Toaster() {
           toast:
             "!bg-popover !text-popover-foreground !border-border !shadow-lg !rounded-2xl !ring-1 !ring-foreground/5",
           description: "!text-muted-foreground",
-          actionButton: "!bg-primary !text-primary-foreground !rounded-lg",
+          actionButton:
+            "!bg-primary !text-primary-foreground !rounded-lg dark:!bg-[color-mix(in_oklch,var(--primary),var(--background)_26%)]",
           cancelButton: "!bg-muted !text-muted-foreground !rounded-lg",
           title: "!font-medium !tabular-nums"
         }
