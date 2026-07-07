@@ -305,6 +305,11 @@
 .t-badge[data-open="true"] {
   animation: t-badge-slide-in var(--badge-slide-dur) var(--badge-slide-ease);
 }
+/* Collapsed icon rail: .t-badge above is unlayered, so its display:flex outranks
+   Tailwind's layered `hidden` utility — hide it explicitly when collapsed. */
+[data-collapsible="icon"] .t-badge {
+  display: none;
+}
 .t-badge-dot {
   display: block;
   transform-origin: center;

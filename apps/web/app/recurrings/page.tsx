@@ -1,9 +1,10 @@
 import type { RecurringItem, Transaction } from "@ai-finances/schema";
 import type React from "react";
-import { CalendarClock, Repeat2, TrendingDown } from "lucide-react";
+import { CalendarClock, RefreshCw, Repeat2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
+import { RecurringCalendar, type CalendarRecurring, type RecurringDonutSegment } from "@/components/recurring-calendar";
 import { formatCurrency } from "@/lib/format";
 import { getFinanceData } from "@/lib/finance-data";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
@@ -30,7 +31,32 @@ export default async function RecurringsPage() {
     .sort((left, right) => left.nextDate.localeCompare(right.nextDate) || right.monthlyizedAmount - left.monthlyizedAmount);
   const upcomingCount = candidateRows.filter((candidate) => isDueOrOverdueWithin(candidate.nextDate, 14)).length;
   const monthlyizedTotal = candidateRows.reduce((total, candidate) => total + candidate.monthlyizedAmount, 0);
-  const latestTransactionDate = transactions.map((transaction) => transaction.date).sort().at(-1);
+
+  const now = new Date().toISOString();
+  const calendarItems: CalendarRecurring[] = candidateRows.map((candidate) => ({
+    amount: candidate.averageAmount,
+    cadence: candidate.cadence,
+    color: candidate.category.color,
+    currency: candidate.currency,
+    frequencyLabel: candidate.frequency,
+    href: recurringTransactionHref(candidate),
+    id: candidate.id,
+    name: candidate.merchant,
+    nextDate: candidate.nextDate
+  }));
+
+  const segmentByCategory = new Map<string, RecurringDonutSegment>();
+  for (const candidate of candidateRows) {
+    const segment = segmentByCategory.get(candidate.category.id) ?? {
+      color: candidate.category.color,
+      id: candidate.category.id,
+      monthly: 0,
+      name: candidate.category.name
+    };
+    segment.monthly = roundMoney(segment.monthly + candidate.monthlyizedAmount);
+    segmentByCategory.set(candidate.category.id, segment);
+  }
+  const donutSegments = Array.from(segmentByCategory.values()).sort((left, right) => right.monthly - left.monthly);
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="recurrings-page">
@@ -39,20 +65,24 @@ export default async function RecurringsPage() {
       </header>
 
       <div className="mx-auto flex w-full max-w-[70rem] flex-1 flex-col gap-6 p-6">
-        <section>
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated Teller merchants</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Recurring candidates</h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-            Recurrings are inferred from posted Teller transaction cadence. They are review targets, not confirmed merchant subscriptions.
-          </p>
-        </section>
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+          <section className="text-center">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated Teller merchants</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Recurring candidates</h1>
+            <p className="mx-auto mt-1.5 max-w-xl text-sm text-muted-foreground">
+              Inferred from posted Teller transaction cadence — projected charge dates are review targets, not confirmed subscriptions.
+            </p>
+          </section>
 
-        <section aria-label="Recurring totals" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <MetricCard icon={<Repeat2 size={16} />} label="Detected candidates" value={candidateRows.length.toLocaleString()} />
-          <MetricCard icon={<CalendarClock size={16} />} label="Due or overdue" value={upcomingCount.toLocaleString()} />
-          <MetricCard icon={<TrendingDown size={16} />} label="Monthlyized spend" value={formatCurrency(monthlyizedTotal)} />
-          <MetricCard label="Latest Teller date" value={latestTransactionDate ? formatDate(latestTransactionDate) : "N/A"} />
-        </section>
+          <RecurringCalendar initialMonth={now.slice(0, 7)} items={calendarItems} segments={donutSegments} today={now.slice(0, 10)} />
+
+          <section aria-label="Recurring totals" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <MetricCard icon={<Wallet size={15} />} label="Yearly forecast" value={formatCurrency(roundMoney(monthlyizedTotal * 12))} />
+            <MetricCard icon={<RefreshCw size={15} />} label="Average monthly cost" value={formatCurrency(roundMoney(monthlyizedTotal))} />
+            <MetricCard icon={<Repeat2 size={15} />} label="Detected candidates" value={candidateRows.length.toLocaleString()} />
+            <MetricCard icon={<CalendarClock size={15} />} label="Due or overdue" value={upcomingCount.toLocaleString()} />
+          </section>
+        </div>
 
         <Card>
           <CardHeader>
@@ -108,17 +138,15 @@ function MetricCard({
   label,
   value
 }: {
-  icon?: React.ReactNode;
+  icon: React.ReactNode;
   label: string;
   value: string;
 }) {
   return (
     <Card size="sm">
-      <CardContent className="flex flex-col gap-1.5">
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {icon}
-          {label}
-        </span>
+      <CardContent className="flex items-center gap-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">{icon}</span>
+        <span className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</span>
         <strong className="text-lg font-semibold tabular-nums">{value}</strong>
       </CardContent>
     </Card>
