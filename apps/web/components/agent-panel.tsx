@@ -20,6 +20,19 @@ const suggestedQuestions = [
   "What rules would clean this up?"
 ];
 
+// Drag-resizable width for the finance agent drawer — mirrors the left sidebar's
+// resize handle in components/app-shell.tsx (clamp + localStorage + double-click
+// reset). The panel is anchored to the right edge, so width grows as the pointer
+// moves left: width = window.innerWidth - clientX.
+const AGENT_PANEL_MIN_WIDTH = 320;
+const AGENT_PANEL_MAX_WIDTH = 640;
+const AGENT_PANEL_DEFAULT_WIDTH = 420;
+const AGENT_PANEL_WIDTH_STORAGE_KEY = "koban:agent-panel-width";
+
+function clampAgentPanelWidth(px: number) {
+  return Math.min(AGENT_PANEL_MAX_WIDTH, Math.max(AGENT_PANEL_MIN_WIDTH, px));
+}
+
 export function AgentPanel({
   draftPrefill,
   onCloseAction,
@@ -33,11 +46,62 @@ export function AgentPanel({
 }) {
   const reduce = useReducedMotion();
   const [draft, setDraft] = React.useState(() => draftPrefill);
+  const [panelWidth, setPanelWidth] = React.useState(AGENT_PANEL_DEFAULT_WIDTH);
+  const [resizing, setResizing] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const previousOpenRef = React.useRef(open);
   const closeAction = React.useEffectEvent(onCloseAction);
   const submitting = stream.status === "streaming";
   const canSubmit = draft.trim().length > 0 && !submitting;
+
+  // Hydrate the persisted width after mount (localStorage is client-only, so the
+  // first render must match the SSR default to avoid a hydration mismatch).
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem(AGENT_PANEL_WIDTH_STORAGE_KEY);
+    if (!stored) {
+      return;
+    }
+    const parsed = Number.parseInt(stored, 10);
+    if (Number.isFinite(parsed)) {
+      setPanelWidth(clampAgentPanelWidth(parsed));
+    }
+  }, []);
+
+  function handleResizePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    setResizing(true);
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    let latest = panelWidth;
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      latest = clampAgentPanelWidth(window.innerWidth - moveEvent.clientX);
+      setPanelWidth(latest);
+    };
+
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      setResizing(false);
+      window.localStorage.setItem(AGENT_PANEL_WIDTH_STORAGE_KEY, String(latest));
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
+  function resetPanelWidth() {
+    setPanelWidth(AGENT_PANEL_DEFAULT_WIDTH);
+    window.localStorage.removeItem(AGENT_PANEL_WIDTH_STORAGE_KEY);
+  }
 
   React.useEffect(() => {
     if (previousOpenRef.current !== open) {
@@ -102,15 +166,34 @@ export function AgentPanel({
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               type="button"
             />
+            <button
+              aria-label="Drag to resize the finance agent panel. Double-click to reset."
+              className="group/agent-resize fixed top-0 z-[60] hidden h-svh w-1.5 cursor-col-resize touch-none select-none sm:block"
+              data-dragging={resizing ? "true" : undefined}
+              onDoubleClick={resetPanelWidth}
+              onPointerDown={handleResizePointerDown}
+              style={{ right: `${panelWidth - 3}px` }}
+              tabIndex={-1}
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute inset-y-0 right-0 w-0.5 transition-colors motion-reduce:transition-none",
+                  resizing ? "bg-primary" : "bg-transparent group-hover/agent-resize:bg-primary/50"
+                )}
+              />
+            </button>
             <m.aside
               animate={reduce ? { opacity: 1 } : { opacity: 1, x: 0 }}
               aria-label="Finance agent"
               aria-modal="true"
-              className="fixed top-0 right-0 z-50 flex h-svh w-full flex-col overflow-y-auto border-l border-border bg-background shadow-2xl sm:w-[420px]"
+              className="fixed top-0 right-0 z-50 flex h-svh w-full flex-col overflow-y-auto border-l border-border bg-background shadow-2xl sm:w-[var(--agent-panel-width)]"
               data-testid="agent-panel"
               exit={reduce ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, transition: { duration: 0.15 }, x: "100%" }}
               initial={reduce ? { opacity: 0 } : { opacity: 0, x: "100%" }}
               role="dialog"
+              style={{ ["--agent-panel-width" as string]: `${panelWidth}px` }}
               transition={reduce ? { duration: 0.15 } : SPRING_PANEL}
             >
               <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-[var(--blur-small)]">

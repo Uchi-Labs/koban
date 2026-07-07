@@ -54,7 +54,7 @@ export function DashboardNetWorthCard({
         </Badge>
       </div>
 
-      <NetWorthChart className="mt-3 h-36" points={activeTrend.points} positive={positive} />
+      <NetWorthChart className="mt-3 h-32" points={activeTrend.points} positive={positive} />
 
       {accountStats && accountStats.length > 0 ? (
         <FinanceStatStrip className="mt-3">

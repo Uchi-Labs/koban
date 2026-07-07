@@ -38,7 +38,7 @@ export default async function RecurringsPage() {
         <span className="text-[13px] font-semibold tracking-tight">Recurrings</span>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="mx-auto flex w-full max-w-[70rem] flex-1 flex-col gap-6 p-6">
         <section>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated Teller merchants</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Recurring candidates</h1>

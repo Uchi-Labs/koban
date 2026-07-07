@@ -515,7 +515,7 @@ function KeyMetrics({ detail, transactionsToReview }: { detail: CategoryDetail; 
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex w-full max-w-[38rem] flex-col gap-1">
       <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 px-1 pb-1.5">
         <span className="text-sm font-semibold tracking-tight">Key metrics</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent / year</span>
@@ -547,7 +547,7 @@ function RegularCategoriesTable({
   summaries: CategorySummary[];
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex w-full max-w-[38rem] flex-col gap-1">
       <div className="grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 border-b border-border px-1 pb-2">
         <span className="text-sm font-semibold tracking-tight">Regular Categories</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>

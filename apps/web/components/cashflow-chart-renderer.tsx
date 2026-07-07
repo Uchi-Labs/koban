@@ -1,8 +1,8 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import dynamic from "next/dynamic";
 import React from "react";
+import { Bar, BarChart, CartesianGrid, Cell, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { formatMonthLong } from "@/lib/cashflow";
 import { formatCurrency } from "@/lib/format";
@@ -47,14 +47,64 @@ export interface CashflowChartProps {
 
 const EMPTY_CATEGORIES: CashflowChartCategory[] = [];
 
-const Bar = dynamic(() => import("recharts").then((module) => module.Bar), { ssr: false });
-const BarChart = dynamic(() => import("recharts").then((module) => module.BarChart), { ssr: false });
-const CartesianGrid = dynamic(() => import("recharts").then((module) => module.CartesianGrid), { ssr: false });
-const Cell = dynamic(() => import("recharts").then((module) => module.Cell), { ssr: false });
-const Line = dynamic(() => import("recharts").then((module) => module.Line), { ssr: false });
-const ReferenceLine = dynamic(() => import("recharts").then((module) => module.ReferenceLine), { ssr: false });
-const XAxis = dynamic(() => import("recharts").then((module) => module.XAxis), { ssr: false });
-const YAxis = dynamic(() => import("recharts").then((module) => module.YAxis), { ssr: false });
+// recharts writes `fill`/`stroke` as SVG presentation *attributes*, and browsers
+// do NOT resolve CSS `var(--token)` inside SVG attributes — they fall back to
+// black. (Inline styles on HTML nodes, like the tooltip swatches, resolve fine;
+// the stacked spend bars work because they already receive a concrete
+// `category.color`.) So the SVG-facing chart colors must be resolved to concrete
+// strings via getComputedStyle before they reach recharts.
+const CHART_COLOR_VARS = {
+  grid: "--border",
+  income: "--chart-1",
+  muted: "--muted-foreground",
+  negative: "--negative",
+  popover: "--popover",
+  positive: "--positive"
+} as const;
+
+type ResolvedChartColors = Record<keyof typeof CHART_COLOR_VARS, string>;
+
+// Ink & Mint dark-default fallbacks — only used for the very first paint before
+// the effect resolves the live tokens (and if a token is ever missing).
+const FALLBACK_CHART_COLORS: ResolvedChartColors = {
+  grid: "#26312b",
+  income: "#5b9dff",
+  muted: "#8a9a92",
+  negative: "#ef6a6a",
+  popover: "#12201a",
+  positive: "#34d399"
+};
+
+function useResolvedChartColors(): ResolvedChartColors {
+  const [colors, setColors] = React.useState<ResolvedChartColors>(FALLBACK_CHART_COLORS);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+
+    const resolve = () => {
+      const style = getComputedStyle(root);
+      const next = {} as ResolvedChartColors;
+      for (const key of Object.keys(CHART_COLOR_VARS) as Array<keyof typeof CHART_COLOR_VARS>) {
+        const value = style.getPropertyValue(CHART_COLOR_VARS[key]).trim();
+        next[key] = value || FALLBACK_CHART_COLORS[key];
+      }
+      setColors((current) =>
+        (Object.keys(next) as Array<keyof typeof CHART_COLOR_VARS>).every((key) => current[key] === next[key])
+          ? current
+          : next
+      );
+    };
+
+    resolve();
+
+    // Re-resolve when a theme toggle flips class/data-theme on <html>.
+    const observer = new MutationObserver(() => resolve());
+    observer.observe(root, { attributeFilter: ["class", "data-theme", "style"], attributes: true });
+    return () => observer.disconnect();
+  }, []);
+
+  return colors;
+}
 
 export function CashflowChartRenderer({
   variant,
@@ -65,6 +115,7 @@ export function CashflowChartRenderer({
   className
 }: CashflowChartProps) {
   const reduce = useReducedMotion();
+  const colors = useResolvedChartColors();
 
   const config = React.useMemo<ChartConfig>(() => {
     const base: ChartConfig = {
@@ -85,7 +136,7 @@ export function CashflowChartRenderer({
   return (
     <ChartContainer className={cn("aspect-[16/7] w-full", className)} config={config}>
       <BarChart data={data} margin={{ bottom: 0, left: 4, right: 8, top: 18 }}>
-        <CartesianGrid stroke="var(--border)" strokeOpacity={0.6} vertical={false} />
+        <CartesianGrid stroke={colors.grid} strokeOpacity={0.6} vertical={false} />
         <XAxis
           axisLine={false}
           dataKey="monthLabel"
@@ -104,15 +155,15 @@ export function CashflowChartRenderer({
         />
         <ChartTooltip
           content={<CashflowTooltip categories={categories} currency={currency} variant={variant} />}
-          cursor={{ fill: "var(--muted-foreground)", fillOpacity: 0.08 }}
+          cursor={{ fill: colors.muted, fillOpacity: 0.08 }}
         />
-        <ReferenceLine stroke="var(--border)" strokeOpacity={0.9} y={0} />
+        <ReferenceLine stroke={colors.grid} strokeOpacity={0.9} y={0} />
 
         {variant === "net" ? (
           <Bar dataKey="net" isAnimationActive={!reduce} maxBarSize={26} radius={[3, 3, 0, 0]}>
             {data.map((row) => (
               <Cell
-                fill={row.net >= 0 ? "var(--positive)" : "var(--negative)"}
+                fill={row.net >= 0 ? colors.positive : colors.negative}
                 fillOpacity={row.isFuture ? 0.25 : 1}
                 key={row.month}
               />
@@ -123,7 +174,7 @@ export function CashflowChartRenderer({
         {variant === "income" ? (
           <Bar dataKey="income" isAnimationActive={!reduce} maxBarSize={26} radius={[3, 3, 0, 0]}>
             {data.map((row) => (
-              <Cell fill="var(--chart-1)" fillOpacity={row.isFuture ? 0.25 : 1} key={row.month} />
+              <Cell fill={colors.income} fillOpacity={row.isFuture ? 0.25 : 1} key={row.month} />
             ))}
           </Bar>
         ) : null}
@@ -148,7 +199,7 @@ export function CashflowChartRenderer({
             dataKey={comparisonKey}
             dot={false}
             isAnimationActive={false}
-            stroke="var(--muted-foreground)"
+            stroke={colors.muted}
             strokeDasharray="4 5"
             strokeLinecap="round"
             strokeOpacity={0.55}
@@ -157,24 +208,25 @@ export function CashflowChartRenderer({
           />
         ) : null}
 
-        {nowMonthLabel ? <ReferenceLine label={<NowLabel />} stroke="var(--muted-foreground)" strokeDasharray="2 3" strokeOpacity={0.4} x={nowMonthLabel} /> : null}
+        {nowMonthLabel ? <ReferenceLine label={<NowLabel colors={colors} />} stroke={colors.muted} strokeDasharray="2 3" strokeOpacity={0.4} x={nowMonthLabel} /> : null}
       </BarChart>
     </ChartContainer>
   );
 }
 
-function NowLabel(props: { viewBox?: { x?: number; y?: number } }) {
+function NowLabel(props: { colors?: ResolvedChartColors; viewBox?: { x?: number; y?: number } }) {
   const x = props.viewBox?.x ?? 0;
   const y = props.viewBox?.y ?? 0;
+  const colors = props.colors ?? FALLBACK_CHART_COLORS;
   const width = 34;
   const height = 16;
 
   return (
     <g transform={`translate(${x - width / 2}, ${Math.max(2, y - height - 2)})`}>
-      <rect fill="var(--popover)" height={height} rx={5} stroke="var(--border)" width={width} x={0} y={0} />
+      <rect fill={colors.popover} height={height} rx={5} stroke={colors.grid} width={width} x={0} y={0} />
       <text
         dominantBaseline="central"
-        fill="var(--muted-foreground)"
+        fill={colors.muted}
         fontSize={10}
         fontWeight={500}
         textAnchor="middle"
