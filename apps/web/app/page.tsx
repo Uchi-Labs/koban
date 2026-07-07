@@ -5,6 +5,7 @@ import { MiniLineChart } from "@/components/charts";
 import { DashboardNetWorthCard, type NetWorthRange } from "@/components/dashboard-net-worth-card";
 import { DashboardReviewCard } from "@/components/dashboard-review-card";
 import { DashboardCard } from "@/components/dashboard-card";
+import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
 import { getFinanceData, type FinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
+import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
 import { isReviewActionableTransaction, isSpendingTransaction } from "@/lib/transaction-classification";
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
 
@@ -134,6 +136,7 @@ export default async function DashboardPage() {
           ]}
           currentNetWorth={dashboardSummary.netWorth}
           currency={dashboardSummary.currency}
+          settingsSlot={<NetWorthAccountsDialog groups={buildNetWorthToggleGroups(accounts)} />}
           trends={netWorthTrends}
         />
 

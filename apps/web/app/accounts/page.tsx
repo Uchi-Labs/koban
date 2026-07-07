@@ -3,8 +3,10 @@ import type React from "react";
 import { ArrowRight, Banknote, CreditCard, Landmark, TrendingUp, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { formatCurrency } from "@/lib/format";
 import { getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
+import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { cn } from "@/lib/utils";
 
@@ -119,8 +121,9 @@ export default async function AccountsPage() {
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="accounts-page">
-      <header className="flex items-center border-b border-border px-6 py-3.5">
+      <header className="flex items-center justify-between gap-3 border-b border-border px-6 py-3.5">
         <span className="text-[13px] font-semibold tracking-tight">Accounts</span>
+        <NetWorthAccountsDialog groups={buildNetWorthToggleGroups(accounts)} />
       </header>
 
       <div className="flex flex-1 flex-col gap-6 p-6">
