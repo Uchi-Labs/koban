@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --dir apps/web exec tsc --noEmit
+
+      - name: Unit tests
+        run: pnpm --dir apps/web test
+
+      - name: Build
+        run: NEXT_DIST_DIR=.next-build pnpm --dir apps/web build
+
+      - name: Production dependency audit
+        continue-on-error: true
+        run: pnpm audit --prod --audit-level high
+
+      # E2E is intentionally skipped in CI for now because the workflow does not install Playwright browsers.
+      # - name: E2E tests
+      #   run: pnpm --dir apps/web test:e2e

@@ -195,9 +195,15 @@ const schemaSql = `
     started_at TEXT NOT NULL,
     finished_at TEXT NOT NULL,
     teller_status TEXT NOT NULL,
+    plaid_status TEXT NOT NULL DEFAULT 'succeeded',
+    snaptrade_status TEXT NOT NULL DEFAULT 'succeeded',
+    simplefin_status TEXT NOT NULL DEFAULT 'succeeded',
     sources_status TEXT NOT NULL,
     enrichment_status TEXT NOT NULL,
     teller_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    plaid_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    snaptrade_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    simplefin_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
     sources_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
     enrichment_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
     error_message TEXT
@@ -339,6 +345,8 @@ async function main() {
 
 async function insertRows(pool, tableName, rows) {
   let inserted = 0;
+  let skipped = 0;
+  let lastError;
 
   for (const row of rows) {
     const columns = Object.keys(row);
@@ -350,12 +358,21 @@ async function insertRows(pool, tableName, rows) {
     const columnSql = columns.map(quoteIdentifier).join(", ");
     const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
     const values = columns.map((column) => normalizeValue(tableName, column, row[column]));
-    const result = await pool.query(
-      `INSERT INTO ${quoteIdentifier(tableName)} (${columnSql}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
-      values
-    );
+    try {
+      const result = await pool.query(
+        `INSERT INTO ${quoteIdentifier(tableName)} (${columnSql}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+        values
+      );
 
-    inserted += result.rowCount ?? 0;
+      inserted += result.rowCount ?? 0;
+    } catch (error) {
+      skipped += 1;
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  if (skipped > 0) {
+    console.warn(`${tableName}: skipped ${skipped} incompatible row(s) (last error: ${lastError})`);
   }
 
   return inserted;
@@ -381,6 +398,10 @@ function normalizeValue(tableName, column, value) {
     if (ArrayBuffer.isView(value)) {
       return `[${Array.from(value).join(",")}]`;
     }
+  }
+
+  if (Array.isArray(value)) {
+    return JSON.stringify(value);
   }
 
   return value;

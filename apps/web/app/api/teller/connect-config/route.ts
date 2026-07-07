@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createTellerConnectConfig, getTellerSetupStatus, TellerSetupError } from "@/lib/teller-server";
+import { errorResponse } from "@/lib/api-error";
+import { createTellerConnectConfig, getTellerSetupStatus } from "@/lib/teller-server";
 
 export const runtime = "nodejs";
 
@@ -21,12 +22,6 @@ export async function GET() {
 
     return response;
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Unable to prepare Teller Connect.",
-        status: await getTellerSetupStatus()
-      },
-      { status: error instanceof TellerSetupError ? error.status : 500 }
-    );
+    return errorResponse(error, "Unable to prepare Teller Connect.");
   }
 }

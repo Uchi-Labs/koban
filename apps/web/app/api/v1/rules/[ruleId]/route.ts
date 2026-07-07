@@ -1,13 +1,10 @@
 import type { TransactionRule } from "@ai-finances/schema";
 import { NextResponse } from "next/server";
 import { readJsonObject } from "@/lib/api-request";
-import { appCategories } from "@/lib/categories";
-import { deleteTransactionRule, getTransactionRule, updateTransactionRule } from "@/lib/db/finance-db";
+import { deleteTransactionRule, getCategoryIdsForValidation, getTransactionRule, updateTransactionRule } from "@/lib/db/finance-db";
 import { validateTransactionRuleUpdateBody } from "@/lib/transaction-rule-input";
 
 export const runtime = "nodejs";
-
-const categoryIds = new Set(appCategories.map((category) => category.id));
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ ruleId: string }> }) {
   const { ruleId } = await params;
@@ -24,6 +21,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ru
     return NextResponse.json({ error: "Rule not found." }, { status: 404 });
   }
 
+  const categoryIds = await getCategoryIdsForValidation();
   const validation = validateTransactionRuleUpdateBody(parsed.body, categoryIds, {
     matchOperator: existing.matchOperator,
     pattern: existing.pattern

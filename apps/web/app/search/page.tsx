@@ -3,7 +3,6 @@ import { Amount } from "@/components/amount";
 import { Button } from "@/components/ui/button";
 import { CategoryPill } from "@/components/category-pill";
 import { Input } from "@/components/ui/input";
-import { appCategories } from "@/lib/categories";
 import { semanticSearchFinanceResources } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
 
@@ -14,9 +13,9 @@ export default async function SearchPage({
 }) {
   const params = await searchParams;
   const query = typeof params?.q === "string" ? params.q.trim() : "";
-  await getFinanceData();
+  const { categories } = await getFinanceData();
   const results = query.length > 0 ? await semanticSearchFinanceResources(query, 20) : [];
-  const categoryById = new Map(appCategories.map((category) => [category.id, category]));
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="semantic-search-page">

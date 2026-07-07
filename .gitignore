@@ -12,6 +12,8 @@ data/local/
 # build & deps
 node_modules/
 .next*/
+.next-build/
+.next-e2e/
 dist/
 build/
 *.tsbuildinfo
@@ -23,3 +25,5 @@ apps/web/tests/e2e/.e2e-data/
 
 # local agent state
 .claude/
+.gstack/
+.lavish/

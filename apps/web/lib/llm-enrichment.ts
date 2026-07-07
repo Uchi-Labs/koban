@@ -15,8 +15,10 @@ import {
 } from "@/lib/ai/provider";
 import {
   chatGptCodexBaseUrl,
+  chatGptOAuthTokensEnvKey,
   getStoredChatGptOAuthTokens,
-  isChatGptOAuthEnabled
+  isChatGptOAuthEnabled,
+  parseChatGptOAuthTokens
 } from "@/lib/ai/chatgpt-oauth";
 import { appCategories } from "@/lib/categories";
 import { isReviewActionableTransaction } from "@/lib/transaction-classification";
@@ -204,10 +206,36 @@ export function getLlmEnrichmentStatus(
   env: WorkspaceEnv = readWorkspaceEnv(),
   modelUseCase: LlmModelUseCase = "simple"
 ): LlmProviderStatus {
+  return createLlmEnrichmentStatus(
+    env,
+    modelUseCase,
+    parseChatGptOAuthTokens(env[chatGptOAuthTokensEnvKey]) !== undefined
+  );
+}
+
+export async function getLlmEnrichmentStatusWithStorage(
+  env: WorkspaceEnv = readWorkspaceEnv(),
+  modelUseCase: LlmModelUseCase = "simple"
+): Promise<LlmProviderStatus> {
+  const chatGptOAuthConnected = isChatGptOAuthEnabled(env)
+    ? (await getStoredChatGptOAuthTokens(env)) !== undefined
+    : false;
+
+  return createLlmEnrichmentStatus(
+    env,
+    modelUseCase,
+    chatGptOAuthConnected
+  );
+}
+
+function createLlmEnrichmentStatus(
+  env: WorkspaceEnv,
+  modelUseCase: LlmModelUseCase,
+  chatGptOAuthConnected: boolean
+): LlmProviderStatus {
   const configuredProvider = normalizeProvider(env.AI_FINANCES_LLM_PROVIDER);
   const explicitOpenAiKey = openAiCompatibleApiKey(env);
   const chatGptOAuthEnabled = isChatGptOAuthEnabled(env);
-  const chatGptOAuthConnected = getStoredChatGptOAuthTokens(env) !== undefined;
   const provider =
     explicitOpenAiKey || (chatGptOAuthEnabled && chatGptOAuthConnected)
       ? "openai_compatible"
@@ -338,7 +366,7 @@ export async function generateLlmEnrichmentSuggestions(
   fetcher: FetchLike = fetch,
   client: LlmGenerationClient = aiSdkLlmClient
 ): Promise<LlmEnrichmentRunResult> {
-  const provider = getLlmEnrichmentStatus(env, "simple");
+  const provider = await getLlmEnrichmentStatusWithStorage(env, "simple");
 
   if (!provider.configured || !provider.model || !provider.baseUrl) {
     return emptyRun(provider);
@@ -430,7 +458,7 @@ export async function callConfiguredLlmText({
   messages,
   modelUseCase = "default"
 }: LlmJsonCompletionInput): Promise<LlmJsonCompletionResult> {
-  const provider = getLlmEnrichmentStatus(env, modelUseCase);
+  const provider = await getLlmEnrichmentStatusWithStorage(env, modelUseCase);
 
   if (!provider.configured || !provider.model || !provider.baseUrl) {
     return {

@@ -1,5 +1,6 @@
 import * as React from "react"
 
+import { ManekiMoment } from "@/components/maneki-moment"
 import { cn } from "@/lib/utils"
 
 function Card({
@@ -94,6 +95,7 @@ function EmptyState({
   className,
   description,
   icon,
+  mascot = false,
   size = "default",
   title,
 }: {
@@ -101,6 +103,12 @@ function EmptyState({
   className?: string
   description?: React.ReactNode
   icon?: React.ReactNode
+  /**
+   * Opt-in Maneki mascot brand moment, shown in place of the icon badge.
+   * Reserved for hand-picked friendly empty states (e.g. goals) — never
+   * enable on data-error or sync-failure states.
+   */
+  mascot?: boolean
   size?: "sm" | "default" | "lg"
   title: React.ReactNode
 }) {
@@ -116,14 +124,20 @@ function EmptyState({
         className
       )}
     >
-      {icon ? (
+      {mascot ? (
+        <ManekiMoment priority size={80} />
+      ) : icon ? (
         <div className="flex size-10 items-center justify-center rounded-2xl border border-border bg-background/50 text-primary">
           {icon}
         </div>
       ) : null}
-      <div className="grid gap-1.5">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {description ? <p className="mx-auto max-w-120 text-sm text-muted-foreground">{description}</p> : null}
+      <div className="t-stagger is-shown grid gap-1.5">
+        <h2 className="t-stagger-line t-stagger-line--1 text-base font-semibold">{title}</h2>
+        {description ? (
+          <p className="t-stagger-line t-stagger-line--2 mx-auto max-w-120 text-sm text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center justify-center gap-2">{actions}</div> : null}
     </div>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getEffectiveLlmEnrichmentStatus, recordLlmProviderHealth } from "@/lib/db/finance-db";
+import { getEffectiveLlmEnrichmentStatus, recordLlmProviderHealth } from "@/lib/enrichment-runs";
 import { checkConfiguredLlmProvider } from "@/lib/llm-enrichment";
 
 export const runtime = "nodejs";

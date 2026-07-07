@@ -2,26 +2,73 @@
 
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
+import { LazyMotion, MotionConfig, domAnimation, m, useReducedMotion } from "motion/react"
 import * as React from "react"
 import type { MouseEvent, PointerEvent } from "react"
 
+import { SPRING_LAYOUT } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+
+type TabsValue = TabsPrimitive.Root.Props["value"]
+
+const TabsMotionContext = React.createContext<{
+  hydrated: boolean
+  layoutId: string
+  value: TabsValue
+} | null>(null)
+
+const TabsListVariantContext = React.createContext<"default" | "line">("default")
+const subscribeHydration = (_onStoreChange: () => void) => () => undefined
+const getHydratedSnapshot = () => true
+const getServerHydratedSnapshot = () => false
 
 function Tabs({
   className,
+  defaultValue,
+  onValueChange,
   orientation = "horizontal",
+  value,
   ...props
 }: TabsPrimitive.Root.Props) {
+  const reduce = useReducedMotion()
+  const layoutId = React.useId()
+  const controlled = value !== undefined
+  const hydrated = React.useSyncExternalStore(subscribeHydration, getHydratedSnapshot, getServerHydratedSnapshot)
+  const [internalValue, setInternalValue] = React.useState<TabsValue>(defaultValue ?? null)
+  const selectedValue = controlled ? value : internalValue
+  const motionContextValue = React.useMemo(
+    () => ({ hydrated, layoutId, value: selectedValue }),
+    [hydrated, layoutId, selectedValue]
+  )
+  const handleValueChange: TabsPrimitive.Root.Props["onValueChange"] = (nextValue, eventDetails) => {
+    if (!controlled) {
+      setInternalValue(nextValue)
+    }
+
+    onValueChange?.(nextValue, eventDetails)
+  }
+
   return (
-    <TabsPrimitive.Root
-      data-slot="tabs"
-      data-orientation={orientation}
-      className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
-        className
-      )}
-      {...props}
-    />
+    <LazyMotion features={domAnimation}>
+      <MotionConfig transition={reduce ? { duration: 0 } : SPRING_LAYOUT}>
+        <TabsMotionContext.Provider value={motionContextValue}>
+          <TabsPrimitive.Root
+            data-slot="tabs"
+            data-orientation={orientation}
+            className={cn(
+              "group/tabs flex gap-2 data-horizontal:flex-col",
+              className
+            )}
+            defaultValue={defaultValue}
+            onValueChange={handleValueChange}
+            orientation={orientation}
+            render={<m.div layoutRoot />}
+            value={value}
+            {...props}
+          />
+        </TabsMotionContext.Provider>
+      </MotionConfig>
+    </LazyMotion>
   )
 }
 
@@ -50,50 +97,42 @@ function TabsList({
   const dragProps = useHorizontalDragScroll(listRef, isOverflowing)
 
   return (
-    <TabsPrimitive.List
-      ref={listRef}
-      data-slot="tabs-list"
-      data-overflowing={isOverflowing ? "" : undefined}
-      data-variant={variant}
-      className={cn(
-        tabsListVariants({ variant }),
-        "scroll-fade-tabs-list relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain scroll-px-[var(--scroll-fade-width,3rem)] [--scroll-fade-width:3rem]",
-        isOverflowing && "cursor-grab active:cursor-grabbing",
-        className
-      )}
-      {...dragProps}
-      {...props}
-    >
-      {children}
-      {variant === "default" ? <TabsIndicator /> : null}
-    </TabsPrimitive.List>
+    <TabsListVariantContext.Provider value={variant ?? "default"}>
+      <TabsPrimitive.List
+        ref={listRef}
+        data-slot="tabs-list"
+        data-overflowing={isOverflowing ? "" : undefined}
+        data-variant={variant}
+        className={cn(
+          tabsListVariants({ variant }),
+          "scroll-fade-tabs-list relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain scroll-px-[var(--scroll-fade-width,3rem)] [--scroll-fade-width:3rem]",
+          isOverflowing && "cursor-grab active:cursor-grabbing",
+          className
+        )}
+        {...dragProps}
+        {...props}
+      >
+        {children}
+      </TabsPrimitive.List>
+    </TabsListVariantContext.Provider>
   )
 }
 
-/* Sliding active pill — tracks the selected tab via Base UI's indicator vars. */
-function TabsIndicator({ className, ...props }: TabsPrimitive.Indicator.Props) {
-  return (
-    <TabsPrimitive.Indicator
-      data-slot="tabs-indicator"
-      className={cn(
-        "absolute top-1/2 left-0 z-0 h-(--active-tab-height) w-(--active-tab-width) -translate-y-1/2 translate-x-(--active-tab-left) rounded-2xl border border-input bg-input/30 transition-[width,translate] duration-(--duration-fast,250ms) ease-(--ease-smooth-out,ease-out)",
-        "motion-reduce:transition-none",
-        className
-      )}
-      {...props}
-    />
-  )
-}
+function TabsTrigger({ className, disabled, onClick, ...props }: TabsPrimitive.Tab.Props) {
+  const motionContext = React.use(TabsMotionContext)
+  const listVariant = React.use(TabsListVariantContext)
+  const active = motionContext ? Object.is(motionContext.value, props.value) : false
+  const hydrated = motionContext?.hydrated ?? true
+  const indicatorLayoutId = `${motionContext?.layoutId ?? "tabs"}-${listVariant}`
 
-function TabsTrigger({ className, onClick, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-2xl border border-transparent! px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start group-data-vertical/tabs:px-3 group-data-vertical/tabs:py-0.5 hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative isolate inline-flex h-[calc(100%-1px)] shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-2xl border border-transparent! px-3 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-colors group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start group-data-vertical/tabs:px-3 group-data-vertical/tabs:py-0.5 hover:text-foreground focus-visible:ring-[1.5px] focus-visible:ring-ring/45 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
         "z-[1] data-active:text-foreground dark:data-active:text-foreground",
-        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        "group-data-[variant=line]/tabs-list:overflow-visible",
         className
       )}
       onClick={(event) => {
@@ -104,8 +143,27 @@ function TabsTrigger({ className, onClick, ...props }: TabsPrimitive.Tab.Props) 
           inline: "nearest",
         })
       }}
+      disabled={disabled || !hydrated}
       {...props}
-    />
+    >
+      {active && listVariant === "default" ? (
+        <m.span
+          aria-hidden="true"
+          className="absolute inset-0 z-0 rounded-2xl border border-border/60 bg-background shadow-xs"
+          data-slot="tabs-indicator"
+          layoutId={indicatorLayoutId}
+        />
+      ) : null}
+      <span className="relative z-10 inline-flex items-center justify-center gap-1.5">{props.children}</span>
+      {active && listVariant === "line" ? (
+        <m.span
+          aria-hidden="true"
+          className="absolute bg-foreground group-data-horizontal/tabs:inset-x-0 group-data-horizontal/tabs:bottom-[-5px] group-data-horizontal/tabs:h-0.5 group-data-vertical/tabs:inset-y-0 group-data-vertical/tabs:-right-1 group-data-vertical/tabs:w-0.5"
+          data-slot="tabs-indicator"
+          layoutId={indicatorLayoutId}
+        />
+      ) : null}
+    </TabsPrimitive.Tab>
   )
 }
 
@@ -133,7 +191,6 @@ function useOverflowDetect() {
       setIsOverflowing(element.scrollWidth > element.clientWidth + 1)
     }
 
-    checkOverflow()
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", checkOverflow)
       return () => window.removeEventListener("resize", checkOverflow)

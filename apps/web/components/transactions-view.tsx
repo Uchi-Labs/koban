@@ -1,28 +1,43 @@
 "use client";
 
-import type { Category } from "@ai-finances/schema";
+import type { Category, TagStyle } from "@ai-finances/schema";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
   Check,
-  ChevronRight,
+  ChevronDown,
+  Clock3,
   Download,
+  Flag,
   Link2,
   Mic,
   Plus,
   Search,
   Square,
+  Tag,
+  Target,
   X
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 import React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
+import { CategoryPicker } from "@/components/ui/category-picker";
+import { showCategoryChangedCard } from "@/components/category-changed-card";
+import { NewRuleDialog } from "@/components/new-rule-dialog";
+import { deriveRuleMatchValue } from "@/lib/rule-match";
+import { TagChip } from "@/components/tag-chip";
+import { tagStyleMap } from "@/components/tag-style-map";
+import { TransactionTagPopover, type TagOption } from "@/components/transaction-tag-popover";
+import { TransactionGoalPopover, type FinancialGoal } from "@/components/transaction-goal-popover";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { EmptyState } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -41,10 +56,18 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SwipeableRow, useCoarsePointer } from "@/components/ui/swipeable-list";
+import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useToast } from "@/components/ui/toast";
+import { AvatarHoverGroup, AvatarHoverItem, TextSwap } from "@/components/ui/motion-recipes";
 import { normalizeCurrencyCode } from "@/lib/currency";
+import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
+import { runInputClearDissolve } from "@/lib/transitions";
 import { isReviewActionableTransaction } from "@/lib/transaction-classification";
+import { playClose, playOpen, playSelect, playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 import type { TransactionView } from "@/lib/view-models";
 
@@ -130,6 +153,85 @@ interface SourceItemsApiResponse {
   }>;
 }
 
+interface TransactionApiCategory {
+  archived?: boolean;
+  budget_amount?: number;
+  color?: string;
+  emoji?: string;
+  icon?: string;
+  id: string;
+  name: string;
+  parent_id?: string;
+  sort_order?: number;
+}
+
+interface TransactionApiItem {
+  account_id: string;
+  account_name: string;
+  amount: number;
+  authorized_date?: string;
+  category?: TransactionApiCategory;
+  category_id: string;
+  currency: string;
+  date: string;
+  description: string;
+  financial_goal_id: string | null;
+  id: string;
+  merchant_name: string;
+  needs_review: boolean;
+  notes?: string;
+  object: "transaction";
+  paired_transaction_id?: string | null;
+  pending_transaction_id?: string;
+  posted_date?: string;
+  provider_connection_id: string;
+  reviewed: boolean;
+  status: "pending" | "posted";
+  tags: string[];
+}
+
+interface TransactionsApiResponse {
+  data: TransactionApiItem[];
+  has_more: boolean;
+  object: "list";
+  total_count?: number;
+}
+
+interface TransactionWindowResult {
+  hasMore: boolean;
+  rows: TransactionView[];
+  totalCount?: number;
+}
+
+interface TransactionWindowState {
+  error: string;
+  filterKey: string;
+  hasMore: boolean;
+  loading: boolean;
+  rows: TransactionView[];
+  totalCount?: number;
+}
+
+interface TransactionWindowRequest {
+  accountId?: string;
+  categoryId: string;
+  limit: number;
+  maxAmount: string;
+  minAmount: string;
+  query: string;
+  referenceDate?: string;
+  reviewFilter: TransactionReviewFilter;
+  signal?: AbortSignal;
+  startingAfter?: string;
+}
+
+interface TransactionGroupItem {
+  key: string;
+  label?: string;
+  transaction?: TransactionView;
+  type: "header" | "row";
+}
+
 interface TransactionPatchApiResponse {
   category?: { color?: string; icon?: string; id?: string; name?: string; sort_order?: number };
   category_id?: string;
@@ -182,6 +284,19 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type TransactionReviewFilter = "actionable" | "all" | "reviewed";
 type TransactionTab = "all" | "review";
 
+const REVIEW_FILTER_ITEMS = [
+  { label: "All review states", value: "all" },
+  { label: "Needs review", value: "actionable" },
+  { label: "Reviewed", value: "reviewed" }
+] satisfies Array<{ label: string; value: TransactionReviewFilter }>;
+
+const transactionLongDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short",
+  weekday: "long",
+  year: "numeric"
+});
+
 interface WindowWithSpeechRecognition extends Window {
   SpeechRecognition?: SpeechRecognitionConstructor;
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
@@ -191,10 +306,19 @@ interface TransactionsViewProps {
   categories: Category[];
   initialAccountId?: string;
   initialCategoryId?: string;
+  initialMaxAmount?: string;
+  initialMinAmount?: string;
   initialQuery?: string;
   initialReviewFilter?: TransactionReviewFilter;
   initialTab?: TransactionTab;
+  reviewTotalCount?: number;
+  reviewTransactions?: TransactionView[];
+  reviewTransactionsHasMore?: boolean;
+  tagStyles?: TagStyle[];
+  transactionWindowSize?: number;
   transactions: TransactionView[];
+  transactionsHasMore?: boolean;
+  windowed?: boolean;
 }
 
 export function TransactionsView(props: TransactionsViewProps) {
@@ -202,27 +326,135 @@ export function TransactionsView(props: TransactionsViewProps) {
   return <TransactionsViewLayout model={model} />;
 }
 
+function resetButtonState(setState: (state: ButtonState) => void) {
+  window.setTimeout(() => setState("idle"), 1400);
+}
+
+function useSmallViewport() {
+  return useSyncExternalStore(subscribeSmallViewport, getSmallViewportSnapshot, getServerSmallViewportSnapshot);
+}
+
+function subscribeSmallViewport(onStoreChange: () => void) {
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return () => {};
+  }
+
+  const media = window.matchMedia("(max-width: 639px)");
+  media.addEventListener("change", onStoreChange);
+  return () => media.removeEventListener("change", onStoreChange);
+}
+
+function getSmallViewportSnapshot() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
+}
+
+function getServerSmallViewportSnapshot() {
+  return false;
+}
+
+async function loadGoalDirectory() {
+  const response = await fetch("/api/v1/goals", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`goals_unavailable_${response.status}`);
+  }
+  const body = (await response.json()) as {
+    data?: Array<{ emoji?: string; id: string; name: string; state?: string; target_amount_cents?: number }>;
+  };
+  return new Map((body.data ?? []).map((goal) => [goal.id, { ...goal } satisfies FinancialGoal]));
+}
+
+async function loadAiSuggestionState() {
+  const response = await fetch("/api/v1/enrichment/provider", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`enrichment_provider_unavailable_${response.status}`);
+  }
+  return (await response.json()) as { configured?: boolean; error_message?: string };
+}
+
 function useTransactionsViewModel({
   categories,
   initialAccountId,
   initialCategoryId,
+  initialMaxAmount,
+  initialMinAmount,
   initialQuery,
   initialReviewFilter = "all",
   initialTab = "all",
-  transactions
+  reviewTotalCount: initialReviewTotalCount,
+  reviewTransactions: initialReviewTransactions,
+  reviewTransactionsHasMore = false,
+  tagStyles: initialTagStyles = [],
+  transactionWindowSize = 200,
+  transactions,
+  transactionsHasMore = false,
+  windowed = false
 }: TransactionsViewProps) {
-  const [rowsOverride, setRowsOverride] = useState<TransactionView[] | null>(null);
   const [tab, setTab] = useState<TransactionTab>(initialTab);
   const [query, setQuery] = useState(initialQuery ?? "");
   const [categoryId, setCategoryId] = useState(initialCategoryId ?? "all");
   const [reviewFilter, setReviewFilter] = useState<TransactionReviewFilter>(initialReviewFilter);
-  const [minAmount, setMinAmount] = useState("");
-  const [maxAmount, setMaxAmount] = useState("");
-  const rows = rowsOverride ?? transactions;
+  const [minAmount, setMinAmount] = useState(initialMinAmount ?? "");
+  const [maxAmount, setMaxAmount] = useState(initialMaxAmount ?? "");
   const accountId = initialAccountId;
+  const allRowsFilterKey = transactionWindowFilterKey({
+    accountId,
+    categoryId,
+    maxAmount,
+    minAmount,
+    query,
+    reviewFilter
+  });
+  const reviewRowsFilterKey = transactionWindowFilterKey({
+    accountId,
+    categoryId,
+    maxAmount,
+    minAmount,
+    query,
+    reviewFilter: "actionable"
+  });
+  const [transactionWindow, setTransactionWindow] = useState<TransactionWindowState>(() => ({
+    error: "",
+    filterKey: allRowsFilterKey,
+    hasMore: transactionsHasMore,
+    loading: false,
+    rows: transactions
+  }));
+  const [reviewWindow, setReviewWindow] = useState<TransactionWindowState>(() => ({
+    error: "",
+    filterKey: reviewRowsFilterKey,
+    hasMore: reviewTransactionsHasMore,
+    loading: false,
+    rows: initialReviewTransactions ?? transactions.filter(isReviewActionableTransaction),
+    totalCount: initialReviewTotalCount
+  }));
+  const rows = transactionWindow.rows;
+  const rowsHasMore = transactionWindow.hasMore;
+  const rowsLoading = transactionWindow.loading;
+  const rowsError = transactionWindow.error;
+  const reviewRows = reviewWindow.rows;
+  const reviewRowsHasMore = reviewWindow.hasMore;
+  const reviewRowsLoading = reviewWindow.loading;
+  const reviewRowsError = reviewWindow.error;
+  const rowsAreCurrent = !windowed || transactionWindow.filterKey === allRowsFilterKey;
+  const reviewRowsAreCurrent = !windowed || reviewWindow.filterKey === reviewRowsFilterKey;
 
   function updateRows(updater: (currentRows: TransactionView[]) => TransactionView[]) {
-    setRowsOverride((currentRows) => updater(currentRows ?? transactions));
+    setTransactionWindow((currentWindow) => ({
+      ...currentWindow,
+      rows: updater(currentWindow.rows)
+    }));
+    setReviewWindow((currentWindow) => {
+      const nextRows = updater(currentWindow.rows).filter(isReviewActionableTransaction);
+      const removed = currentWindow.rows.length - nextRows.length;
+      return {
+        ...currentWindow,
+        rows: nextRows,
+        totalCount:
+          currentWindow.totalCount === undefined
+            ? undefined
+            : Math.max(0, currentWindow.totalCount - Math.max(0, removed))
+      };
+    });
   }
 
   const initialSelectedTransaction =
@@ -236,9 +468,13 @@ function useTransactionsViewModel({
     ) ?? transactions[0];
   const [selectedId, setSelectedId] = useState(initialSelectedTransaction?.id ?? "");
   const [inspectorOpen, setInspectorOpen] = useState(transactions.length > 0);
+  const [inspectorFocusTarget, setInspectorFocusTarget] = useState<"category" | null>(null);
+  const [newRuleContext, setNewRuleContext] = useState<{ category: Category; merchant: string } | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<TransactionEvidenceView[]>([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [inspectorMessage, setInspectorMessage] = useState("");
+  const [noteSaveState, setNoteSaveState] = useState<ButtonState>("idle");
+  const [reviewToggleState, setReviewToggleState] = useState<ButtonState>("idle");
   const [linkEvidenceState, setLinkEvidenceState] = useState<LinkEvidenceSearchState>(() => ({
     loading: false,
     query: "",
@@ -272,11 +508,246 @@ function useTransactionsViewModel({
   // Review tab state.
   const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(() => new Set());
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [bulkReviewState, setBulkReviewState] = useState<ButtonState>("idle");
   const [reviewMessage, setReviewMessage] = useState("");
+  const { showToast, updateToast } = useToast();
+  const [tagStyles, setTagStyles] = useState<TagStyle[]>(initialTagStyles);
+  // Per-transaction goal assignment overlay for THIS session: a value of `null`
+  // means the user explicitly unassigned during this session (must win over the
+  // server-hydrated `goalsById` lookup below); an absent key means "trust the
+  // server" (`transaction.financialGoalId` resolved through `goalsById`).
+  const [goalByTxId, setGoalByTxId] = useState<Map<string, FinancialGoal | null>>(() => new Map());
+  // Full goal directory (id -> goal), hydrated once so rows can resolve the
+  // `financial_goal_id` persisted on each transaction into a name/emoji without
+  // the API needing to inline the whole goal object on every transaction.
+  const [goalsById, setGoalsById] = useState<Map<string, FinancialGoal>>(() => new Map());
+
+  // Hydrate the goal directory once so rows carrying a persisted
+  // `financialGoalId` (from SSR or a windowed re-fetch) can resolve to a
+  // name/emoji immediately — this is what makes goal assignment survive a
+  // hard reload instead of only living in the local `goalByTxId` overlay.
+  useEffect(() => {
+    let active = true;
+
+    loadGoalDirectory()
+      .then((directory) => {
+        if (!active) {
+          return;
+        }
+        setGoalsById(directory);
+      })
+      .catch(() => {
+        // Goals sync still pending or offline — rows fall back to showing no
+        // goal pill until the next successful hydration.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // AI "Suggest" affordance in the CategoryPicker's New category modal needs to
+  // know whether an LLM provider is actually configured — mirrors how
+  // app/categories/page.tsx sources `aiProvider.configured` /
+  // `aiProvider.errorMessage` from `getEffectiveLlmEnrichmentStatus()`, but via
+  // the client-fetchable /api/v1/enrichment/provider route since this is a
+  // client component fed by the SSR transactions page, not the categories page.
+  const [aiSuggestionEnabled, setAiSuggestionEnabled] = useState(false);
+  const [aiSuggestionMessage, setAiSuggestionMessage] = useState("No AI provider configured.");
+
+  useEffect(() => {
+    let active = true;
+
+    loadAiSuggestionState()
+      .then((body) => {
+        if (!active) {
+          return;
+        }
+        setAiSuggestionEnabled(Boolean(body.configured));
+        setAiSuggestionMessage(body.error_message ?? "No AI provider configured.");
+      })
+      .catch(() => {
+        // Leave the safe default (disabled) — the AI "Suggest" affordance
+        // simply stays hidden until the provider status is known.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const tagStyleByName = useMemo(() => tagStyleMap(tagStyles), [tagStyles]);
+
+  // Merchants currently sitting in the catch-all "Other" category — feeds the
+  // New category modal's bulk-recategorize suggestion, mirroring
+  // app/categories/page.tsx's `uncategorizedMerchants` derivation but scoped to
+  // whatever transaction rows this client instance actually has loaded.
+  const uncategorizedMerchants = useMemo(() => {
+    const merchants = new Set<string>();
+    for (const transaction of rows) {
+      if (transaction.categoryId === "cat_other" && transaction.merchantName) {
+        merchants.add(transaction.merchantName);
+      }
+      if (merchants.size >= 12) {
+        break;
+      }
+    }
+    return Array.from(merchants);
+  }, [rows]);
+
+  // Every *user* tag the user has ever applied or styled — the row/add-tags
+  // popover lists this set with each tag's colored dot (Copilot parity).
+  // `kind: "source"` tags (simplefin, plaid, teller:card_payment, ...) are
+  // machine tags a sync adapter attached — they stay on the transaction and
+  // stay searchable, but they don't belong in a list of tags a person picks
+  // to apply, so they're excluded here. A tag with no registry row yet
+  // (shouldn't normally happen — every write path registers one) defaults to
+  // visible, matching the "everything else stays user" backfill rule.
+  const allTagOptions = useMemo<TagOption[]>(() => {
+    const options = new Map<string, TagOption>();
+    for (const style of tagStyles) {
+      if (style.kind === "source") {
+        continue;
+      }
+      options.set(style.name.toLowerCase(), { color: style.color, name: style.name });
+    }
+    for (const row of rows) {
+      for (const tag of row.tags) {
+        const key = tag.toLowerCase();
+        if (options.has(key)) {
+          continue;
+        }
+        if (tagStyleByName.get(key)?.kind === "source") {
+          continue;
+        }
+        options.set(key, { color: tagStyleByName.get(key)?.color, name: tag });
+      }
+    }
+    return Array.from(options.values());
+  }, [rows, tagStyles, tagStyleByName]);
+
+  useEffect(() => {
+    if (!windowed || transactionWindow.filterKey === allRowsFilterKey) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setTransactionWindow((currentWindow) => ({
+      ...currentWindow,
+      error: "",
+      hasMore: false,
+      loading: true,
+      rows: []
+    }));
+
+    fetchTransactionWindow({
+      accountId,
+      categoryId,
+      limit: transactionWindowSize,
+      maxAmount,
+      minAmount,
+      query,
+      reviewFilter,
+      signal: controller.signal
+    })
+      .then((result) => {
+        setTransactionWindow({
+          error: "",
+          filterKey: allRowsFilterKey,
+          hasMore: result.hasMore,
+          loading: false,
+          rows: result.rows
+        });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setTransactionWindow((currentWindow) => ({
+            ...currentWindow,
+            error: error instanceof Error ? error.message : "Unable to load transactions.",
+            loading: false
+          }));
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    accountId,
+    allRowsFilterKey,
+    categoryId,
+    maxAmount,
+    minAmount,
+    query,
+    reviewFilter,
+    transactionWindowSize,
+    transactionWindow.filterKey,
+    windowed
+  ]);
+
+  useEffect(() => {
+    if (!windowed || reviewWindow.filterKey === reviewRowsFilterKey) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setReviewWindow((currentWindow) => ({
+      ...currentWindow,
+      error: "",
+      hasMore: false,
+      loading: true,
+      rows: []
+    }));
+
+    fetchTransactionWindow({
+      accountId,
+      categoryId,
+      limit: transactionWindowSize,
+      maxAmount,
+      minAmount,
+      query,
+      reviewFilter: "actionable",
+      signal: controller.signal
+    })
+      .then((result) => {
+        setReviewWindow({
+          error: "",
+          filterKey: reviewRowsFilterKey,
+          hasMore: result.hasMore,
+          loading: false,
+          rows: result.rows,
+          totalCount: result.totalCount
+        });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setReviewWindow((currentWindow) => ({
+            ...currentWindow,
+            error: error instanceof Error ? error.message : "Unable to load review transactions.",
+            loading: false
+          }));
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    accountId,
+    categoryId,
+    maxAmount,
+    minAmount,
+    query,
+    reviewWindow.filterKey,
+    reviewRowsFilterKey,
+    transactionWindowSize,
+    windowed
+  ]);
 
   const filteredTransactions = useMemo(() => {
+    if (windowed) {
+      return rowsAreCurrent ? rows : [];
+    }
+
     const normalizedQuery = query.trim().toLowerCase();
     const minAmountValue = parseAmountFilter(minAmount);
     const maxAmountValue = parseAmountFilter(maxAmount);
@@ -299,7 +770,7 @@ function useTransactionsViewModel({
 
       return matchesQuery && matchesCategory && matchesAccount && matchesReviewFilter && matchesAmount;
     });
-  }, [accountId, categoryId, maxAmount, minAmount, query, reviewFilter, rows]);
+  }, [accountId, categoryId, maxAmount, minAmount, query, reviewFilter, rows, rowsAreCurrent, windowed]);
 
   const selectedTransaction = inspectorOpen
     ? filteredTransactions.find((transaction) => transaction.id === selectedId) ?? filteredTransactions[0]
@@ -326,6 +797,10 @@ function useTransactionsViewModel({
 
   // Review tab: only actionable rows, honoring the shared search/account/category filters.
   const reviewTransactions = useMemo(() => {
+    if (windowed) {
+      return reviewRowsAreCurrent ? reviewRows : [];
+    }
+
     const normalizedQuery = query.trim().toLowerCase();
     const minAmountValue = parseAmountFilter(minAmount);
     const maxAmountValue = parseAmountFilter(maxAmount);
@@ -351,7 +826,7 @@ function useTransactionsViewModel({
 
       return matchesQuery && matchesCategory && matchesAccount && matchesAmount;
     });
-  }, [accountId, categoryId, maxAmount, minAmount, query, rows]);
+  }, [accountId, categoryId, maxAmount, minAmount, query, reviewRows, reviewRowsAreCurrent, rows, windowed]);
 
   const reviewGroups = useMemo(() => groupByMerchant(reviewTransactions), [reviewTransactions]);
 
@@ -388,6 +863,7 @@ function useTransactionsViewModel({
   return {
     accountId,
     allReviewSelected,
+    bulkReviewState,
     categories,
     categoryId,
     evidenceItems,
@@ -395,6 +871,7 @@ function useTransactionsViewModel({
     filteredTransactions,
     groupedTransactions,
     hasActiveFilters,
+    inspectorOpen,
     inspectorMessage,
     linkEvidenceLoading,
     linkEvidenceQuery,
@@ -403,24 +880,51 @@ function useTransactionsViewModel({
     maxAmount,
     minAmount,
     noteDraft,
+    noteSaveState,
     query,
     reviewBusy,
     reviewFilter,
     reviewGroups,
     reviewMessage,
+    reviewToggleState,
+    reviewTotalCount:
+      windowed && reviewRowsAreCurrent && reviewWindow.totalCount !== undefined
+        ? reviewWindow.totalCount
+        : reviewTransactions.length,
     reviewTransactions,
+    reviewTransactionsHasMore: reviewRowsHasMore,
+    reviewTransactionsLoading: reviewRowsLoading,
+    reviewTransactionsError: reviewRowsError,
     rows,
+    rowsError,
+    rowsHasMore,
+    rowsLoading,
     selectedReviewIds,
     selectedTransaction,
     selectedTransactionId,
+    inspectorFocusTarget,
+    newRuleContext,
     tab,
     tagDraft,
+    tagStyleByName,
+    allTagOptions,
+    aiSuggestionEnabled,
+    aiSuggestionMessage,
+    uncategorizedMerchants,
+    goalByTxId,
+    goalsById,
     voiceDraft,
     voiceRecording,
     voiceStatus,
+    windowed,
     addTag,
+    applyCategoryToAllMatching,
+    commitCategoryFromPicker,
     downloadTransactionsCsv,
+    handleRuleCreated,
     linkSourceItem,
+    loadMoreReviewTransactions,
+    loadMoreTransactions,
     markTransactionsReviewed,
     saveContextNote,
     saveVoiceNote,
@@ -428,9 +932,11 @@ function useTransactionsViewModel({
     selectTransaction,
     setCategoryId,
     setInspectorOpen,
+    setInspectorFocusTarget,
     setLinkEvidenceState,
     setMaxAmount,
     setMinAmount,
+    setNewRuleContext,
     setNoteDraftState,
     setQuery,
     setReviewFilter,
@@ -444,16 +950,26 @@ function useTransactionsViewModel({
     toggleReviewed,
     toggleSelectAllReview,
     updateEvidenceStatus,
+    updateTagColor,
     updateTransactionCategory,
-    updateTransactionTags
+    updateTransactionTags,
+    toggleTransactionTagByName,
+    assignTransactionGoal
   };
 
-  function selectTransaction(transaction: TransactionView) {
+  function selectTransaction(transaction: TransactionView, options?: { focus?: "category" }) {
     if (transaction.id !== selectedTransactionId) {
       stopVoiceRecognition();
     }
 
+    if (inspectorOpen) {
+      playSelect();
+    } else {
+      playOpen();
+    }
+
     setSelectedId(transaction.id);
+    setInspectorFocusTarget(options?.focus ?? null);
     setInspectorOpen(true);
     setEvidenceItems([]);
     void refreshEvidence(transaction.id);
@@ -489,13 +1005,109 @@ function useTransactionsViewModel({
     setSelectedReviewIds(checked ? new Set(reviewTransactions.map((transaction) => transaction.id)) : new Set());
   }
 
+  async function loadMoreTransactions() {
+    if (!windowed || rowsLoading || !rowsHasMore || transactionWindow.filterKey !== allRowsFilterKey) {
+      return;
+    }
+
+    const cursor = rows.at(-1)?.id;
+
+    if (!cursor) {
+      return;
+    }
+
+    setTransactionWindow((currentWindow) => ({
+      ...currentWindow,
+      error: "",
+      loading: true
+    }));
+
+    try {
+      const result = await fetchTransactionWindow({
+        accountId,
+        categoryId,
+        limit: transactionWindowSize,
+        maxAmount,
+        minAmount,
+        query,
+        reviewFilter,
+        startingAfter: cursor
+      });
+      setTransactionWindow((currentWindow) => ({
+        ...currentWindow,
+        error: "",
+        hasMore: result.hasMore,
+        loading: false,
+        rows: mergeTransactionRows(currentWindow.rows, result.rows)
+      }));
+    } catch (error) {
+      setTransactionWindow((currentWindow) => ({
+        ...currentWindow,
+        error: error instanceof Error ? error.message : "Unable to load more transactions.",
+        loading: false
+      }));
+    }
+  }
+
+  async function loadMoreReviewTransactions() {
+    if (!windowed || reviewRowsLoading || !reviewRowsHasMore || reviewWindow.filterKey !== reviewRowsFilterKey) {
+      return;
+    }
+
+    const cursor = reviewRows.at(-1)?.id;
+
+    if (!cursor) {
+      return;
+    }
+
+    setReviewWindow((currentWindow) => ({
+      ...currentWindow,
+      error: "",
+      loading: true
+    }));
+
+    try {
+      const result = await fetchTransactionWindow({
+        accountId,
+        categoryId,
+        limit: transactionWindowSize,
+        maxAmount,
+        minAmount,
+        query,
+        reviewFilter: "actionable",
+        startingAfter: cursor
+      });
+      setReviewWindow((currentWindow) => ({
+        ...currentWindow,
+        error: "",
+        hasMore: result.hasMore,
+        loading: false,
+        totalCount: result.totalCount ?? currentWindow.totalCount,
+        rows: mergeTransactionRows(currentWindow.rows, result.rows)
+      }));
+    } catch (error) {
+      setReviewWindow((currentWindow) => ({
+        ...currentWindow,
+        error: error instanceof Error ? error.message : "Unable to load more review transactions.",
+        loading: false
+      }));
+    }
+  }
+
   async function markTransactionsReviewed(ids: string[]) {
     if (ids.length === 0 || reviewBusy) {
       return;
     }
 
     setReviewBusy(true);
+    setBulkReviewState("loading");
     setReviewMessage(`Marking ${ids.length.toLocaleString()} transactions reviewed...`);
+    const toastId = showToast({
+      description: `Marking ${ids.length.toLocaleString()} transactions reviewed.`,
+      duration: 0,
+      status: "loading",
+      title: "Review update started",
+    });
 
     try {
       await Promise.all(
@@ -525,16 +1137,37 @@ function useTransactionsViewModel({
         return next;
       });
       setReviewMessage(`${ids.length.toLocaleString()} transactions marked reviewed.`);
+      setBulkReviewState("success");
+      updateToast(toastId, {
+        description: `${ids.length.toLocaleString()} transactions were marked reviewed.`,
+        duration: 3600,
+        status: "success",
+        title: "Review updated",
+      });
     } catch (error) {
-      setReviewMessage(error instanceof Error ? error.message : "Unable to mark transactions reviewed.");
+      const errorMessage = error instanceof Error ? error.message : "Unable to mark transactions reviewed.";
+      setBulkReviewState("error");
+      setReviewMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Review update failed",
+      });
     } finally {
       setReviewBusy(false);
+      resetButtonState(setBulkReviewState);
     }
   }
 
-  async function updateTransactionCategory(transactionId: string, nextCategoryId: string) {
+  async function updateTransactionCategory(
+    transactionId: string,
+    nextCategoryId: string,
+    options?: { silent?: boolean }
+  ): Promise<boolean> {
     const nextCategory = categoryById.get(nextCategoryId);
     setReviewMessage("Saving category...");
+    setInspectorMessage("Saving category...");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transactionId)}`, {
       body: JSON.stringify({ category_id: nextCategoryId }),
@@ -545,7 +1178,9 @@ function useTransactionsViewModel({
 
     if (!response.ok) {
       setReviewMessage(body.error ?? "Unable to update category.");
-      return;
+      setInspectorMessage(body.error ?? "Unable to update category.");
+      toast.error(body.error ?? "Unable to update category.");
+      return false;
     }
 
     updateRows((currentRows) =>
@@ -556,6 +1191,100 @@ function useTransactionsViewModel({
       )
     );
     setReviewMessage("Category updated.");
+    setInspectorMessage("Category updated.");
+
+    if (!options?.silent) {
+      toast.success(nextCategory ? `Categorized as ${nextCategory.name}` : "Category updated");
+    }
+
+    return true;
+  }
+
+  // Picker commit path (row pill + inspector): commits the category, then surfaces
+  // the "Category changed" quick-action card so the user can promote it to a rule
+  // or apply it across matching transactions.
+  async function commitCategoryFromPicker(transaction: TransactionView, nextCategoryId: string) {
+    const changed = transaction.category?.id !== nextCategoryId;
+    const nextCategory = categoryById.get(nextCategoryId);
+    const saved = await updateTransactionCategory(transaction.id, nextCategoryId, { silent: changed });
+
+    if (!saved || !changed) {
+      return;
+    }
+
+    showCategoryChangedCard({
+      merchant: transaction.merchant,
+      onApplyAll: () => void applyCategoryToAllMatching(transaction.merchant, nextCategoryId),
+      onCreateRule: () =>
+        setNewRuleContext({ category: nextCategory ?? transaction.category, merchant: transaction.merchant })
+    });
+  }
+
+  // One-shot bulk recategorize of every transaction matching the merchant, WITHOUT
+  // persisting a rule. Reuses the rules-engine matcher server-side; patches the
+  // exact rows the server reports as updated.
+  async function applyCategoryToAllMatching(merchant: string, categoryId: string) {
+    const matchValue = deriveRuleMatchValue(merchant);
+    const nextCategory = categoryById.get(categoryId);
+
+    const response = await fetch("/api/v1/transactions/bulk-categorize", {
+      body: JSON.stringify({
+        category_id: categoryId,
+        field: "merchant_or_description",
+        match: matchValue,
+        operator: "contains"
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      transactions_updated?: number;
+      updated_transaction_ids?: string[];
+    };
+
+    if (!response.ok) {
+      toast.error(body.error ?? "Unable to apply category to matching transactions.");
+      return;
+    }
+
+    const updatedIds = new Set(body.updated_transaction_ids ?? []);
+    if (updatedIds.size > 0) {
+      updateRows((currentRows) =>
+        currentRows.map((row) =>
+          updatedIds.has(row.id) ? { ...row, category: nextCategory ?? row.category, categoryId } : row
+        )
+      );
+    }
+
+    const count = body.transactions_updated ?? updatedIds.size;
+    toast.success(
+      count > 0
+        ? `Applied to ${count.toLocaleString()} “${merchant}” transaction${count === 1 ? "" : "s"}`
+        : `No other “${merchant}” transactions to update`
+    );
+  }
+
+  function handleRuleCreated({
+    categoryId,
+    matchedTransactionIds
+  }: {
+    categoryId: string;
+    matchedTransactionIds: string[];
+    transactionsUpdated: number;
+  }) {
+    const nextCategory = categoryById.get(categoryId);
+    const ids = new Set(matchedTransactionIds);
+
+    if (ids.size === 0) {
+      return;
+    }
+
+    updateRows((currentRows) =>
+      currentRows.map((row) =>
+        ids.has(row.id) ? { ...row, category: nextCategory ?? row.category, categoryId } : row
+      )
+    );
   }
 
   async function searchSourceItems(event: React.FormEvent<HTMLFormElement>, transaction: TransactionView) {
@@ -651,7 +1380,18 @@ function useTransactionsViewModel({
     setTagDraftState({ transactionId: transaction.id, value: "" });
   }
 
-  function downloadTransactionsCsv() {
+  async function downloadTransactionsCsv() {
+    const transactionsForCsv = windowed
+      ? await fetchAllTransactionRows({
+          accountId,
+          categoryId,
+          limit: transactionWindowSize,
+          maxAmount,
+          minAmount,
+          query,
+          reviewFilter
+        })
+      : filteredTransactions;
     const csvRows = [
       [
         "id",
@@ -667,7 +1407,7 @@ function useTransactionsViewModel({
         "tags",
         "notes"
       ],
-      ...filteredTransactions.map((transaction) => [
+      ...transactionsForCsv.map((transaction) => [
         transaction.id,
         transaction.date,
         transaction.status,
@@ -694,6 +1434,7 @@ function useTransactionsViewModel({
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    toast.success(`Exported ${transactionsForCsv.length.toLocaleString()} transactions to CSV`);
   }
 
   async function updateTransactionTags(transaction: TransactionView, tags: string[]) {
@@ -719,9 +1460,112 @@ function useTransactionsViewModel({
     setInspectorMessage("Tags saved to the local Teller ledger.");
   }
 
+  // Row/inspector tag popover: flip a single tag on or off, then reuse the
+  // shared optimistic tag writer.
+  async function toggleTransactionTagByName(transaction: TransactionView, tagName: string) {
+    const name = tagName.trim();
+
+    if (!name) {
+      return;
+    }
+
+    const exists = transaction.tags.some((candidate) => candidate.toLowerCase() === name.toLowerCase());
+    const nextTags = exists
+      ? transaction.tags.filter((candidate) => candidate.toLowerCase() !== name.toLowerCase())
+      : [...transaction.tags, name];
+
+    await updateTransactionTags(transaction, nextTags);
+  }
+
+  // Goal popover: optimistically stamp the assignment, then persist. The goals
+  // backend may not be live yet (404) — keep the local assignment either way so
+  // the row reflects intent, and never surface an error toast.
+  async function assignTransactionGoal(transaction: TransactionView, goal: FinancialGoal | null) {
+    // Always record an explicit override (goal object, or `null` for
+    // "unassigned") — this session-local overlay must win over the
+    // server-hydrated `goalsById` lookup so a fresh unassignment can't be
+    // resurrected by a stale `transaction.financialGoalId` before the PATCH
+    // below is confirmed and the row is eventually re-fetched.
+    setGoalByTxId((current) => {
+      const next = new Map(current);
+      next.set(transaction.id, goal);
+      return next;
+    });
+
+    let response: Response | null = null;
+    try {
+      response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}`, {
+        body: JSON.stringify({ financial_goal_id: goal?.id ?? null }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH"
+      });
+    } catch {
+      response = null;
+    }
+
+    if (!response || !response.ok) {
+      setInspectorMessage("Goal saved locally — goal sync is still pending.");
+      return;
+    }
+
+    toast.success(goal ? `Added to ${goal.name}` : "Removed from goal");
+  }
+
+  async function updateTagColor(tag: string, color: string | null) {
+    const name = tag.trim();
+
+    if (!name) {
+      setInspectorMessage("Type a tag before choosing a color.");
+      return;
+    }
+
+    setInspectorMessage("Saving tag color...");
+
+    const response = await fetch("/api/v1/tag-colors", {
+      body: JSON.stringify({ color, name }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      color?: string;
+      error?: string;
+      kind?: string;
+      name?: string;
+    };
+
+    if (!response.ok || !body.name) {
+      setInspectorMessage(body.error ?? "Unable to save tag color.");
+      return;
+    }
+
+    const tagName = body.name;
+    setTagStyles((currentStyles) => {
+      const nextStyle: TagStyle = {
+        kind: body.kind === "source" ? "source" : "user",
+        name: tagName,
+        ...(body.color ? { color: body.color } : {})
+      };
+      const existingIndex = currentStyles.findIndex((style) => style.name.toLowerCase() === tagName.toLowerCase());
+
+      if (existingIndex === -1) {
+        return [...currentStyles, nextStyle];
+      }
+
+      return currentStyles.map((style, index) => (index === existingIndex ? { ...style, ...nextStyle } : style));
+    });
+    setInspectorMessage("Tag color saved.");
+  }
+
   async function toggleReviewed(transaction: TransactionView) {
     const nextReviewed = !transaction.reviewed;
     setInspectorMessage("Saving review state...");
+    setReviewToggleState("loading");
+    const toastId = showToast({
+      description: nextReviewed ? "Marking the selected transaction reviewed." : "Moving the selected transaction back to review.",
+      duration: 0,
+      status: "loading",
+      title: "Saving review state",
+    });
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}`, {
       body: JSON.stringify({ reviewed: nextReviewed }),
@@ -733,7 +1577,16 @@ function useTransactionsViewModel({
     const body = (await response.json()) as TransactionPatchApiResponse;
 
     if (!response.ok) {
-      setInspectorMessage(body.error ?? "Unable to save review state.");
+      const errorMessage = body.error ?? "Unable to save review state.";
+      setReviewToggleState("error");
+      setInspectorMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Review state failed",
+      });
+      resetButtonState(setReviewToggleState);
       return;
     }
 
@@ -742,17 +1595,39 @@ function useTransactionsViewModel({
       currentRows.map((row) => (row.id === transaction.id ? { ...row, needsReview: !reviewed, reviewed } : row))
     );
     setInspectorMessage(reviewed ? "Marked reviewed." : "Moved back to review.");
+    setReviewToggleState("success");
+    updateToast(toastId, {
+      description: reviewed ? "Transaction marked reviewed." : "Transaction moved back to review.",
+      duration: 3600,
+      status: "success",
+      title: "Review state saved",
+    });
+    resetButtonState(setReviewToggleState);
   }
 
   async function saveContextNote(transaction: TransactionView) {
     const bodyText = noteDraft.trim();
 
     if (!bodyText) {
+      setNoteSaveState("error");
       setInspectorMessage("Type a note before saving.");
+      showToast({
+        description: "Type a note before saving.",
+        status: "error",
+        title: "Note not saved",
+      });
+      resetButtonState(setNoteSaveState);
       return;
     }
 
     setInspectorMessage("Saving context note...");
+    setNoteSaveState("loading");
+    const toastId = showToast({
+      description: "Saving the note as transaction evidence.",
+      duration: 0,
+      status: "loading",
+      title: "Saving note",
+    });
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}/context-notes`, {
       body: JSON.stringify({ body: bodyText }),
@@ -764,7 +1639,16 @@ function useTransactionsViewModel({
     const body = await response.json();
 
     if (!response.ok) {
-      setInspectorMessage(body.error ?? "Unable to save context note.");
+      const errorMessage = body.error ?? "Unable to save context note.";
+      setNoteSaveState("error");
+      setInspectorMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Note save failed",
+      });
+      resetButtonState(setNoteSaveState);
       return;
     }
 
@@ -773,7 +1657,15 @@ function useTransactionsViewModel({
       currentRows.map((row) => (row.id === transaction.id ? { ...row, notes: nextNotes ?? bodyText } : row))
     );
     setInspectorMessage("Context note saved and linked as transaction evidence.");
+    setNoteSaveState("success");
+    updateToast(toastId, {
+      description: "Context note saved and linked as transaction evidence.",
+      duration: 3600,
+      status: "success",
+      title: "Note saved",
+    });
     await refreshEvidence(transaction.id);
+    resetButtonState(setNoteSaveState);
   }
 
   function setVoiceDraftForTransaction(transactionId: string, value: string | ((currentValue: string) => string)) {
@@ -1002,26 +1894,34 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
         <TabsContent className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]" value="all">
           <TransactionsList model={model} />
           <TransactionInspector model={model} />
+          <MobileTransactionInspector model={model} />
         </TabsContent>
-        <TabsContent className="min-h-0 flex-1 overflow-y-auto" value="review">
+        <TabsContent className="scroll-fade min-h-0 flex-1 overflow-y-auto" value="review">
           <ReviewTab model={model} />
         </TabsContent>
       </Tabs>
+      <NewRuleDialog
+        category={model.newRuleContext?.category ?? null}
+        merchant={model.newRuleContext?.merchant ?? ""}
+        onCreated={model.handleRuleCreated}
+        onOpenChange={(open) => {
+          if (!open) {
+            model.setNewRuleContext(null);
+          }
+        }}
+        open={model.newRuleContext !== null}
+      />
     </main>
   );
 }
 
 function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
   const commandHintId = React.useId();
+  const searchClearRef = React.useRef<HTMLDivElement>(null);
   const categoryFilterItems = [
     { label: "All categories", value: "all" },
     ...model.categories.map((category) => ({ label: category.name, value: category.id }))
   ];
-  const reviewFilterItems = [
-    { label: "All review states", value: "all" },
-    { label: "Needs review", value: "actionable" },
-    { label: "Reviewed", value: "reviewed" }
-  ] satisfies Array<{ label: string; value: TransactionReviewFilter }>;
 
   return (
     <header className="flex flex-col gap-3 border-b border-border px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:justify-between">
@@ -1033,7 +1933,12 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             Review
             {model.reviewTransactions.length > 0 ? (
               <Badge className="ml-1 h-4 min-w-4 px-1 text-[10px] tabular-nums" variant="review">
-                {model.reviewTransactions.length}
+                <AnimatedNumber
+                  digitPopOnChange
+                  digitText={(value) => Math.round(value).toLocaleString("en-US")}
+                  duration={0.45}
+                  value={model.reviewTotalCount}
+                />
               </Badge>
             ) : null}
           </TabsTrigger>
@@ -1053,7 +1958,17 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
         <span className="sr-only" id={commandHintId}>
           Press Command K to open the global command palette.
         </span>
-        <InputGroup className="h-8 min-w-[14rem] flex-1 rounded-xl bg-input/50 sm:w-64 sm:flex-none lg:w-72">
+        <InputGroup
+          className={cn("t-clear h-8 min-w-[14rem] flex-1 rounded-xl bg-input/50 sm:w-64 sm:flex-none lg:w-72", model.query && "has-value")}
+          ref={searchClearRef}
+        >
+          <div className="t-clear-mirror px-8 text-sm text-foreground" aria-hidden="true">
+            {model.query.replace(/ /g, "\u00a0")}
+          </div>
+          <div className="t-clear-placeholder px-8 text-sm text-muted-foreground" aria-hidden="true">
+            Search
+          </div>
+          <div className="t-clear-glow" aria-hidden="true" />
           <InputGroupAddon align="inline-start" className="pl-2 pr-0">
             <Search className="size-4 text-muted-foreground" />
           </InputGroupAddon>
@@ -1062,14 +1977,23 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             aria-label="Search transactions"
             className="h-8 px-2 text-sm"
             onChange={(event) => model.setQuery(event.target.value)}
-            placeholder="Search"
             value={model.query}
           />
           <InputGroupAddon align="inline-end" className="gap-1 pr-1">
             {model.query ? (
               <InputGroupButton
                 aria-label="Clear transaction search"
-                onClick={() => model.setQuery("")}
+                className="t-clear-btn"
+                onClick={() =>
+                  runInputClearDissolve({
+                    onClear: () => model.setQuery(""),
+                    placeholder: "Search",
+                    value: model.query,
+                    wrap: searchClearRef.current
+                  })
+                }
+                onMouseDown={(event) => event.preventDefault()}
+                onPointerDown={(event) => event.preventDefault()}
                 size="icon-xs"
                 type="button"
               >
@@ -1138,7 +2062,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
         </Select>
         {model.tab === "all" ? (
           <Select
-            items={reviewFilterItems}
+          items={REVIEW_FILTER_ITEMS}
             onValueChange={(value) => {
               if (isTransactionReviewFilter(value)) {
                 model.setReviewFilter(value);
@@ -1151,7 +2075,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             </SelectTrigger>
             <SelectContent align="end">
               <SelectGroup>
-                {reviewFilterItems.map((item) => (
+                {REVIEW_FILTER_ITEMS.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
@@ -1186,69 +2110,418 @@ function TransactionsList({ model }: { model: TransactionsViewModel }) {
         </div>
       ) : null}
 
-      <div className="transaction-list-scroll min-h-0 flex-1 overflow-auto">
-        {model.groupedTransactions.map((group) => (
-          <section className="transaction-date-group" key={group.label}>
-            <h2 className="transaction-date-header sticky top-0 z-10 border-y border-border bg-background/95 px-4 py-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase backdrop-blur sm:px-6">
-              {group.label}
-            </h2>
-            {group.rows.map((transaction) => {
-              const isSelected = transaction.id === model.selectedTransaction?.id;
-
-              return (
-                <button
-                  className={cn(
-                    "ledger-transaction-row grid w-full items-center gap-3 border-l-2 border-transparent px-4 py-2 text-left transition-colors hover:bg-accent sm:px-6",
-                    isSelected && "border-l-primary bg-accent"
-                  )}
-                  data-selected={isSelected ? "" : undefined}
-                  data-testid="transaction-row"
-                  key={transaction.id}
-                  onClick={() => model.selectTransaction(transaction)}
-                  type="button"
-                >
-                  <MerchantAvatar name={transaction.merchant} />
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-sm font-medium">{transaction.merchant}</span>
-                    <span className="truncate text-xs text-muted-foreground">{transaction.accountName}</span>
-                  </span>
-                  <span className="transaction-row-status flex min-w-0 items-center gap-1.5">
-                    {transaction.status === "pending" ? (
-                      <Badge className="text-[10px] font-normal" variant="pending">
-                        Pending
-                      </Badge>
-                    ) : null}
-                    {/* Review state lives in the Review tab + inspector; a badge on every
-                        unreviewed row (1,300+) is noise, not signal. */}
-                  </span>
-                  <span className="transaction-row-category shrink-0">
-                    {transaction.category ? <CategoryPill category={transaction.category} /> : null}
-                  </span>
-                  <span className="transaction-row-edge">
-                    <Amount amount={transaction.amount} currency={transaction.currency} />
-                  </span>
-                </button>
-              );
-            })}
-          </section>
-        ))}
-        {model.filteredTransactions.length === 0 ? (
-          <EmptyState
-            actions={
-              model.hasActiveFilters ? (
-                <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/transactions">
-                  Clear filters
-                </Link>
-              ) : null
-            }
-            className="m-6"
-            description="Adjust the search, category, or review filters to get back to the local ledger."
-            icon={<Search className="size-5" />}
-            title="No transactions match the current filters."
-          />
-        ) : null}
-      </div>
+      {model.windowed ? <VirtualizedTransactionsList model={model} /> : <StaticTransactionsList model={model} />}
     </section>
+  );
+}
+
+function StaticTransactionsList({ model }: { model: TransactionsViewModel }) {
+  return (
+    <div className="transaction-list-scroll scroll-fade min-h-0 flex-1 overflow-auto">
+      {model.groupedTransactions.map((group) => (
+        <section className="transaction-date-group" key={group.label}>
+          <TransactionDateHeader label={group.label} />
+          {group.rows.map((transaction) => (
+            <TransactionRow
+              isSelected={transaction.id === model.selectedTransaction?.id}
+              key={transaction.id}
+              model={model}
+              transaction={transaction}
+            />
+          ))}
+        </section>
+      ))}
+      <TransactionListEmptyState model={model} />
+    </div>
+  );
+}
+
+function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const items = useMemo(() => flattenTransactionGroups(model.groupedTransactions), [model.groupedTransactions]);
+  const stickyIndexes = useMemo(
+    () => items.flatMap((item, index) => (item.type === "header" ? [index] : [])),
+    [items]
+  );
+  const stickyIndexSet = useMemo(() => new Set(stickyIndexes), [stickyIndexes]);
+  const rangeExtractor = useCallback(
+    (range: Parameters<typeof defaultRangeExtractor>[0]) => {
+      const activeStickyIndex = [...stickyIndexes].reverse().find((index) => range.startIndex >= index);
+      const nextRange = defaultRangeExtractor(range);
+      return activeStickyIndex === undefined ? nextRange : Array.from(new Set([activeStickyIndex, ...nextRange]));
+    },
+    [stickyIndexes]
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    estimateSize: (index) => (items[index]?.type === "header" ? 32 : 56),
+    getScrollElement: () => parentRef.current,
+    onChange: (instance) => {
+      const lastVirtualIndex = instance.getVirtualItems().at(-1)?.index ?? -1;
+
+      if (lastVirtualIndex >= items.length - 10) {
+        void model.loadMoreTransactions();
+      }
+    },
+    overscan: 14,
+    rangeExtractor
+  });
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const activeStickyIndex = [...stickyIndexes]
+    .reverse()
+    .find((index) => index <= (virtualItems[0]?.index ?? 0));
+
+  return (
+    <div className="transaction-list-scroll scroll-fade min-h-0 flex-1 overflow-auto" ref={parentRef}>
+      {items.length > 0 ? (
+        <div
+          className="relative w-full"
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`
+          }}
+        >
+          {virtualItems.map((virtualItem) => {
+            const item = items[virtualItem.index];
+            const isStickyHeader = stickyIndexSet.has(virtualItem.index);
+            const isActiveStickyHeader = activeStickyIndex === virtualItem.index;
+
+            if (!item) {
+              return null;
+            }
+
+            return (
+              <div
+                className="left-0 right-0"
+                data-index={virtualItem.index}
+                key={item.key}
+                ref={rowVirtualizer.measureElement}
+                style={{
+                  position: isActiveStickyHeader ? "sticky" : "absolute",
+                  top: 0,
+                  transform: isActiveStickyHeader ? undefined : `translateY(${virtualItem.start}px)`,
+                  zIndex: isStickyHeader ? 10 : 0
+                }}
+              >
+                {item.type === "header" ? (
+                  <TransactionDateHeader label={item.label ?? ""} />
+                ) : item.transaction ? (
+                  <TransactionRow
+                    isSelected={item.transaction.id === model.selectedTransaction?.id}
+                    model={model}
+                    transaction={item.transaction}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <TransactionListEmptyState model={model} />
+      <TransactionListLoadingState model={model} />
+    </div>
+  );
+}
+
+function TransactionDateHeader({ label }: { label: string }) {
+  return (
+    <h2 className="transaction-date-header sticky top-0 z-10 border-y border-border bg-background/95 px-4 py-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase backdrop-blur sm:px-6">
+      {label}
+    </h2>
+  );
+}
+
+function TransactionRow({
+  isSelected,
+  model,
+  transaction
+}: {
+  isSelected: boolean;
+  model: TransactionsViewModel;
+  transaction: TransactionView;
+}) {
+  const coarsePointer = useCoarsePointer();
+  const row = <TransactionRowButton isSelected={isSelected} model={model} transaction={transaction} />;
+
+  if (!coarsePointer) {
+    return row;
+  }
+
+  return (
+    <>
+      <div className="sm:hidden">
+        <SwipeableRow
+          className="border-b border-border/60"
+          leftActions={[
+            {
+              disabled: transaction.reviewed,
+              icon: <Check className="size-4" />,
+              id: "mark-reviewed",
+              label: "Mark reviewed",
+              onClick: () => {
+                playSuccess();
+                void model.markTransactionsReviewed([transaction.id]);
+              },
+              tone: "success"
+            }
+          ]}
+          rightActions={[
+            {
+              icon: <Tag className="size-4" />,
+              id: "categorize",
+              label: "Categorize",
+              onClick: () => model.selectTransaction(transaction, { focus: "category" }),
+              tone: "primary"
+            }
+          ]}
+          surfaceClassName="bg-background"
+        >
+          {row}
+        </SwipeableRow>
+      </div>
+      <div className="hidden sm:block">{row}</div>
+    </>
+  );
+}
+
+function stopPropagation(event: React.SyntheticEvent) {
+  event.stopPropagation();
+}
+
+function TransactionRowButton({
+  isSelected,
+  model,
+  transaction
+}: {
+  isSelected: boolean;
+  model: TransactionsViewModel;
+  transaction: TransactionView;
+}) {
+  // A session-local override always wins (`undefined` = "no override yet");
+  // otherwise resolve the persisted `financialGoalId` through the hydrated
+  // goal directory so the assignment survives a hard reload.
+  const goalOverride = model.goalByTxId.get(transaction.id);
+  const assignedGoal =
+    goalOverride !== undefined
+      ? goalOverride
+      : (transaction.financialGoalId ? (model.goalsById.get(transaction.financialGoalId) ?? null) : null);
+  // Row chips only ever show `user` tags — source/machine tags (simplefin,
+  // teller:card_payment, ...) stay on the transaction but are noise in a
+  // scannable ledger row. They're still visible (muted) in the inspector.
+  const userFacingTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind !== "source");
+  const visibleTags = userFacingTags.slice(0, 1);
+  const extraTagCount = userFacingTags.length - visibleTags.length;
+  const selectTransaction = () => model.selectTransaction(transaction);
+
+  return (
+    <div
+      className={cn(
+        "ledger-transaction-row group/row relative grid w-full items-center gap-2.5 border-l-2 border-transparent px-4 py-1 text-left transition-colors sm:px-6",
+        isSelected && "border-l-primary bg-accent"
+      )}
+      data-selected={isSelected ? "" : undefined}
+      data-testid="transaction-row"
+    >
+      <button
+        aria-label={`Select ${transaction.merchant}`}
+        className="absolute inset-0 z-0 bg-transparent transition-colors hover:bg-accent"
+        data-sound="none"
+        onClick={selectTransaction}
+        type="button"
+      />
+      <span className="pointer-events-none relative z-10">
+        <MerchantAvatar name={transaction.merchant} />
+      </span>
+
+      {/* Merchant + inline muted account, then assigned tags/goal, then the
+          hover-revealed flag/tag/goal actions — all in the flexible column. */}
+      <span className="pointer-events-none relative z-10 flex min-w-0 items-center gap-1.5">
+        <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-1.5">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{transaction.merchant}</span>
+            {transaction.status === "pending" ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground" />
+                  }
+                >
+                  <Clock3 className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>Pending</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </span>
+          <span className="truncate text-xs text-muted-foreground sm:text-sm">{transaction.accountName}</span>
+        </span>
+
+        {visibleTags.length > 0 ? (
+          <span className="hidden shrink-0 items-center gap-1 lg:flex">
+            {visibleTags.map((tag) => (
+              <span
+                className="inline-flex h-4 max-w-20 items-center gap-1 rounded-full border border-border/70 px-1.5 text-[10px] font-medium text-muted-foreground"
+                key={tag}
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: model.tagStyleByName.get(tag.toLowerCase())?.color ?? "var(--muted-foreground)" }}
+                />
+                <span className="truncate">{tag}</span>
+              </span>
+            ))}
+            {extraTagCount > 0 ? (
+              <span className="text-[10px] font-medium text-muted-foreground tabular-nums">+{extraTagCount}</span>
+            ) : null}
+          </span>
+        ) : null}
+
+        {assignedGoal ? (
+          <span className="hidden h-4 max-w-28 shrink-0 items-center gap-1 rounded-full border border-border/70 px-1.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+            <span aria-hidden="true" className="leading-none">
+              {assignedGoal.emoji ?? "🎯"}
+            </span>
+            <span className="truncate">{assignedGoal.name}</span>
+          </span>
+        ) : null}
+
+        <span className="row-actions pointer-events-auto hidden w-0 shrink-0 items-center gap-0.5 overflow-hidden opacity-0 transition-opacity duration-150 group-hover/row:w-auto group-hover/row:opacity-100 group-focus-within/row:w-auto group-focus-within/row:opacity-100 has-[[aria-expanded=true]]:w-auto has-[[aria-expanded=true]]:opacity-100 motion-reduce:transition-none sm:flex">
+          <button
+            aria-label={
+              transaction.reviewed
+                ? `Move ${transaction.merchant} back to review`
+                : `Mark ${transaction.merchant} reviewed`
+            }
+            className={cn(
+              "inline-flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              transaction.reviewed && "text-(--positive)"
+            )}
+            onClick={(event) => {
+              stopPropagation(event);
+              void model.toggleReviewed(transaction);
+            }}
+            onPointerDown={stopPropagation}
+            type="button"
+          >
+            <Flag className={cn("size-3.5", transaction.reviewed && "fill-current")} />
+          </button>
+
+          <TransactionTagPopover
+            onToggle={(tag) => void model.toggleTransactionTagByName(transaction, tag)}
+            selected={transaction.tags}
+            tags={model.allTagOptions}
+          >
+            <button
+              aria-label={`Tag ${transaction.merchant}`}
+              className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
+              onClick={stopPropagation}
+              onPointerDown={stopPropagation}
+              type="button"
+            >
+              <Tag className="size-3.5" />
+            </button>
+          </TransactionTagPopover>
+
+          <TransactionGoalPopover
+            onAssign={(goal) => void model.assignTransactionGoal(transaction, goal)}
+            value={assignedGoal?.id}
+          >
+            <button
+              aria-label={`Assign goal to ${transaction.merchant}`}
+              className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
+              onClick={stopPropagation}
+              onPointerDown={stopPropagation}
+              type="button"
+            >
+              <Target className="size-3.5" />
+            </button>
+          </TransactionGoalPopover>
+        </span>
+      </span>
+
+      {/* Category column — left-aligned within its fixed track. */}
+      <span className="pointer-events-none relative z-10 hidden min-w-0 justify-start sm:flex">
+        {transaction.category ? (
+          <CategoryPicker
+            aiSuggestionEnabled={model.aiSuggestionEnabled}
+            aiSuggestionMessage={model.aiSuggestionMessage}
+            align="start"
+            categories={model.categories}
+            onSelect={(categoryId) => void model.commitCategoryFromPicker(transaction, categoryId)}
+            uncategorizedMerchants={model.uncategorizedMerchants}
+            value={transaction.category.id}
+          >
+            <button
+              aria-label={`Change category (currently ${transaction.category.name})`}
+              className="pointer-events-auto inline-flex min-w-0 rounded-full outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40"
+              onClick={stopPropagation}
+              onPointerDown={stopPropagation}
+              type="button"
+            >
+              <CategoryPill
+                className="max-w-[10rem] cursor-pointer transition-[filter] hover:brightness-110"
+                category={transaction.category}
+              />
+            </button>
+          </CategoryPicker>
+        ) : null}
+      </span>
+
+      <span className="pointer-events-none relative z-10 flex justify-end">
+        <Amount amount={transaction.amount} className="text-right" currency={transaction.currency} />
+      </span>
+
+      <span
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none relative z-10 size-1.5 justify-self-center rounded-full transition-colors",
+          transaction.needsReview ? "bg-primary/70" : "bg-transparent"
+        )}
+      />
+    </div>
+  );
+}
+
+function TransactionListEmptyState({ model }: { model: TransactionsViewModel }) {
+  if (model.filteredTransactions.length > 0 || model.rowsLoading) {
+    return null;
+  }
+
+  return (
+    <EmptyState
+      actions={
+        model.hasActiveFilters ? (
+          <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/transactions">
+            Clear filters
+          </Link>
+        ) : null
+      }
+      className="m-6"
+      description="Adjust the search, category, or review filters to get back to the local ledger."
+      icon={<Search className="size-5" />}
+      title="No transactions match the current filters."
+    />
+  );
+}
+
+function TransactionListLoadingState({ model }: { model: TransactionsViewModel }) {
+  if (!model.rowsLoading && !model.rowsHasMore && !model.rowsError) {
+    return null;
+  }
+
+  return (
+    <div className="px-6 py-4 text-xs text-muted-foreground">
+      {model.rowsLoading ? (
+        <div className="grid gap-2" aria-label="Loading transactions">
+          <Skeleton className="h-9" variant="long" />
+          <Skeleton className="h-9" />
+          <Skeleton className="h-9" variant="short" />
+        </div>
+      ) : (
+        <div className="flex items-center justify-center">
+          {model.rowsError ? model.rowsError : "Scroll for more transactions"}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1259,7 +2532,8 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
     return (
       <aside
         aria-label="Selected transaction inspector"
-        className="hidden flex-col border-l border-border bg-card p-6 lg:flex"
+        className="t-panel-slide hidden flex-col border-l border-border bg-card p-6 lg:flex [--panel-translate-y:24px]"
+        data-open="false"
         data-testid="empty-inspector"
       >
         <EmptyState
@@ -1287,20 +2561,32 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
   return (
     <aside
       aria-label="Selected transaction inspector"
-      className="hidden min-h-0 flex-col overflow-y-auto border-l border-border bg-card lg:flex"
+      className="t-panel-slide hidden min-h-0 flex-col overflow-y-auto border-l border-border bg-card lg:flex [--panel-translate-y:24px]"
+      data-open={model.inspectorOpen ? "true" : "false"}
     >
       <header className="flex items-center justify-between border-b border-border px-5 py-3">
         <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          {transaction.status === "pending" ? "Pending transaction" : "Posted transaction"}
+          <TextSwap value={transaction.status === "pending" ? "Pending transaction" : "Posted transaction"} />
         </span>
         <div className="flex items-center gap-1.5">
-          <Button onClick={() => model.toggleReviewed(transaction)} size="sm" type="button" variant="outline">
+          <StatefulButton
+            errorText="Failed"
+            loadingText="Saving"
+            onClick={() => model.toggleReviewed(transaction)}
+            size="sm"
+            state={model.reviewToggleState}
+            successText={transaction.reviewed ? "Move to review" : "Mark reviewed"}
+            type="button"
+            variant="outline"
+          >
             {transaction.reviewed ? "Move to review" : "Mark reviewed"}
-          </Button>
+          </StatefulButton>
           <Button
             aria-label="Close inspector"
+            data-sound="none"
             onClick={() => {
               model.stopVoiceRecognition();
+              playClose();
               model.setInspectorOpen(false);
             }}
             size="icon-sm"
@@ -1319,7 +2605,7 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
           <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <span className="text-xs text-muted-foreground capitalize">{transaction.status}</span>
+          <TextSwap className="text-xs text-muted-foreground capitalize" value={transaction.status} />
           <Badge variant={transaction.reviewed ? "synced" : "review"}>
             {transaction.reviewed ? "Reviewed" : "To review"}
           </Badge>
@@ -1327,6 +2613,8 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
         </div>
       </section>
 
+      <Separator />
+      <TransactionInspectorCategory model={model} transaction={transaction} />
       <Separator />
       <TransactionInspectorTags model={model} transaction={transaction} />
       <Separator />
@@ -1342,28 +2630,155 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
   );
 }
 
+function MobileTransactionInspector({ model }: { model: TransactionsViewModel }) {
+  const smallViewport = useSmallViewport();
+  const transaction = model.selectedTransaction;
+
+  if (!smallViewport) {
+    return null;
+  }
+
+  return (
+    <BottomSheet
+      description={transaction ? `${transaction.accountName} · ${transaction.dateLabel}` : undefined}
+      onOpenChange={(open) => {
+        if (!open) {
+          model.stopVoiceRecognition();
+          playClose();
+          model.setInspectorOpen(false);
+        }
+      }}
+      open={Boolean(transaction && model.inspectorOpen)}
+      title={transaction?.merchant ?? "Transaction"}
+    >
+      {transaction ? (
+        <div className="min-h-0">
+          <section className="flex items-start justify-between gap-4 pb-4">
+            <div className="min-w-0">
+              <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {transaction.status === "pending" ? "Pending transaction" : "Posted transaction"}
+              </span>
+              <h2 className="mt-1 truncate text-lg font-semibold">{transaction.merchant}</h2>
+              <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
+              {transaction.categoryId === "cat_transfer" ? (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  Internal transfer
+                  {(() => {
+                    const counterpart = transaction.pairedTransactionId
+                      ? model.rows.find((row) => row.id === transaction.pairedTransactionId)
+                      : undefined;
+                    return counterpart ? ` · linked to ${counterpart.accountName}` : "";
+                  })()}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <Badge variant={transaction.reviewed ? "synced" : "review"}>
+                {transaction.reviewed ? "Reviewed" : "To review"}
+              </Badge>
+              <Amount amount={transaction.amount} compact currency={transaction.currency} />
+            </div>
+          </section>
+          <Separator />
+          <TransactionInspectorCategory model={model} transaction={transaction} />
+          <Separator />
+          <TransactionInspectorTags model={model} transaction={transaction} />
+          <Separator />
+          <TransactionInspectorNotes model={model} transaction={transaction} />
+          <Separator />
+          <TransactionInspectorEvidence model={model} transaction={transaction} />
+          {model.inspectorMessage ? (
+            <p aria-live="polite" className="border-t border-border py-3 text-xs text-muted-foreground">
+              {model.inspectorMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </BottomSheet>
+  );
+}
+
+function TransactionInspectorCategory({ model, transaction }: { model: TransactionsViewModel; transaction: TransactionView }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (model.inspectorFocusTarget !== "category") {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      triggerRef.current?.focus();
+      model.setInspectorFocusTarget(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [model, transaction.id]);
+
+  return (
+    <section className="px-5 py-4 max-sm:px-0">
+      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Category</span>
+      <div className="mt-2">
+        <CategoryPicker
+          aiSuggestionEnabled={model.aiSuggestionEnabled}
+          aiSuggestionMessage={model.aiSuggestionMessage}
+          align="start"
+          categories={model.categories}
+          onSelect={(categoryId) => void model.commitCategoryFromPicker(transaction, categoryId)}
+          uncategorizedMerchants={model.uncategorizedMerchants}
+          value={transaction.category?.id}
+        >
+          <button
+            aria-label={`Category for ${transaction.merchant}`}
+            className="flex h-8 w-full items-center justify-between gap-1.5 rounded-2xl border border-transparent bg-input/50 px-3 py-2 text-sm outline-none transition-[color,box-shadow] duration-200 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+            ref={triggerRef}
+            type="button"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              {transaction.category ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: transaction.category.color }}
+                  />
+                  <span className="truncate">{transaction.category.name}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">Choose category</span>
+              )}
+            </span>
+            <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          </button>
+        </CategoryPicker>
+      </div>
+    </section>
+  );
+}
+
 function TransactionInspectorTags({ model, transaction }: { model: TransactionsViewModel; transaction: TransactionView }) {
+  const tagDraft = model.tagDraft.trim();
+  // Source/machine tags (simplefin, teller:card_payment, ...) are kept on the
+  // transaction and stay searchable, but they're a sync adapter's bookkeeping,
+  // not something to edit — render them separately, muted, and non-removable.
+  const userTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind !== "source");
+  const sourceTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind === "source");
+
   return (
     <section className="px-5 py-4">
       <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Tags</span>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        {transaction.tags.length > 0 ? (
-          transaction.tags.map((tag) => (
-            <button
-              aria-label={`Remove tag ${tag}`}
-              className="inline-flex h-6 items-center gap-1 rounded-2xl border border-border px-2 text-xs text-foreground transition-colors hover:bg-muted"
+        {userTags.length > 0 ? (
+          userTags.map((tag) => (
+            <TagChip
+              color={model.tagStyleByName.get(tag.toLowerCase())?.color}
               key={tag}
-              onClick={() =>
+              onRemove={() =>
                 model.updateTransactionTags(
                   transaction,
                   transaction.tags.filter((candidate) => candidate !== tag)
                 )
               }
-              type="button"
-            >
-              {tag}
-              <X className="size-3 text-muted-foreground" />
-            </button>
+              tag={tag}
+            />
           ))
         ) : (
           <em className="text-sm text-muted-foreground not-italic">No tags</em>
@@ -1386,6 +2801,36 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
           <Plus className="size-4" />
         </Button>
       </form>
+      {tagDraft ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            aria-label={`Use default color for ${tagDraft}`}
+            className="h-5 rounded-2xl border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+            onClick={() => model.updateTagColor(tagDraft, null)}
+            type="button"
+          >
+            Default
+          </button>
+          <BloomColorPicker
+            ariaLabel={`Color for tag ${tagDraft}`}
+            onChange={(color) => model.updateTagColor(tagDraft, color)}
+            value={model.tagStyleByName.get(tagDraft.toLowerCase())?.color ?? "#7c8794"}
+          />
+        </div>
+      ) : null}
+      {sourceTags.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+          <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
+          {sourceTags.map((tag) => (
+            <span
+              className="inline-flex h-5 items-center rounded-full border border-border/60 bg-muted/50 px-2 text-[11px] text-muted-foreground"
+              key={tag}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1409,21 +2854,38 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
           value={model.noteDraft}
         />
       </label>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Button onClick={() => model.saveContextNote(transaction)} size="sm" type="button" variant="outline">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <StatefulButton
+          className="text-xs [&_svg:not([class*='size-'])]:size-3.5"
+          errorText="Failed"
+          loadingText="Saving"
+          onClick={() => model.saveContextNote(transaction)}
+          size="sm"
+          state={model.noteSaveState}
+          successText="Saved"
+          type="button"
+          variant="outline"
+        >
           Save note
-        </Button>
+        </StatefulButton>
         <Button
+          className="text-xs [&_svg:not([class*='size-'])]:size-3.5"
           onClick={model.voiceRecording ? model.stopVoiceRecognition : model.startVoiceRecognition}
           size="sm"
           type="button"
           variant="outline"
         >
-          {model.voiceRecording ? <Square className="size-3.5" /> : <Mic className="size-4" />}
+          {model.voiceRecording ? <Square className="size-3.5" /> : <Mic className="size-3.5" />}
           {model.voiceRecording ? "Stop" : "Record"}
         </Button>
         {model.voiceDraft ? (
-          <Button onClick={() => model.saveVoiceNote(transaction)} size="sm" type="button" variant="outline">
+          <Button
+            className="text-xs"
+            onClick={() => model.saveVoiceNote(transaction)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
             Save voice
           </Button>
         ) : null}
@@ -1585,7 +3047,7 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
           actions={<Badge variant="synced">Review clear</Badge>}
           className="mx-auto max-w-xl"
           description="Every transaction matching the current filters has been reviewed."
-          icon={<Check className="size-5 animate-bounce-in" />}
+          icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200" />}
           title="Nothing left to review"
         />
       </div>
@@ -1606,13 +3068,14 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
           Select all
         </label>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {model.reviewTransactions.length} to review
+          {model.reviewTotalCount.toLocaleString("en-US")} to review
         </span>
       </div>
 
-      <div className="flex flex-col gap-2 px-4 py-3 sm:px-6">
-        {model.reviewGroups.map((group) => (
+      <AvatarHoverGroup className="flex flex-col gap-2 px-4 py-3 sm:px-6">
+        {model.reviewGroups.map((group, index) => (
           <MerchantReviewGroup
+            avatarIndex={index}
             categories={model.categories}
             group={group}
             key={group.merchant}
@@ -1624,12 +3087,13 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
             selectedIds={model.selectedReviewIds}
           />
         ))}
-      </div>
+        <ReviewTabLoadMore model={model} />
+      </AvatarHoverGroup>
 
       {model.reviewMessage ? (
         <p aria-live="polite" className="inline-flex items-center gap-1.5 px-6 pb-4 text-xs text-muted-foreground">
           {isReviewSuccessMessage(model.reviewMessage) ? (
-            <Check className="size-3.5 animate-bounce-in text-(--positive)" />
+            <Check className="size-3.5 animate-in fade-in zoom-in-95 text-(--positive) duration-200" />
           ) : null}
           {model.reviewMessage}
         </p>
@@ -1644,15 +3108,19 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
             <Button onClick={() => model.setSelectedReviewIds(new Set())} size="sm" type="button" variant="ghost">
               Clear
             </Button>
-            <Button
+            <StatefulButton
               disabled={model.reviewBusy}
+              errorText="Failed"
+              loadingText="Marking"
               onClick={() => model.markTransactionsReviewed(Array.from(model.selectedReviewIds))}
               size="sm"
+              state={model.bulkReviewState}
+              successText="Reviewed"
               type="button"
             >
               <Check className="size-4" />
-              {model.reviewBusy ? "Marking..." : `Mark ${model.selectedReviewIds.size} reviewed`}
-            </Button>
+              Mark {model.selectedReviewIds.size} reviewed
+            </StatefulButton>
           </div>
         </div>
       ) : null}
@@ -1660,7 +3128,47 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
   );
 }
 
+function ReviewTabLoadMore({ model }: { model: TransactionsViewModel }) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!model.windowed || !model.reviewTransactionsHasMore) {
+      return;
+    }
+
+    const sentinel = sentinelRef.current;
+
+    if (!sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void model.loadMoreReviewTransactions();
+      }
+    });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [model]);
+
+  if (!model.windowed || (!model.reviewTransactionsHasMore && !model.reviewTransactionsLoading && !model.reviewTransactionsError)) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center justify-center px-6 py-3 text-xs text-muted-foreground" ref={sentinelRef}>
+      {model.reviewTransactionsError
+        ? model.reviewTransactionsError
+        : model.reviewTransactionsLoading
+          ? "Loading review rows..."
+          : "Scroll for more review rows"}
+    </div>
+  );
+}
+
 function MerchantReviewGroup({
+  avatarIndex,
   categories,
   group,
   onApproveGroup,
@@ -1670,6 +3178,7 @@ function MerchantReviewGroup({
   reviewBusy,
   selectedIds
 }: {
+  avatarIndex: number;
   categories: Category[];
   group: MerchantGroup;
   onApproveGroup: () => void;
@@ -1679,14 +3188,26 @@ function MerchantReviewGroup({
   reviewBusy: boolean;
   selectedIds: Set<string>;
 }) {
+  const [open, setOpen] = useState(true);
   const allSelected = group.rows.every((row) => selectedIds.has(row.id));
   const categorySelectItems = categories.map((category) => ({
     label: category.name,
     value: category.id
   }));
+  const toggleOpen = () => {
+    setOpen((current) => {
+      const next = !current;
+      if (next) {
+        playOpen();
+      } else {
+        playClose();
+      }
+      return next;
+    });
+  };
 
   return (
-    <Collapsible className="overflow-hidden rounded-xl border border-border" defaultOpen>
+    <div className="t-acc overflow-hidden rounded-xl border border-border" data-open={open ? "true" : "false"}>
       <div className="flex items-center gap-3 bg-muted/30 px-3 py-2">
         <Checkbox
           aria-label={`Select all ${group.rows.length} ${group.merchant}`}
@@ -1694,76 +3215,87 @@ function MerchantReviewGroup({
           checked={allSelected}
           onCheckedChange={(checked) => onToggleGroup(checked === true)}
         />
-        <CollapsibleTrigger className="group/trigger flex min-w-0 flex-1 items-center gap-2 text-left">
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/trigger:rotate-90" />
-          <MerchantAvatar name={group.merchant} />
+        <button
+          aria-expanded={open}
+          className="t-acc-head flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={toggleOpen}
+          type="button"
+        >
+          <span className="t-acc-chevron shrink-0 text-muted-foreground">
+            <ChevronDown className="size-4" />
+          </span>
+          <AvatarHoverItem index={avatarIndex} className="shrink-0">
+            <MerchantAvatar name={group.merchant} />
+          </AvatarHoverItem>
           <span className="truncate text-sm font-medium">{group.merchant}</span>
           <Badge className="tabular-nums" variant="review">
             {group.rows.length}
           </Badge>
-        </CollapsibleTrigger>
+        </button>
         <Button disabled={reviewBusy} onClick={onApproveGroup} size="xs" type="button" variant="outline">
           <Check className="size-3" />
           Approve all {group.rows.length}
         </Button>
       </div>
-      <CollapsibleContent>
-        <div className="overflow-x-auto">
-          <div className="min-w-[42rem] divide-y divide-border">
-            {group.rows.map((transaction) => (
-              <div
-                className="transaction-review-row grid items-center gap-3 px-3 py-2 pl-9"
-                key={transaction.id}
-              >
-                <Checkbox
-                  aria-label={`Select ${transaction.merchant} ${transaction.dateLabel}`}
-                  className="after:-inset-3"
-                  checked={selectedIds.has(transaction.id)}
-                  onCheckedChange={(checked) => onToggleRow(transaction.id, checked === true)}
-                />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-xs text-muted-foreground">{transaction.relativeDateLabel}</span>
-                  <span className="truncate text-xs text-muted-foreground">{transaction.accountName}</span>
-                </span>
-                <span className="flex-1" />
-                <Select
-                  items={categorySelectItems}
-                  onValueChange={(value) => {
-                    if (typeof value === "string") {
-                      onUpdateCategory(transaction.id, value);
-                    }
-                  }}
-                  value={transaction.category?.id}
+      <div className="t-acc-panel">
+        <div className="t-acc-panel-inner">
+          <div className="overflow-x-auto border-t border-border">
+            <div className="min-w-[42rem] divide-y divide-border">
+              {group.rows.map((transaction) => (
+                <div
+                  className="transaction-review-row grid items-center gap-3 px-3 py-2 pl-9"
+                  key={transaction.id}
                 >
-                  <SelectTrigger aria-label={`Category for ${transaction.merchant}`} className="h-7" size="sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              aria-hidden="true"
-                              className="size-1.5 rounded-full"
-                              style={{ backgroundColor: category.color }}
-                            />
-                            {category.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <span className="transaction-row-edge">
-                  <Amount amount={transaction.amount} currency={transaction.currency} />
-                </span>
-              </div>
-            ))}
+                  <Checkbox
+                    aria-label={`Select ${transaction.merchant} ${transaction.dateLabel}`}
+                    className="after:-inset-3"
+                    checked={selectedIds.has(transaction.id)}
+                    onCheckedChange={(checked) => onToggleRow(transaction.id, checked === true)}
+                  />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-xs text-muted-foreground">{transaction.relativeDateLabel}</span>
+                    <span className="truncate text-xs text-muted-foreground">{transaction.accountName}</span>
+                  </span>
+                  <span className="flex-1" />
+                  <Select
+                    items={categorySelectItems}
+                    onValueChange={(value) => {
+                      if (typeof value === "string") {
+                        onUpdateCategory(transaction.id, value);
+                      }
+                    }}
+                    value={transaction.category?.id}
+                  >
+                    <SelectTrigger aria-label={`Category for ${transaction.merchant}`} className="h-7" size="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            <span className="flex items-center gap-2">
+                              <span
+                                aria-hidden="true"
+                                className="size-1.5 rounded-full"
+                                style={{ backgroundColor: category.color }}
+                              />
+                              {category.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <span className="transaction-row-edge">
+                    <Amount amount={transaction.amount} currency={transaction.currency} />
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </div>
   );
 }
 
@@ -1773,6 +3305,164 @@ function MerchantAvatar({ name }: { name: string }) {
       {name.trim().charAt(0).toUpperCase() || "?"}
     </span>
   );
+}
+
+function flattenTransactionGroups(groups: Array<{ label: string; rows: TransactionView[] }>): TransactionGroupItem[] {
+  return groups.flatMap((group, groupIndex) => [
+    {
+      key: `header:${groupIndex}:${group.label}`,
+      label: group.label,
+      type: "header" as const
+    },
+    ...group.rows.map((transaction) => ({
+      key: transaction.id,
+      transaction,
+      type: "row" as const
+    }))
+  ]);
+}
+
+async function fetchAllTransactionRows(request: TransactionWindowRequest): Promise<TransactionView[]> {
+  const rows: TransactionView[] = [];
+  let hasMore = true;
+  let startingAfter = request.startingAfter;
+
+  while (hasMore) {
+    const result = await fetchTransactionWindow({
+      ...request,
+      referenceDate: rows[0]?.date ?? request.referenceDate,
+      startingAfter
+    });
+
+    rows.push(...result.rows);
+    hasMore = result.hasMore;
+    startingAfter = rows.at(-1)?.id;
+
+    if (!startingAfter) {
+      break;
+    }
+  }
+
+  return rows;
+}
+
+async function fetchTransactionWindow(request: TransactionWindowRequest): Promise<TransactionWindowResult> {
+  const params = transactionWindowSearchParams(request);
+  const response = await fetch(`/api/v1/transactions?${params.toString()}`, {
+    cache: "no-store",
+    signal: request.signal
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to load transactions.");
+  }
+
+  const body = (await response.json()) as TransactionsApiResponse;
+  const referenceDate = request.referenceDate ?? body.data[0]?.date;
+
+  return {
+    hasMore: body.has_more,
+    rows: body.data.map((transaction) => transactionViewFromApi(transaction, referenceDate)),
+    totalCount: body.total_count
+  };
+}
+
+function transactionWindowSearchParams(request: TransactionWindowRequest): URLSearchParams {
+  const params = new URLSearchParams({
+    limit: String(request.limit)
+  });
+  const minAmountValue = parseAmountFilter(request.minAmount);
+  const maxAmountValue = parseAmountFilter(request.maxAmount);
+  const query = request.query.trim();
+
+  if (request.accountId) {
+    params.set("account_id", request.accountId);
+  }
+
+  if (request.categoryId !== "all") {
+    params.set("category_id", request.categoryId);
+  }
+
+  if (query) {
+    params.set("q", query);
+  }
+
+  if (request.reviewFilter !== "all") {
+    params.set("review", request.reviewFilter);
+  }
+
+  if (minAmountValue !== undefined) {
+    params.set("min_amount", String(minAmountValue));
+  }
+
+  if (maxAmountValue !== undefined) {
+    params.set("max_amount", String(maxAmountValue));
+  }
+
+  if (request.startingAfter) {
+    params.set("starting_after", request.startingAfter);
+  }
+
+  return params;
+}
+
+function transactionViewFromApi(transaction: TransactionApiItem, referenceDate?: string): TransactionView {
+  return {
+    accountId: transaction.account_id,
+    accountName: transaction.account_name,
+    amount: transaction.amount,
+    authorizedDate: transaction.authorized_date,
+    category: categoryFromApi(transaction.category),
+    categoryId: transaction.category_id,
+    currency: normalizeCurrencyCode(transaction.currency) ?? transaction.currency,
+    date: transaction.date,
+    dateLabel: formatTransactionLongDate(transaction.date),
+    description: transaction.description,
+    financialGoalId: transaction.financial_goal_id ?? undefined,
+    id: transaction.id,
+    merchant: transaction.merchant_name,
+    merchantName: transaction.merchant_name,
+    needsReview: transaction.needs_review,
+    notes: transaction.notes,
+    pairedTransactionId: transaction.paired_transaction_id ?? undefined,
+    pendingTransactionId: transaction.pending_transaction_id,
+    postedDate: transaction.posted_date,
+    providerConnectionId: transaction.provider_connection_id,
+    relativeDateLabel: getTransactionRelativeDateLabel(transaction.date, referenceDate),
+    reviewed: transaction.reviewed,
+    status: transaction.status,
+    tags: transaction.tags
+  };
+}
+
+function categoryFromApi(category: TransactionApiCategory | undefined): Category {
+  if (!category) {
+    return {
+      archived: false,
+      color: "oklch(0.72 0.04 245)",
+      emoji: "🏷️",
+      icon: "circle",
+      id: "unknown",
+      name: "Other",
+      sortOrder: 999
+    };
+  }
+
+  return {
+    archived: category.archived ?? false,
+    budgetAmount: category.budget_amount,
+    color: category.color ?? "oklch(0.72 0.04 245)",
+    emoji: category.emoji ?? "🏷️",
+    icon: category.icon ?? "circle",
+    id: category.id,
+    name: category.name,
+    parentId: category.parent_id,
+    sortOrder: category.sort_order ?? 999
+  };
+}
+
+function mergeTransactionRows(currentRows: TransactionView[], nextRows: TransactionView[]): TransactionView[] {
+  return Array.from(new Map([...currentRows, ...nextRows].map((transaction) => [transaction.id, transaction])).values());
 }
 
 function evidenceFromApi(item: TransactionEvidenceApiResponse["data"][number]): TransactionEvidenceView {
@@ -1884,6 +3574,31 @@ function parseAmountFilter(value: string): number | undefined {
   return Number.isFinite(amount) && amount >= 0 ? amount : undefined;
 }
 
+function transactionWindowFilterKey({
+  accountId,
+  categoryId,
+  maxAmount,
+  minAmount,
+  query,
+  reviewFilter
+}: {
+  accountId?: string;
+  categoryId: string;
+  maxAmount: string;
+  minAmount: string;
+  query: string;
+  reviewFilter: TransactionReviewFilter;
+}): string {
+  return JSON.stringify({
+    accountId: accountId ?? "",
+    categoryId,
+    maxAmount: parseAmountFilter(maxAmount) ?? "",
+    minAmount: parseAmountFilter(minAmount) ?? "",
+    query: query.trim().toLowerCase(),
+    reviewFilter
+  });
+}
+
 function amountFilterLabel(minAmount: string, maxAmount: string): string {
   const min = parseAmountFilter(minAmount);
   const max = parseAmountFilter(maxAmount);
@@ -1919,6 +3634,38 @@ function sourceItemFromApi(item: SourceItemsApiResponse["data"][number]): Source
 
 function sourceAmountForUi(amount: number | null | undefined): number | undefined {
   return typeof amount === "number" && Number.isFinite(amount) ? amount : undefined;
+}
+
+function formatTransactionLongDate(date: string) {
+  return transactionLongDateFormatter.format(new Date(`${date}T12:00:00`));
+}
+
+function getTransactionRelativeDateLabel(date: string, referenceDate?: string) {
+  if (!referenceDate) {
+    return formatTransactionLongDate(date);
+  }
+
+  const dayDifference = transactionDaysBetween(date, referenceDate);
+
+  if (dayDifference === 0) {
+    return "Latest";
+  }
+
+  if (dayDifference === 1) {
+    return "Previous day";
+  }
+
+  if (dayDifference > 1 && dayDifference < 7) {
+    return `${dayDifference} days before latest`;
+  }
+
+  return formatTransactionLongDate(date);
+}
+
+function transactionDaysBetween(leftDate: string, rightDate: string): number {
+  const left = Date.parse(`${leftDate}T12:00:00Z`);
+  const right = Date.parse(`${rightDate}T12:00:00Z`);
+  return Math.round((right - left) / 86_400_000);
 }
 
 function evidenceLabel(relationship: string): string {

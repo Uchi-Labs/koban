@@ -11,6 +11,12 @@ import { getAccountName, getUpcomingRecurringViews } from "@/lib/view-models";
 
 const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
 
+// One shared column grid, applied identically to the header row and every data row, so
+// every column edge lands on the same x regardless of that row's content (fixed px tracks
+// only — an `auto`-sized last column would resize per row and cascade misalignment into
+// every fr-based column before it).
+const RECURRING_ROW_GRID = "grid grid-cols-[minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3";
+
 export default async function RecurringsPage() {
   const { accounts, categories, recurringItems, transactions } = await getFinanceData();
   const candidates = getUpcomingRecurringViews(recurringItems, categories);
@@ -54,10 +60,20 @@ export default async function RecurringsPage() {
             <p className="text-sm text-muted-foreground">Sorted by expected charge date, with the account and observed transaction count shown for auditability.</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-0.5">
+            {candidateRows.length > 0 ? (
+              <div className={`${RECURRING_ROW_GRID} px-3 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase`}>
+                <span>Merchant</span>
+                <span className="text-right">Amount</span>
+                <span className="text-right">Next expected</span>
+                <span className="text-right">Last charged</span>
+                <span className="text-right">Observed</span>
+                <span>Category</span>
+              </div>
+            ) : null}
             {candidateRows.map((candidate) => (
               <Link
                 aria-label={`View transactions for recurring candidate ${candidate.merchant}`}
-                className="grid grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_0.7fr_auto] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
+                className={`${RECURRING_ROW_GRID} items-center rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/60`}
                 href={recurringTransactionHref(candidate)}
                 key={candidate.id}
               >
@@ -65,14 +81,16 @@ export default async function RecurringsPage() {
                   <p className="truncate font-medium">{candidate.merchant}</p>
                   <p className="truncate text-xs text-muted-foreground">{candidate.accountName}</p>
                 </div>
-                <div className="min-w-0 text-right">
-                  <p className="truncate text-[11px] text-muted-foreground">{candidate.frequency}</p>
-                  <p className="truncate text-sm font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</p>
+                <div className="flex items-baseline justify-end gap-1.5 overflow-hidden">
+                  <span className="truncate text-[11px] text-muted-foreground">{candidate.frequency}</span>
+                  <span className="shrink-0 font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</span>
                 </div>
-                <RowStat label="Next expected" value={candidate.nextDateLabel} />
-                <RowStat label="Last charged" value={candidate.lastChargedAt ? formatDate(candidate.lastChargedAt) : "N/A"} />
-                <RowStat label="Observed" value={candidate.observedCount.toLocaleString()} />
-                <CategoryPill category={candidate.category} />
+                <div className="text-right tabular-nums">{candidate.nextDateLabel}</div>
+                <div className="text-right tabular-nums">{candidate.lastChargedAt ? formatDate(candidate.lastChargedAt) : "N/A"}</div>
+                <div className="text-right tabular-nums">{candidate.observedCount.toLocaleString()}</div>
+                <div className="min-w-0">
+                  <CategoryPill category={candidate.category} className="max-w-full" />
+                </div>
               </Link>
             ))}
             {candidateRows.length === 0 ? (
@@ -104,15 +122,6 @@ function MetricCard({
         <strong className="text-lg font-semibold tabular-nums">{value}</strong>
       </CardContent>
     </Card>
-  );
-}
-
-function RowStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 text-right">
-      <p className="truncate text-[11px] text-muted-foreground">{label}</p>
-      <p className="truncate text-sm font-medium tabular-nums">{value}</p>
-    </div>
   );
 }
 

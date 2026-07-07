@@ -1,31 +1,91 @@
 import { TransactionsView } from "@/components/transactions-view";
+import {
+  filterTransactionsForList,
+  paginateById,
+  parseTransactionAmountFilters
+} from "@/lib/finance-api";
+import { listTagStyles } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
 import { getTransactionViews } from "@/lib/view-models";
+
+const initialTransactionWindowSize = 200;
 
 export default async function TransactionsPage({
   searchParams
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { accounts, categories, transactions } = await getFinanceData();
+  const [{ accounts, categories, transactions }, tagStyles] = await Promise.all([getFinanceData(), listTagStyles()]);
   const params = searchParams ? await searchParams : {};
+  const urlSearchParams = searchParamsToUrlSearchParams(params);
   const reviewFilter = reviewFilterFromParams(firstParam(params.review), firstParam(params.reviewed));
+  const amountFilters = parseTransactionAmountFilters(urlSearchParams);
+  const accountId = firstParam(params.account_id);
+  const categoryId = firstParam(params.category_id);
+  const query = firstParam(params.q);
+  const transactionRows = filterTransactionsForList(
+    transactions,
+    {
+      accountId,
+      categoryId,
+      query,
+      reviewFilter,
+      ...amountFilters
+    },
+    { accounts, categories }
+  );
+  const reviewRows = filterTransactionsForList(
+    transactions,
+    {
+      accountId,
+      categoryId,
+      query,
+      reviewFilter: "actionable",
+      ...amountFilters
+    },
+    { accounts, categories }
+  );
+  const transactionPage = paginateById(transactionRows, { limit: initialTransactionWindowSize });
+  const reviewPage = paginateById(reviewRows, { limit: initialTransactionWindowSize });
 
   return (
     <TransactionsView
       categories={categories}
-      initialAccountId={firstParam(params.account_id)}
-      initialCategoryId={firstParam(params.category_id)}
-      initialQuery={firstParam(params.q)}
+      initialAccountId={accountId}
+      initialCategoryId={categoryId}
+      initialMaxAmount={firstParam(params.max_amount)}
+      initialMinAmount={firstParam(params.min_amount)}
+      initialQuery={query}
       initialReviewFilter={reviewFilter}
       initialTab={tabFromParams(firstParam(params.tab), reviewFilter)}
-      transactions={getTransactionViews(transactions, { accounts, categories })}
+      reviewTotalCount={reviewRows.length}
+      reviewTransactions={getTransactionViews(reviewPage.data, { accounts, categories })}
+      reviewTransactionsHasMore={reviewPage.has_more}
+      tagStyles={tagStyles}
+      transactionWindowSize={initialTransactionWindowSize}
+      transactions={getTransactionViews(transactionPage.data, { accounts, categories })}
+      transactionsHasMore={transactionPage.has_more}
+      windowed
     />
   );
 }
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function searchParamsToUrlSearchParams(params: Record<string, string | string[] | undefined>): URLSearchParams {
+  const result = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const firstValue = firstParam(value);
+
+    if (firstValue !== undefined) {
+      result.set(key, firstValue);
+    }
+  }
+
+  return result;
 }
 
 function reviewFilterFromParams(review: string | undefined, reviewed: string | undefined) {

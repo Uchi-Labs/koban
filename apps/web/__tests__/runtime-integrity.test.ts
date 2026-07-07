@@ -27,7 +27,7 @@ describe("runtime integrity", () => {
     }
   });
 
-  it("keeps active app runtime free of fixture and SimpleFIN imports", () => {
+  it("keeps active app runtime free of fixture imports", () => {
     const activeSource = readActiveSourceFiles([
       path.join(workspaceRoot, "apps", "web", "app"),
       path.join(workspaceRoot, "apps", "web", "components"),
@@ -36,7 +36,6 @@ describe("runtime integrity", () => {
 
     expect(activeSource).not.toMatch(/@ai-finances\/fixtures/);
     expect(activeSource).not.toMatch(/\bfixture(?:s)?\b/i);
-    expect(activeSource).not.toMatch(/\bsimplefin\b/i);
   });
 
   it("keeps dev, e2e, and production Next artifacts isolated", () => {

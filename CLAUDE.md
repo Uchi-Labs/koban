@@ -1,6 +1,6 @@
 # AI Finances — agent guide
 
-Local-first personal-finance app. pnpm monorepo: `apps/web` (Next.js 15 App Router, React 19, TypeScript, Tailwind v4 + shadcn on Base UI), `packages/schema` (domain types), `packages/sync-protocol` (provider contracts).
+Local-first personal-finance app. pnpm monorepo: `apps/web` (Next.js 16 App Router, React 19, TypeScript, Tailwind v4 + shadcn on Base UI), `packages/schema` (domain types), `packages/sync-protocol` (provider contracts).
 
 ## Commands
 
@@ -26,9 +26,14 @@ All four checks must pass before any change is considered done.
 ## Conventions
 
 - Server logic in `apps/web/lib/`; DB boundary is `lib/db/finance-db.ts` (all writes via its serialized queue). API routes under `app/api/v1/` use Stripe-style list/object envelopes with snake_case JSON and deliberate 400s on malformed bodies.
+- Auth: local zero-setup stays open when both `DATABASE_URL` and `AI_FINANCES_AUTH_TOKEN` are unset. Hosted mode is active when `DATABASE_URL` is set and uses Better Auth from `lib/auth.ts`; `/api/*` auth must be validated there with a Better Auth session, Better Auth API key bearer, or legacy `AI_FINANCES_AUTH_TOKEN` bearer.
+- ChatGPT OAuth tokens are stored in `sync_state` via `lib/db/finance-db.ts`; `CHATGPT_OAUTH_TOKENS_B64` is a one-time seed, not the runtime source of truth.
 - UI: shadcn primitives in `components/ui/` (Base UI — use the `render` prop, not `asChild`); theme tokens and motion tokens in `app/shadcn.css` (Ink & Mint; `--positive`/`--negative` for money semantics); amounts always `tabular-nums`; every animation gets a `prefers-reduced-motion` guard.
 - Money: outflow negative, income positive; transfers excluded from spending metrics (`lib/transaction-classification.ts`).
 - Model-facing code goes through the AI SDK (`lib/ai/`, `lib/embeddings.ts`) — no hand-rolled provider fetches.
+- Goals: `app/goals/`, `lib/goals-api.ts`, `app/api/v1/goals` — user overlay must survive provider resync like other overlays.
+- Cash flow: `lib/cashflow.ts`, `components/cashflow-view.tsx` — monthly aggregation is computed client-side and excludes transfers.
+- Tag kinds: `classifyTagKind` in `lib/db/finance-db.ts` derives `TagKind = "user" | "source"` (`packages/schema`); source tags are hidden from row chips.
 
 ## Internal docs
 

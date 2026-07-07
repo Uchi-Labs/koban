@@ -23,7 +23,13 @@ export function DashboardNetWorthCard({
   defaultRange = "1M",
   trends
 }: {
-  accountStats?: Array<{ label: string; tone?: FinanceStatTone; value: string }>;
+  accountStats?: Array<{
+    animatedCurrency?: string;
+    animatedValue?: number;
+    label: string;
+    tone?: FinanceStatTone;
+    value: string;
+  }>;
   currentNetWorth: number;
   currency?: string;
   defaultRange?: NetWorthRange;
@@ -53,7 +59,14 @@ export function DashboardNetWorthCard({
       {accountStats && accountStats.length > 0 ? (
         <FinanceStatStrip className="mt-3">
           {accountStats.map((stat) => (
-            <FinanceStatItem key={stat.label} label={stat.label} tone={stat.tone} value={stat.value} />
+            <FinanceStatItem
+              animatedCurrency={stat.animatedCurrency}
+              animatedValue={stat.animatedValue}
+              key={stat.label}
+              label={stat.label}
+              tone={stat.tone}
+              value={stat.value}
+            />
           ))}
         </FinanceStatStrip>
       ) : null}
@@ -116,7 +129,6 @@ function useHorizontalOverflow() {
       setIsOverflowing(element.scrollWidth > element.clientWidth + 1);
     };
 
-    checkOverflow();
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", checkOverflow);
       return () => window.removeEventListener("resize", checkOverflow);

@@ -27,7 +27,7 @@ Everything else is optional and off until configured:
 | --- | --- |
 | Real Postgres instead of embedded PGlite | `POSTGRES_PASSWORD=… docker compose up -d db`, then `DATABASE_URL=postgres://postgres:…@localhost:5433/finances` |
 | Migrate an existing local ledger to Postgres | `pnpm --dir apps/web migrate:postgres` (prints per-table counts, never connection strings) |
-| Hosted AI enrichment & agent | `LLM_PROVIDER` + key for any OpenAI-compatible endpoint, or Ollama |
+| Hosted AI enrichment & agent | `AI_FINANCES_LLM_PROVIDER` + key for any OpenAI-compatible endpoint, or Ollama |
 | Hosted embeddings for semantic search | `VOYAGE_API_KEY` (`voyage-4-large` default) |
 | Single-user auth (hosted deploys) | `AI_FINANCES_AUTH_TOKEN` |
 | Background sync | Settings → Sync schedule, or `pnpm sync:due` / `sync:now` / `sync:watch` |

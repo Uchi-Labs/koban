@@ -1,30 +1,56 @@
 import {
   ensureSemanticIndex,
-  generateEnrichmentSuggestions,
   getSemanticDocumentSummary,
   recordAppSyncRun,
   refreshSourceEvidenceMatches,
   type AppSyncRunRecord,
-  type AppSyncRunStatus,
-  type EnrichmentRunResult
+  type AppSyncRunStatus
 } from "@/lib/db/finance-db";
 import { runServerEffect } from "@/lib/effect/runtime";
+import { generateEnrichmentSuggestions, type EnrichmentRunResult } from "@/lib/enrichment-runs";
 import {
   EnrichmentError,
   EvidenceMatchError,
+  PlaidSyncError,
   SemanticIndexError,
+  SimpleFinSyncError,
+  SnapTradeSyncError,
   SourceRefreshError,
   TellerSyncError,
   syncErrorMessage,
   type SyncPipelineError
 } from "@/lib/effect/sync-errors";
+import { invalidateShellDataCache } from "@/lib/finance-data";
 import { syncSourceAdaptersEffect, type SourceSyncBatchResult } from "@/lib/source-adapters";
+import {
+  isSnapTradeConfigured,
+  skippedSnapTradeSyncResult,
+  syncSnapTradeData,
+  syncSnapTradeDataEffect,
+  type SnapTradeSyncResult
+} from "@/lib/snaptrade-server";
+import {
+  isSimpleFinConfigured,
+  skippedSimpleFinSyncResult,
+  syncSimpleFinData,
+  syncSimpleFinDataEffect,
+  type SimpleFinSyncResult
+} from "@/lib/simplefin-server";
+import {
+  isPlaidConfigured,
+  skippedPlaidSyncResult,
+  syncPlaidData,
+  syncPlaidDataEffect,
+  type PlaidSyncResult
+} from "@/lib/plaid-server";
 import { syncTellerDataEffect, type TellerSyncResult } from "@/lib/teller-server";
 import { Effect, Schedule } from "effect";
 import type { Duration } from "effect";
 
 export interface AppSyncOptions {
   enrichmentLimit?: number;
+  includePlaid?: boolean;
+  includeSimpleFin?: boolean;
   sourceIds?: string[];
 }
 
@@ -42,6 +68,97 @@ export function runAppSync(options: AppSyncOptions = {}): Promise<AppSyncRunReco
   return runServerEffect(runAppSyncEffect(options));
 }
 
+export async function runSnapTradeSync(): Promise<{
+  run: AppSyncRunRecord;
+  snaptrade: SnapTradeSyncResult;
+}> {
+  const startedAt = new Date().toISOString();
+  const snaptrade = await syncSnapTradeData();
+  const finishedAt = new Date().toISOString();
+  const snaptradeStatus = snaptradeSyncStepStatus(snaptrade);
+  const run = await recordAppSyncRun({
+    enrichmentStatus: "succeeded",
+    enrichmentSummary: { skipped: true },
+    errorMessage: snaptrade.errors.length > 0 ? snaptrade.errors.join(" | ") : undefined,
+    finishedAt,
+    plaidStatus: "succeeded",
+    plaidSummary: { skipped: true },
+    snaptradeStatus,
+    snaptradeSummary: summarizeSnapTradeResult(snaptrade),
+    sourcesStatus: "succeeded",
+    sourcesSummary: { skipped: true },
+    startedAt,
+    status: snaptradeStatus,
+    tellerStatus: "succeeded",
+    tellerSummary: { skipped: true }
+  });
+
+  invalidateShellDataCache();
+  return { run, snaptrade };
+}
+
+export async function runPlaidSync(): Promise<{
+  plaid: PlaidSyncResult;
+  run: AppSyncRunRecord;
+}> {
+  const startedAt = new Date().toISOString();
+  const plaid = await syncPlaidData();
+  const finishedAt = new Date().toISOString();
+  const plaidStatus = plaidSyncStepStatus(plaid);
+  const run = await recordAppSyncRun({
+    enrichmentStatus: "succeeded",
+    enrichmentSummary: { skipped: true },
+    errorMessage: plaid.errors.length > 0 ? plaid.errors.join(" | ") : undefined,
+    finishedAt,
+    plaidStatus,
+    plaidSummary: summarizePlaidResult(plaid),
+    simplefinStatus: "succeeded",
+    simplefinSummary: { skipped: true },
+    snaptradeStatus: "succeeded",
+    snaptradeSummary: { skipped: true },
+    sourcesStatus: "succeeded",
+    sourcesSummary: { skipped: true },
+    startedAt,
+    status: plaidStatus,
+    tellerStatus: "succeeded",
+    tellerSummary: { skipped: true }
+  });
+
+  invalidateShellDataCache();
+  return { run, plaid };
+}
+
+export async function runSimpleFinSync(): Promise<{
+  run: AppSyncRunRecord;
+  simplefin: SimpleFinSyncResult;
+}> {
+  const startedAt = new Date().toISOString();
+  const simplefin = await syncSimpleFinData();
+  const finishedAt = new Date().toISOString();
+  const simplefinStatus = simpleFinSyncStepStatus(simplefin);
+  const run = await recordAppSyncRun({
+    enrichmentStatus: "succeeded",
+    enrichmentSummary: { skipped: true },
+    errorMessage: simpleFinErrorsForMessage(simplefin.errors),
+    finishedAt,
+    plaidStatus: "succeeded",
+    plaidSummary: { skipped: true },
+    simplefinStatus,
+    simplefinSummary: summarizeSimpleFinResult(simplefin),
+    snaptradeStatus: "succeeded",
+    snaptradeSummary: { skipped: true },
+    sourcesStatus: "succeeded",
+    sourcesSummary: { skipped: true },
+    startedAt,
+    status: simplefinStatus,
+    tellerStatus: "succeeded",
+    tellerSummary: { skipped: true }
+  });
+
+  invalidateShellDataCache();
+  return { run, simplefin };
+}
+
 function runAppSyncEffect(options: AppSyncOptions = {}) {
   return Effect.gen(function* () {
     const startedAt = new Date().toISOString();
@@ -51,6 +168,39 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
         timeout: "2 minutes",
         timeoutError: () => new TellerSyncError({ message: "Teller sync timed out." })
       })
+    );
+    const snapTradeResult = normalizeSnapTradeStep(
+      isSnapTradeConfigured()
+        ? yield* runSyncStepEffect(syncSnapTradeDataEffect(), {
+            timeout: "2 minutes",
+            timeoutError: () => new SnapTradeSyncError({ message: "SnapTrade sync timed out." })
+          })
+        : {
+            data: skippedSnapTradeSyncResult(),
+            status: "succeeded" as const
+          }
+    );
+    const plaidResult = normalizePlaidStep(
+      options.includePlaid && isPlaidConfigured()
+        ? yield* runSyncStepEffect(syncPlaidDataEffect(), {
+            timeout: "2 minutes",
+            timeoutError: () => new PlaidSyncError({ message: "Plaid sync timed out." })
+          })
+        : {
+            data: skippedPlaidSyncResult(options.includePlaid ? "not_configured" : "manual_only"),
+            status: "succeeded" as const
+          }
+    );
+    const simpleFinResult = normalizeSimpleFinStep(
+      options.includeSimpleFin && isSimpleFinConfigured()
+        ? yield* runSyncStepEffect(syncSimpleFinDataEffect(), {
+            timeout: "2 minutes",
+            timeoutError: () => new SimpleFinSyncError({ message: "SimpleFIN sync timed out." })
+          })
+        : {
+            data: skippedSimpleFinSyncResult(options.includeSimpleFin ? "not_configured" : "manual_only"),
+            status: "succeeded" as const
+          }
     );
     const sourceResult = normalizeSourceStep(
       yield* runSyncStepEffect(syncSourceAdaptersEffect(options.sourceIds), {
@@ -112,7 +262,15 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
             status: "error" as const
           };
     const finishedAt = new Date().toISOString();
-    const statuses = [tellerResult.status, sourcesStatus, semanticResult.status, enrichmentResult.status];
+    const statuses = [
+      tellerResult.status,
+      snapTradeResult.status,
+      plaidResult.status,
+      simpleFinResult.status,
+      sourcesStatus,
+      semanticResult.status,
+      enrichmentResult.status
+    ];
 
     return yield* Effect.tryPromise({
       try: () =>
@@ -121,18 +279,30 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
           enrichmentSummary: summarizeEnrichmentStep(enrichmentResult, semanticResult),
           errorMessage: syncRunErrorMessage([
             tellerResult,
+            snapTradeResult,
+            plaidResult,
+            simpleFinResult,
             sourceResult,
             evidenceRefreshResult,
             semanticResult,
             enrichmentResult
           ]),
           finishedAt,
+          plaidStatus: plaidResult.status,
+          plaidSummary: summarizePlaidStep(plaidResult),
+          simplefinStatus: simpleFinResult.status,
+          simplefinSummary: summarizeSimpleFinStep(simpleFinResult),
           sourcesStatus,
           sourcesSummary: summarizeSourceStep(sourceResult, evidenceRefreshResult),
+          snaptradeStatus: snapTradeResult.status,
+          snaptradeSummary: summarizeSnapTradeStep(snapTradeResult),
           startedAt,
           status: syncRunStatus(statuses),
           tellerStatus: tellerResult.status,
           tellerSummary: summarizeTellerStep(tellerResult)
+        }).then((run) => {
+          invalidateShellDataCache();
+          return run;
         }),
       catch: (error) => error
     });
@@ -209,6 +379,79 @@ function normalizeTellerStep(step: StepResult<TellerSyncResult>): StepResult<Tel
     : step;
 }
 
+function normalizeSnapTradeStep(step: StepResult<SnapTradeSyncResult>): StepResult<SnapTradeSyncResult> {
+  if (step.status !== "succeeded" || !step.data) {
+    return step;
+  }
+
+  return snaptradeSyncStepStatus(step.data) === "partial"
+    ? {
+        ...step,
+        status: "partial"
+      }
+    : step;
+}
+
+function normalizeSimpleFinStep(step: StepResult<SimpleFinSyncResult>): StepResult<SimpleFinSyncResult> {
+  if (step.status !== "succeeded" || !step.data) {
+    return step;
+  }
+
+  return simpleFinSyncStepStatus(step.data) === "partial"
+    ? {
+        ...step,
+        status: "partial"
+      }
+    : simpleFinSyncStepStatus(step.data) === "error"
+      ? {
+          ...step,
+          status: "error"
+        }
+      : step;
+}
+
+function normalizePlaidStep(step: StepResult<PlaidSyncResult>): StepResult<PlaidSyncResult> {
+  if (step.status !== "succeeded" || !step.data) {
+    return step;
+  }
+
+  return plaidSyncStepStatus(step.data) === "partial"
+    ? {
+        ...step,
+        status: "partial"
+      }
+    : plaidSyncStepStatus(step.data) === "error"
+      ? {
+          ...step,
+          status: "error"
+        }
+      : step;
+}
+
+function snaptradeSyncStepStatus(result: SnapTradeSyncResult): SyncStepStatus {
+  if (result.ok || result.errors.length === 0) {
+    return "succeeded";
+  }
+
+  return result.accountCount > 0 || result.positionCount > 0 || result.connectionCount > 0 ? "partial" : "error";
+}
+
+function simpleFinSyncStepStatus(result: SimpleFinSyncResult): SyncStepStatus {
+  if (result.ok || result.errors.length === 0) {
+    return "succeeded";
+  }
+
+  return result.accountCount > 0 || result.transactionCount > 0 || result.connectionCount > 0 ? "partial" : "error";
+}
+
+function plaidSyncStepStatus(result: PlaidSyncResult): SyncStepStatus {
+  if (result.ok || result.errors.length === 0) {
+    return "succeeded";
+  }
+
+  return result.accountCount > 0 || result.transactionCount > 0 || result.itemCount > 0 ? "partial" : "error";
+}
+
 function summarizeTellerStep(step: StepResult<TellerSyncResult>): Record<string, unknown> {
   if (!step.data) {
     return { error: step.error ?? "Teller sync failed." };
@@ -221,6 +464,100 @@ function summarizeTellerStep(step: StepResult<TellerSyncResult>): Record<string,
     lastSyncedAt: step.data.lastSyncedAt,
     transactionCount: step.data.transactionCount
   };
+}
+
+function summarizeSnapTradeStep(step: StepResult<SnapTradeSyncResult>): Record<string, unknown> {
+  if (!step.data) {
+    return { error: step.error ?? "SnapTrade sync failed." };
+  }
+
+  return summarizeSnapTradeResult(step.data);
+}
+
+function summarizeSimpleFinStep(step: StepResult<SimpleFinSyncResult>): Record<string, unknown> {
+  if (!step.data) {
+    return { error: step.error ?? "SimpleFIN sync failed." };
+  }
+
+  return summarizeSimpleFinResult(step.data);
+}
+
+function summarizePlaidStep(step: StepResult<PlaidSyncResult>): Record<string, unknown> {
+  if (!step.data) {
+    return { error: step.error ?? "Plaid sync failed." };
+  }
+
+  return summarizePlaidResult(step.data);
+}
+
+function summarizeSnapTradeResult(result: SnapTradeSyncResult): Record<string, unknown> {
+  return {
+    accountCount: result.accountCount,
+    configured: result.status.configured,
+    connectionCount: result.connectionCount,
+    errors: result.errors,
+    lastSyncedAt: result.lastSyncedAt,
+    positionCount: result.positionCount,
+    registered: result.status.registered,
+    skipped: !result.status.configured
+  };
+}
+
+function summarizePlaidResult(result: PlaidSyncResult): Record<string, unknown> {
+  return {
+    accountCount: result.accountCount,
+    configured: result.status.configured,
+    cursorCount: result.status.items.filter((item) => item.cursorPresent).length,
+    errors: result.errors,
+    itemCount: result.itemCount,
+    lastSyncedAt: result.lastSyncedAt,
+    removedTransactionCount: result.removedTransactionCount,
+    skipped: !result.status.configured,
+    transactionCount: result.transactionCount
+  };
+}
+
+function summarizeSimpleFinResult(result: SimpleFinSyncResult): Record<string, unknown> {
+  return {
+    accountCount: result.accountCount,
+    configured: result.status.configured,
+    connectionCount: result.connectionCount,
+    errors: result.errors,
+    lastSyncedAt: result.lastSyncedAt,
+    newestPostedAt: result.newestPostedAt,
+    requestEndUnix: result.requestEndUnix,
+    requestStartUnix: result.requestStartUnix,
+    skipped: !result.status.configured,
+    transactionCount: result.transactionCount
+  };
+}
+
+function simpleFinErrorsForMessage(errors: unknown[]): string | undefined {
+  if (errors.length === 0) {
+    return undefined;
+  }
+
+  return errors
+    .map((error) => {
+      if (typeof error === "string") {
+        return error;
+      }
+
+      if (error && typeof error === "object") {
+        const record = error as Record<string, unknown>;
+        const code = typeof record.code === "string" ? record.code : undefined;
+        const message =
+          typeof record.message === "string"
+            ? record.message
+            : typeof record.msg === "string"
+              ? record.msg
+              : undefined;
+        return [code, message].filter(Boolean).join(": ") || JSON.stringify(error);
+      }
+
+      return String(error);
+    })
+    .join(" | ");
 }
 
 function normalizeSourceStep(step: StepResult<SourceSyncBatchResult>): StepResult<SourceSyncBatchResult> {
@@ -340,6 +677,7 @@ function summarizeEnrichmentStep(
 
   return {
     generatedAt: step.data.generatedAt,
+    pairMatcher: step.data.pairMatcher,
     pendingSuggestions: step.data.pendingSuggestions,
     provider: {
       completed: step.data.provider.completed,

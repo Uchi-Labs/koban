@@ -1,8 +1,10 @@
 "use client";
 
+import { Copy, CopyCheck } from "lucide-react";
 import { useState } from "react";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Button } from "@/components/ui/button";
+import { ActionSwapCascadeIcon, ActionSwapCascadeText } from "@/components/ui/action-swap-cascade";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/toast";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import { isSourceImportTooLarge, sourceImportLimitLabel, sourceImportTooLargeMessage } from "@/lib/source-import-limits";
 import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/source-preview";
@@ -218,6 +221,8 @@ function useSourceAdaptersModel({
   const [importingSourceId, setImportingSourceId] = useState<string | null>(null);
   const [pastedImports, setPastedImports] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [copiedCommand, setCopiedCommand] = useState("");
+  const { showToast, updateToast } = useToast();
   const blockedAdapters = adapters.filter((adapter) => !adapter.setup.ready);
   const actionsBusy = syncingAll || syncingSourceId !== null || importingSourceId !== null;
 
@@ -280,6 +285,13 @@ function useSourceAdaptersModel({
   async function syncSource(sourceId: string) {
     setSyncingSourceId(sourceId);
     setMessage("");
+    const adapter = adapters.find((candidate) => candidate.id === sourceId);
+    const toastId = showToast({
+      description: adapter ? `Syncing ${adapter.displayName}.` : "Syncing source adapter.",
+      duration: 0,
+      status: "loading",
+      title: "Source sync started",
+    });
 
     try {
       const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/sync-runs`, {
@@ -302,16 +314,42 @@ function useSourceAdaptersModel({
       const adapterMessage = body.adapter?.errorMessage ?? body.adapter?.refreshMessage ?? body.errorMessage;
 
       if (body.runStatus === "error") {
-        setMessage(adapterMessage ?? "Source sync failed.");
+        const nextMessage = adapterMessage ?? "Source sync failed.";
+        setMessage(nextMessage);
+        updateToast(toastId, {
+          description: nextMessage,
+          duration: 5200,
+          status: "error",
+          title: "Source sync failed",
+        });
       } else if (adapterMessage) {
-        setMessage(`Source sync checked. ${adapterMessage}`);
+        const nextMessage = `Source sync checked. ${adapterMessage}`;
+        setMessage(nextMessage);
+        updateToast(toastId, {
+          description: nextMessage,
+          duration: 4200,
+          status: "info",
+          title: "Source sync checked",
+        });
       } else {
-        setMessage(
-          `Source sync finished. Items written: ${body.itemsWritten ?? 0}. Evidence suggestions: ${body.evidenceLinksSuggested ?? 0}.`
-        );
+        const nextMessage = `Source sync finished. Items written: ${body.itemsWritten ?? 0}. Evidence suggestions: ${body.evidenceLinksSuggested ?? 0}.`;
+        setMessage(nextMessage);
+        updateToast(toastId, {
+          description: nextMessage,
+          duration: 3600,
+          status: "success",
+          title: "Source sync finished",
+        });
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Source sync failed.");
+      const errorMessage = error instanceof Error ? error.message : "Source sync failed.";
+      setMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Source sync failed",
+      });
       await Promise.all([refreshSources(), refreshSourceItems(), refreshEvidenceLinks()]).catch(() => undefined);
     } finally {
       setSyncingSourceId(null);
@@ -327,6 +365,12 @@ function useSourceAdaptersModel({
 
     setSyncingAll(true);
     setMessage("");
+    const toastId = showToast({
+      description: `Syncing ${sourceIds.length.toLocaleString()} installed sources.`,
+      duration: 0,
+      status: "loading",
+      title: "Source sync started",
+    });
 
     try {
       const response = await fetch("/api/v1/sources/sync-runs", {
@@ -357,11 +401,23 @@ function useSourceAdaptersModel({
       const syncVerb = sourcesErrored > 0 || sourcesStale > 0 ? "checked" : "finished";
       const syncSuffix =
         sourcesErrored > 0 || sourcesStale > 0 ? ` Errors: ${sourcesErrored}. Stale: ${sourcesStale}.` : "";
-      setMessage(
-        `Source sync ${syncVerb}. Sources checked: ${body.summary?.sourcesAttempted ?? sourceIds.length}. Items written: ${body.summary?.itemsWritten ?? 0}. Evidence suggestions: ${body.summary?.evidenceLinksSuggested ?? 0}.${syncSuffix}`
-      );
+      const nextMessage = `Source sync ${syncVerb}. Sources checked: ${body.summary?.sourcesAttempted ?? sourceIds.length}. Items written: ${body.summary?.itemsWritten ?? 0}. Evidence suggestions: ${body.summary?.evidenceLinksSuggested ?? 0}.${syncSuffix}`;
+      setMessage(nextMessage);
+      updateToast(toastId, {
+        description: nextMessage,
+        duration: sourcesErrored > 0 ? 5200 : 3600,
+        status: sourcesErrored > 0 ? "error" : sourcesStale > 0 ? "info" : "success",
+        title: `Source sync ${syncVerb}`,
+      });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Source sync failed.");
+      const errorMessage = error instanceof Error ? error.message : "Source sync failed.";
+      setMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Source sync failed",
+      });
       await Promise.all([refreshSources(), refreshSourceItems(), refreshEvidenceLinks()]).catch(() => undefined);
     } finally {
       setSyncingAll(false);
@@ -496,6 +552,12 @@ function useSourceAdaptersModel({
 
   async function updateEvidenceStatus(evidence: EvidenceReviewView, status: "accepted" | "dismissed") {
     setMessage(status === "accepted" ? "Accepting evidence..." : "Dismissing evidence...");
+    const toastId = showToast({
+      description: status === "accepted" ? evidence.sourceItem.title : "Dismissing suggested evidence.",
+      duration: 0,
+      status: "loading",
+      title: status === "accepted" ? "Accepting evidence" : "Dismissing evidence",
+    });
 
     try {
       const response = await fetch(
@@ -528,9 +590,23 @@ function useSourceAdaptersModel({
         )
       );
       await refreshSources();
-      setMessage(status === "accepted" ? "Evidence accepted." : "Evidence dismissed.");
+      const nextMessage = status === "accepted" ? "Evidence accepted." : "Evidence dismissed.";
+      setMessage(nextMessage);
+      updateToast(toastId, {
+        description: nextMessage,
+        duration: 3600,
+        status: "success",
+        title: status === "accepted" ? "Evidence accepted" : "Evidence dismissed",
+      });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update evidence.");
+      const errorMessage = error instanceof Error ? error.message : "Unable to update evidence.";
+      setMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Evidence update failed",
+      });
     }
   }
 
@@ -538,6 +614,10 @@ function useSourceAdaptersModel({
     try {
       await navigator.clipboard.writeText(command);
       setMessage("Setup command copied.");
+      setCopiedCommand(command);
+      window.setTimeout(() => {
+        setCopiedCommand((current) => (current === command ? "" : current));
+      }, 1400);
     } catch {
       setMessage(command);
     }
@@ -562,6 +642,7 @@ function useSourceAdaptersModel({
     summary,
     syncingAll,
     syncingSourceId,
+    copiedCommand,
     copySetupCommand,
     importPastedSource,
     importSourceFile,
@@ -606,6 +687,13 @@ function SourceAdaptersLayout({ model }: { model: SourceAdaptersModel }) {
 }
 
 function SourceSummaryActions({ model }: { model: SourceAdaptersModel }) {
+  const blockedSetupCommand = model.blockedAdapters
+    .flatMap((adapter) => {
+      const command = nextSetupCommand(adapter);
+      return command ? [command] : [];
+    })
+    .join("\n");
+
   return (
     <>
       <div className="grid grid-cols-3 gap-2" aria-label="Evidence source store summary">
@@ -619,16 +707,12 @@ function SourceSummaryActions({ model }: { model: SourceAdaptersModel }) {
             variant="outline"
             size="sm"
             onClick={() => {
-              void model.copySetupCommand(
-                model.blockedAdapters.flatMap((adapter) => {
-                  const command = nextSetupCommand(adapter);
-                  return command ? [command] : [];
-                }).join("\n")
-              );
+              void model.copySetupCommand(blockedSetupCommand);
             }}
             type="button"
           >
-            Copy setup commands
+            <CopySwapIcon copied={model.copiedCommand === blockedSetupCommand} />
+            <CopySwapText copied={model.copiedCommand === blockedSetupCommand}>Copy setup commands</CopySwapText>
           </Button>
         ) : null}
         <Button
@@ -673,8 +757,11 @@ function SourceSetupChecklist({ model }: { model: SourceAdaptersModel }) {
               <div className="flex min-w-0 flex-col gap-1">
                 <strong className="text-sm font-medium">{adapter.displayName}</strong>
                 <span className="text-xs text-muted-foreground">{adapter.setup.nextAction}</span>
-                {adapter.setup.missing.length > 0 ? (
-                  <p className="text-xs text-muted-foreground">{adapter.setup.missing.join(" ")}</p>
+                {/* `missing` often repeats nextAction verbatim — only show what it adds. */}
+                {adapter.setup.missing.some((step) => step !== adapter.setup.nextAction) ? (
+                  <p className="text-xs text-muted-foreground">
+                    {adapter.setup.missing.filter((step) => step !== adapter.setup.nextAction).join(" ")}
+                  </p>
                 ) : null}
                 {command ? <CodeLine>{command}</CodeLine> : null}
               </div>
@@ -687,7 +774,8 @@ function SourceSetupChecklist({ model }: { model: SourceAdaptersModel }) {
                   }}
                   type="button"
                 >
-                  Copy
+                  <CopySwapIcon copied={model.copiedCommand === command} />
+                  <CopySwapText copied={model.copiedCommand === command}>Copy</CopySwapText>
                 </Button>
               ) : null}
             </article>
@@ -695,6 +783,24 @@ function SourceSetupChecklist({ model }: { model: SourceAdaptersModel }) {
         })}
       </div>
     </section>
+  );
+}
+
+function CopySwapIcon({ copied }: { copied: boolean }) {
+  const state = copied ? "copied" : "copy";
+
+  return (
+    <ActionSwapCascadeIcon className="size-3.5" value={state}>
+      {copied ? <CopyCheck className="size-3.5" /> : <Copy className="size-3.5" />}
+    </ActionSwapCascadeIcon>
+  );
+}
+
+function CopySwapText({ copied, children }: { copied: boolean; children: string }) {
+  return (
+    <ActionSwapCascadeText splitText={copied ? "Copied" : children} value={copied ? "copied" : "copy"}>
+      {copied ? "Copied" : children}
+    </ActionSwapCascadeText>
   );
 }
 

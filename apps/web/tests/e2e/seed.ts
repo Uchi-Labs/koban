@@ -1,7 +1,12 @@
-import type { Account, ProviderConnection, Transaction } from "@ai-finances/schema";
+import type { Account, InvestmentPosition, ProviderConnection, Transaction } from "@ai-finances/schema";
 import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { closeFinanceDbForTests, readFinanceDbSnapshot, replaceTellerLedgerInDb } from "@/lib/db/finance-db";
+import {
+  closeFinanceDbForTests,
+  readFinanceDbSnapshot,
+  replaceSnapTradeInvestmentSnapshot,
+  replaceTellerLedgerInDb
+} from "@/lib/db/finance-db";
 import type { TellerLedger } from "@/lib/finance-data";
 import { tellerInternalAmountSignConvention } from "@/lib/teller-normalization";
 
@@ -52,6 +57,40 @@ const accounts: Account[] = [
   }
 ];
 
+const investmentProviderConnection: ProviderConnection = {
+  id: "provider_e2e_snaptrade",
+  provider: "snaptrade",
+  displayName: "Synthetic E2E Brokerage",
+  status: "connected",
+  configured: true,
+  lastSyncedAt: syncedAt
+};
+
+const investmentAccount: Account = {
+  id: "acct_e2e_brokerage",
+  providerConnectionId: investmentProviderConnection.id,
+  groupId: "group_investments",
+  name: "E2E Brokerage",
+  institutionName: "E2E Brokerage",
+  type: "investment",
+  mask: "9001",
+  currency: "USD",
+  currentBalance: 12500,
+  includedInNetWorth: true,
+  lastUpdatedAt: syncedAt
+};
+
+const investmentPosition: InvestmentPosition = {
+  id: "pos_e2e_aapl",
+  accountId: investmentAccount.id,
+  symbol: "AAPL",
+  description: "Synthetic E2E Apple holding",
+  units: 10,
+  price: 250,
+  currency: "USD",
+  marketValue: 2500
+};
+
 export default async function globalSetup(): Promise<void> {
   await seedE2eDatabase();
 }
@@ -66,9 +105,39 @@ export async function seedE2eDatabase(): Promise<void> {
 
   try {
     await replaceTellerLedgerInDb(createSyntheticE2eLedger());
+    await replaceSnapTradeInvestmentSnapshot({
+      accounts: [investmentAccount],
+      balanceSnapshots: [
+        {
+          id: `${investmentAccount.id}_20260601120000`,
+          accountId: investmentAccount.id,
+          asOfDate: "2026-06-01",
+          capturedAt: "2026-06-01T12:00:00.000Z",
+          ledgerBalance: 12000,
+          currency: "USD",
+          source: "snaptrade"
+        },
+        {
+          id: `${investmentAccount.id}_20260630120000`,
+          accountId: investmentAccount.id,
+          asOfDate: "2026-06-30",
+          capturedAt: syncedAt,
+          ledgerBalance: investmentAccount.currentBalance,
+          currency: "USD",
+          source: "snaptrade"
+        }
+      ],
+      errors: [],
+      finishedAt: syncedAt,
+      positionAccountIds: [investmentAccount.id],
+      positions: [investmentPosition],
+      providerConnections: [investmentProviderConnection],
+      startedAt: syncedAt,
+      successfulProviderConnectionIds: [investmentProviderConnection.id]
+    });
     const snapshot = await readFinanceDbSnapshot();
 
-    if (!snapshot || snapshot.accounts.length !== accounts.length || snapshot.transactions.length !== transactions.length) {
+    if (!snapshot || snapshot.accounts.length !== accounts.length + 1 || snapshot.transactions.length !== transactions.length) {
       throw new Error("E2E seed did not write the expected synthetic ledger.");
     }
   } finally {
@@ -83,9 +152,29 @@ function createSyntheticE2eLedger(): TellerLedger {
     lastSyncedAt: syncedAt,
     syncStartDate: "2026-04-01",
     enrollmentCount: 1,
-    accounts,
+    accounts: [...accounts, investmentAccount],
     transactions,
-    providerConnections: [providerConnection],
+    providerConnections: [providerConnection, investmentProviderConnection],
+    balanceSnapshots: [
+      {
+        id: `${investmentAccount.id}_20260601120000`,
+        accountId: investmentAccount.id,
+        asOfDate: "2026-06-01",
+        capturedAt: "2026-06-01T12:00:00.000Z",
+        ledgerBalance: 12000,
+        currency: "USD",
+        source: "snaptrade"
+      },
+      {
+        id: `${investmentAccount.id}_20260630120000`,
+        accountId: investmentAccount.id,
+        asOfDate: "2026-06-30",
+        capturedAt: syncedAt,
+        ledgerBalance: investmentAccount.currentBalance,
+        currency: "USD",
+        source: "snaptrade"
+      }
+    ],
     normalization: {
       amountSignConvention: tellerInternalAmountSignConvention
     },

@@ -3,8 +3,10 @@
 import { LogIn, LogOut, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
+import { AnimatedBadge } from "@/components/ui/animated-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { StatefulButton } from "@/components/ui/stateful-button";
 import {
   Select,
   SelectContent,
@@ -14,6 +16,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/toast";
+import { playError, playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 import type { AppSyncRunPayload, SyncSchedulePayload } from "@/lib/app-sync-runs";
 import type { ProviderStatus } from "@ai-finances/schema";
@@ -30,8 +34,30 @@ interface SyncEverythingStatus {
   };
   ready: {
     enrichment: boolean;
+    plaid: boolean;
+    simplefin: boolean;
     sources: boolean;
+    snaptrade: boolean;
     teller: boolean;
+  };
+  plaid: {
+    configured: boolean;
+    item_count: number;
+    last_synced_at?: string;
+    ready_for_sync: boolean;
+    standby_institution_names: string[];
+    stored_account_count: number;
+    stored_transaction_count: number;
+  };
+  simplefin: {
+    configured: boolean;
+    connection_count: number;
+    last_errors: unknown[];
+    last_synced_at?: string;
+    latest_balance_as_of?: string;
+    ready_for_sync: boolean;
+    stored_account_count: number;
+    stored_transaction_count: number;
   };
   sources: {
     blocked_count: number;
@@ -39,6 +65,15 @@ interface SyncEverythingStatus {
     installed_count: number;
     ready_count: number;
     source_item_count: number;
+  };
+  snaptrade: {
+    configured: boolean;
+    connection_count: number;
+    last_synced_at?: string;
+    ready_for_sync: boolean;
+    registered: boolean;
+    stored_account_count: number;
+    stored_position_count: number;
   };
   teller: {
     enrollment_count: number;
@@ -74,6 +109,7 @@ export function SyncEverythingPanel({
   const [error, setError] = useState("");
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
+  const { showToast, updateToast } = useToast();
 
   const refreshStatus = useCallback(async () => {
     const response = await fetch("/api/v1/sync-runs", { cache: "no-store" });
@@ -95,6 +131,17 @@ export function SyncEverythingPanel({
     setBusy(true);
     setError("");
     setRun(null);
+    const loadingDescription = "Running Teller, Plaid, SimpleFIN, SnapTrade, evidence sources, semantic updates, and AI enrichment.";
+    const toastId = showToast({
+      description: (
+        <span className="t-shimmer" data-text={loadingDescription}>
+          {loadingDescription}
+        </span>
+      ),
+      duration: 0,
+      status: "loading",
+      title: "Sync started",
+    });
 
     try {
       const response = await fetch("/api/v1/sync-runs", {
@@ -113,8 +160,27 @@ export function SyncEverythingPanel({
       setRun(body);
       setRecentRuns((currentRuns) => mergeRecentRuns(body, currentRuns));
       await refreshStatus();
+      updateToast(toastId, {
+        description: syncToastDescription(body),
+        duration: 4200,
+        status: body.status === "error" ? "error" : "success",
+        title: `Sync ${body.status}`,
+      });
+      if (body.status === "error") {
+        playError();
+      } else {
+        playSuccess();
+      }
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Sync everything failed.");
+      const errorMessage = caughtError instanceof Error ? caughtError.message : "Sync everything failed.";
+      setError(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Sync failed",
+      });
+      playError();
     } finally {
       setBusy(false);
     }
@@ -146,13 +212,21 @@ export function SyncEverythingPanel({
     }
   }
 
-  const runDueSchedule = useCallback(async () => {
+  const runDueSchedule = useCallback(async ({ notify = false }: { notify?: boolean } = {}) => {
     if (busy || scheduleBusy) {
       return;
     }
 
     setScheduleBusy(true);
     setScheduleError("");
+    const toastId = notify
+      ? showToast({
+          description: "Checking whether a scheduled sync is due.",
+          duration: 0,
+          status: "loading",
+          title: "Checking schedule",
+        })
+      : "";
 
     try {
       const response = await fetch("/api/v1/sync-schedule", {
@@ -174,12 +248,29 @@ export function SyncEverythingPanel({
         setRecentRuns((currentRuns) => mergeRecentRuns(body.run!, currentRuns));
         await refreshStatus();
       }
+      if (notify) {
+        updateToast(toastId, {
+          description: body.status === "ran" && body.run ? syncToastDescription(body.run) : (body.reason ?? "No scheduled sync was due."),
+          duration: 3600,
+          status: body.status === "ran" ? "success" : "info",
+          title: body.status === "ran" ? "Scheduled sync ran" : "No sync due",
+        });
+      }
     } catch (caughtError) {
-      setScheduleError(caughtError instanceof Error ? caughtError.message : "Scheduled sync failed.");
+      const errorMessage = caughtError instanceof Error ? caughtError.message : "Scheduled sync failed.";
+      setScheduleError(errorMessage);
+      if (notify) {
+        updateToast(toastId, {
+          description: errorMessage,
+          duration: 5200,
+          status: "error",
+          title: "Scheduled sync failed",
+        });
+      }
     } finally {
       setScheduleBusy(false);
     }
-  }, [busy, refreshStatus, scheduleBusy]);
+  }, [busy, refreshStatus, scheduleBusy, showToast, updateToast]);
 
   useEffect(() => {
     if (!schedule.enabled) {
@@ -200,22 +291,32 @@ export function SyncEverythingPanel({
         <div className="flex flex-col gap-1">
           <h1 className="text-base font-medium">Sync everything</h1>
           <p className="text-sm text-muted-foreground">
-            Runs Teller, installed evidence sources, semantic updates, and AI enrichment in one local pass.
+            Runs Teller, SnapTrade, installed evidence sources, semantic updates, and AI enrichment in one local pass.
           </p>
         </div>
-        <Button disabled={busy || scheduleBusy || !status.ready.teller} onClick={syncEverything} type="button">
+        <StatefulButton
+          disabled={busy || scheduleBusy || (!status.ready.teller && !status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin)}
+          data-sound="sync"
+          loadingText="Syncing"
+          onClick={syncEverything}
+          state={busy ? "loading" : "idle"}
+          type="button"
+        >
           <RefreshCw className={cn("size-4", busy && "animate-spin")} />
-          {busy ? "Syncing..." : "Sync everything"}
-        </Button>
+          Sync everything
+        </StatefulButton>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Whole app sync readiness">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-6" aria-label="Whole app sync readiness">
           <SyncStatusTile
             detail={`${status.teller.stored_account_count.toLocaleString()} accounts, ${status.teller.stored_transaction_count.toLocaleString()} transactions`}
             label="Teller"
             ready={status.ready.teller}
           />
+          <SyncStatusTile detail={snapTradeReadinessDetail(status.snaptrade)} label="SnapTrade" ready={status.ready.snaptrade} />
+          <SyncStatusTile detail={plaidReadinessDetail(status.plaid)} label="Plaid" ready={status.ready.plaid} />
+          <SyncStatusTile detail={simpleFinReadinessDetail(status.simplefin)} label="SimpleFIN" ready={status.ready.simplefin} />
           <SyncStatusTile detail={sourceReadinessDetail(status.sources)} label="Evidence" ready={status.ready.sources} />
           <SyncStatusTile
             detail={llmProviderDetail(status.enrichment.llm_provider)}
@@ -231,68 +332,99 @@ export function SyncEverythingPanel({
 
         <Separator />
 
-        <div
-          className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3"
-          aria-label="Periodic sync"
-        >
-          <label className="flex items-center gap-2" htmlFor="sync-auto-enabled">
-            <Switch
-              checked={schedule.enabled}
-              disabled={scheduleBusy}
-              id="sync-auto-enabled"
-              onCheckedChange={(checked) => {
-                void updateSchedule({ enabled: checked });
-              }}
-            />
-            <span className="text-sm font-medium">Auto-sync</span>
-          </label>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Interval</span>
-            <Select
-              disabled={scheduleBusy}
-              value={String(schedule.interval_minutes)}
-              onValueChange={(value) => {
-                void updateSchedule({ interval_minutes: Number(value ?? schedule.interval_minutes) });
-              }}
-            >
-              <SelectTrigger size="sm" aria-label="Sync interval" className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="60">Every hour</SelectItem>
-                <SelectItem value="240">Every 4 hours</SelectItem>
-                <SelectItem value="720">Every 12 hours</SelectItem>
-                <SelectItem value="1440">Daily</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{schedule.enabled ? "Enabled" : "Paused"}</span>
-            <span>{schedule.next_run_at ? `Next ${new Date(schedule.next_run_at).toLocaleString()}` : "No next run"}</span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto"
-            disabled={!schedule.enabled || scheduleBusy || busy}
-            onClick={() => {
-              void runDueSchedule();
-            }}
-            type="button"
-          >
-            {scheduleBusy ? "Checking..." : "Check due sync"}
-          </Button>
-        </div>
+        <SyncScheduleControls
+          busy={busy}
+          runDueSchedule={runDueSchedule}
+          schedule={schedule}
+          scheduleBusy={scheduleBusy}
+          updateSchedule={updateSchedule}
+        />
 
         {run ? <SyncRunSummary run={run} /> : null}
         <RecentSyncRuns runs={recentRuns} />
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {scheduleError ? <p className="text-sm text-destructive">{scheduleError}</p> : null}
-        {!status.ready.teller ? (
-          <p className="text-sm text-destructive">Teller must be configured before whole-app sync can run.</p>
+        {!status.ready.teller && !status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin ? (
+          <p className="text-sm text-destructive">Teller, Plaid, SimpleFIN, or SnapTrade must be configured before whole-app sync can run.</p>
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function SyncScheduleControls({
+  busy,
+  runDueSchedule,
+  schedule,
+  scheduleBusy,
+  updateSchedule
+}: {
+  busy: boolean;
+  runDueSchedule: (options?: { notify?: boolean }) => Promise<void>;
+  schedule: SyncSchedulePayload;
+  scheduleBusy: boolean;
+  updateSchedule: (input: { enabled?: boolean; interval_minutes?: number }) => Promise<void>;
+}) {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3"
+      aria-label="Periodic sync"
+    >
+      <label className="flex items-center gap-2" htmlFor="sync-auto-enabled">
+        <Switch
+          checked={schedule.enabled}
+          disabled={scheduleBusy}
+          id="sync-auto-enabled"
+          onCheckedChange={(checked) => {
+            void updateSchedule({ enabled: checked });
+          }}
+        />
+        <span className="text-sm font-medium">Auto-sync</span>
+      </label>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Interval</span>
+        <Select
+          disabled={scheduleBusy}
+          value={String(schedule.interval_minutes)}
+          onValueChange={(value) => {
+            void updateSchedule({ interval_minutes: Number(value ?? schedule.interval_minutes) });
+          }}
+        >
+          <SelectTrigger size="sm" aria-label="Sync interval" className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="60">Every hour</SelectItem>
+            <SelectItem value="240">Every 4 hours</SelectItem>
+            <SelectItem value="720">Every 12 hours</SelectItem>
+            <SelectItem value="1440">Daily</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col text-xs text-muted-foreground">
+        <AnimatedBadge
+          contentKey={`${schedule.enabled ? "enabled" : "paused"}-${scheduleBusy ? "busy" : "settled"}`}
+          size="sm"
+          status={scheduleBusy ? "loading" : schedule.enabled ? "success" : "neutral"}
+        >
+          {scheduleBusy ? "Checking" : schedule.enabled ? "Enabled" : "Paused"}
+        </AnimatedBadge>
+        <span>{schedule.next_run_at ? `Next ${new Date(schedule.next_run_at).toLocaleString()}` : "No next run"}</span>
+        <span>Plaid and SimpleFIN are manual only</span>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="ml-auto"
+        disabled={!schedule.enabled || scheduleBusy || busy}
+        onClick={() => {
+          void runDueSchedule({ notify: true });
+        }}
+        type="button"
+      >
+        {scheduleBusy ? "Checking..." : "Check due sync"}
+      </Button>
+    </div>
   );
 }
 
@@ -319,7 +451,7 @@ function RecentSyncRuns({ runs }: { runs: AppSyncRunPayload[] }) {
                 <span className="text-xs text-muted-foreground">{new Date(run.finished_at).toLocaleString()}</span>
               </div>
               <span className="text-right text-xs text-muted-foreground">
-                Teller {run.teller.status} · Evidence {run.sources.status} · AI {run.enrichment.status}
+                Teller {run.teller.status} · Plaid {run.plaid.status} · SimpleFIN {run.simplefin.status} · SnapTrade {run.snaptrade.status} · Evidence {run.sources.status} · AI {run.enrichment.status}
               </span>
             </article>
           ))}
@@ -334,15 +466,13 @@ function SyncStatusTile({ detail, label, ready }: { detail: string; label: strin
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 text-xs font-medium",
-            ready ? "text-foreground" : "text-destructive"
-          )}
+        <AnimatedBadge
+          contentKey={`${label}-${ready ? "ready" : "blocked"}`}
+          size="sm"
+          status={ready ? "success" : "danger"}
         >
-          <span className={cn("size-1.5 rounded-full", ready ? "bg-emerald-500" : "bg-destructive")} aria-hidden />
           {ready ? "Ready" : "Blocked"}
-        </span>
+        </AnimatedBadge>
       </div>
       <span className="text-xs text-muted-foreground">{detail}</span>
     </div>
@@ -384,6 +514,59 @@ function sourceReadinessDetail(sources: SyncEverythingStatus["sources"]): string
   return parts.join(", ");
 }
 
+function snapTradeReadinessDetail(snaptrade: SyncEverythingStatus["snaptrade"]): string {
+  if (!snaptrade.configured) {
+    return "credentials not configured";
+  }
+
+  if (!snaptrade.registered) {
+    return "connect to create local user";
+  }
+
+  return [
+    `${snaptrade.connection_count.toLocaleString()} connections`,
+    `${snaptrade.stored_account_count.toLocaleString()} accounts`,
+    `${snaptrade.stored_position_count.toLocaleString()} positions`
+  ].join(", ");
+}
+
+function plaidReadinessDetail(plaid: SyncEverythingStatus["plaid"]): string {
+  if (!plaid.configured) {
+    return "credentials not configured";
+  }
+
+  const parts = [
+    `${plaid.item_count.toLocaleString()} items`,
+    `${plaid.stored_account_count.toLocaleString()} accounts`,
+    `${plaid.stored_transaction_count.toLocaleString()} transactions`
+  ];
+
+  if (plaid.standby_institution_names.length > 0) {
+    parts.push(`${plaid.standby_institution_names.join(", ")} standby`);
+  }
+
+  return parts.join(", ");
+}
+
+function simpleFinReadinessDetail(simplefin: SyncEverythingStatus["simplefin"]): string {
+  if (!simplefin.configured) {
+    return "access URL not configured";
+  }
+
+  const errors = Array.isArray(simplefin.last_errors) ? simplefin.last_errors.length : 0;
+  const parts = [
+    `${simplefin.connection_count.toLocaleString()} institutions`,
+    `${simplefin.stored_account_count.toLocaleString()} accounts`,
+    `${simplefin.stored_transaction_count.toLocaleString()} transactions`
+  ];
+
+  if (errors > 0) {
+    parts.push(`${errors.toLocaleString()} errors`);
+  }
+
+  return parts.join(", ");
+}
+
 function SyncRunSummary({ run }: { run: AppSyncRunPayload }) {
   return (
     <div
@@ -403,6 +586,30 @@ function SyncRunSummary({ run }: { run: AppSyncRunPayload }) {
             ? ` (${(run.teller.data.accountCount ?? 0).toLocaleString()} accounts, ${(run.teller.data.transactionCount ?? 0).toLocaleString()} transactions)`
             : run.teller?.error
               ? ` (${run.teller.error})`
+              : ""}
+        </li>
+        <li>
+          Plaid: {run.plaid?.status ?? "error"}
+          {run.plaid?.data
+            ? plaidSyncDetail(run.plaid.data)
+            : run.plaid?.error
+              ? ` (${run.plaid.error})`
+              : ""}
+        </li>
+        <li>
+          SimpleFIN: {run.simplefin?.status ?? "error"}
+          {run.simplefin?.data
+            ? simpleFinSyncDetail(run.simplefin.data)
+            : run.simplefin?.error
+              ? ` (${run.simplefin.error})`
+              : ""}
+        </li>
+        <li>
+          SnapTrade: {run.snaptrade?.status ?? "error"}
+          {run.snaptrade?.data
+            ? snapTradeSyncDetail(run.snaptrade.data)
+            : run.snaptrade?.error
+              ? ` (${run.snaptrade.error})`
               : ""}
         </li>
         <li>
@@ -455,6 +662,64 @@ function sourceSyncDetail(data: NonNullable<AppSyncRunPayload["sources"]["data"]
   return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
+function snapTradeSyncDetail(data: NonNullable<AppSyncRunPayload["snaptrade"]["data"]>): string {
+  if (data.skipped) {
+    return " (skipped)";
+  }
+
+  const parts = [
+    `${(data.accountCount ?? 0).toLocaleString()} accounts`,
+    `${(data.positionCount ?? 0).toLocaleString()} positions`
+  ];
+  const errors = Array.isArray(data.errors) ? data.errors.length : 0;
+
+  if (errors > 0) {
+    parts.push(`${errors.toLocaleString()} errors`);
+  }
+
+  return ` (${parts.join(", ")})`;
+}
+
+function simpleFinSyncDetail(data: NonNullable<AppSyncRunPayload["simplefin"]["data"]>): string {
+  if (data.skipped) {
+    return " (skipped)";
+  }
+
+  const parts = [
+    `${(data.accountCount ?? 0).toLocaleString()} accounts`,
+    `${(data.transactionCount ?? 0).toLocaleString()} transactions`
+  ];
+  const errors = Array.isArray(data.errors) ? data.errors.length : 0;
+
+  if (errors > 0) {
+    parts.push(`${errors.toLocaleString()} errors`);
+  }
+
+  return ` (${parts.join(", ")})`;
+}
+
+function plaidSyncDetail(data: NonNullable<AppSyncRunPayload["plaid"]["data"]>): string {
+  if (data.skipped) {
+    return " (skipped)";
+  }
+
+  const parts = [
+    `${(data.accountCount ?? 0).toLocaleString()} accounts`,
+    `${(data.transactionCount ?? 0).toLocaleString()} transactions`
+  ];
+  const errors = Array.isArray(data.errors) ? data.errors.length : 0;
+
+  if ((data.removedTransactionCount ?? 0) > 0) {
+    parts.push(`${(data.removedTransactionCount ?? 0).toLocaleString()} removed`);
+  }
+
+  if (errors > 0) {
+    parts.push(`${errors.toLocaleString()} errors`);
+  }
+
+  return ` (${parts.join(", ")})`;
+}
+
 function aiSyncDetail(data: NonNullable<AppSyncRunPayload["enrichment"]["data"]>): string {
   const parts = [
     `${(data.suggestionsSeen ?? 0).toLocaleString()} candidates`,
@@ -473,6 +738,10 @@ function aiSyncDetail(data: NonNullable<AppSyncRunPayload["enrichment"]["data"]>
   }
 
   return ` (${parts.join(", ")})`;
+}
+
+function syncToastDescription(run: AppSyncRunPayload): string {
+  return `Teller ${run.teller.status}, Plaid ${run.plaid.status}, SimpleFIN ${run.simplefin.status}, SnapTrade ${run.snaptrade.status}, evidence ${run.sources.status}, AI ${run.enrichment.status}.`;
 }
 
 function providerFallbackWarning(provider: Record<string, unknown> | undefined): string | undefined {

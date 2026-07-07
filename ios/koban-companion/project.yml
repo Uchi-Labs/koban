@@ -1,0 +1,34 @@
+name: KobanCompanion
+options:
+  minimumXcodeGenVersion: 2.42.0
+  deploymentTarget:
+    iOS: "17.4"
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+targets:
+  KobanCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.4"
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vishhvak.koban.companion
+        PRODUCT_NAME: KobanCompanion
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: KobanCompanion.entitlements
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        TARGETED_DEVICE_FAMILY: 1
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Koban Companion
+        NSFinancialDataUsageDescription: Koban reads Apple Wallet balances and transactions on this iPhone so you can sync them to your Koban instance.
+        NSFinancialDataDescription: Koban reads Apple Wallet balances and transactions on this iPhone so you can sync them to your Koban instance.
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.vishhvak.koban.companion.refresh
+        UIBackgroundModes:
+          - fetch

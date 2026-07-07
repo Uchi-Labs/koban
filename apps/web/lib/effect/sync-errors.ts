@@ -5,6 +5,21 @@ export class TellerSyncError extends Data.TaggedError("TellerSyncError")<{
   message: string;
 }> {}
 
+export class SnapTradeSyncError extends Data.TaggedError("SnapTradeSyncError")<{
+  cause?: unknown;
+  message: string;
+}> {}
+
+export class SimpleFinSyncError extends Data.TaggedError("SimpleFinSyncError")<{
+  cause?: unknown;
+  message: string;
+}> {}
+
+export class PlaidSyncError extends Data.TaggedError("PlaidSyncError")<{
+  cause?: unknown;
+  message: string;
+}> {}
+
 export class SourceRefreshError extends Data.TaggedError("SourceRefreshError")<{
   cause?: unknown;
   message: string;
@@ -27,6 +42,9 @@ export class EnrichmentError extends Data.TaggedError("EnrichmentError")<{
 
 export type SyncPipelineError =
   | TellerSyncError
+  | SnapTradeSyncError
+  | SimpleFinSyncError
+  | PlaidSyncError
   | SourceRefreshError
   | EvidenceMatchError
   | SemanticIndexError

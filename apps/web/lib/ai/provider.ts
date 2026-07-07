@@ -4,6 +4,7 @@ import {
   generateObject,
   generateText,
   NoObjectGeneratedError,
+  streamText as streamAiText,
   type FinishReason,
   type LanguageModel
 } from "ai";
@@ -41,6 +42,11 @@ export interface LlmTextGenerationResult {
   text: string;
 }
 
+export interface LlmTextStreamResult {
+  getText: () => Promise<string>;
+  textStream: AsyncIterable<string>;
+}
+
 export interface LlmObjectGenerationResult<TObject> {
   finishReason: FinishReason;
   object: TObject;
@@ -51,6 +57,7 @@ export interface LlmGenerationClient {
     input: LlmObjectGenerationInput<TSchema>
   ): Promise<LlmObjectGenerationResult<z.infer<TSchema>>>;
   generateText(input: LlmTextGenerationInput): Promise<LlmTextGenerationResult>;
+  streamText(input: LlmTextGenerationInput): Promise<LlmTextStreamResult>;
 }
 
 export class AiLlmOutputError extends Error {
@@ -166,8 +173,62 @@ export const aiSdkLlmClient: LlmGenerationClient = {
       finishReason: result.finishReason,
       text: result.text
     };
+  },
+
+  async streamText({
+    allowLengthFinish = false,
+    env,
+    fetcher,
+    maxOutputTokens,
+    messages,
+    provider
+  }: LlmTextGenerationInput) {
+    if (provider.credentialSource === "chatgpt_oauth") {
+      const result = await generateTextWithChatGptResponses({
+        env,
+        fetcher,
+        maxOutputTokens,
+        messages,
+        provider
+      });
+
+      if (result.finishReason === "length" && !allowLengthFinish) {
+        throw new AiLlmOutputError("LLM provider stopped before returning complete response.");
+      }
+
+      if (result.text.trim().length === 0) {
+        throw new AiLlmOutputError("LLM provider returned no message content.");
+      }
+
+      return singleChunkTextStream(result.text);
+    }
+
+    const result = streamAiText({
+      allowSystemInMessages: true,
+      maxOutputTokens,
+      maxRetries: 0,
+      messages,
+      model: await buildConfiguredLanguageModel(provider, env, fetcher),
+      timeout: { totalMs: provider.timeoutMs },
+      ...samplingOptions(provider)
+    });
+    const textPromise = Promise.resolve(result.text);
+
+    return {
+      getText: () => textPromise,
+      textStream: result.textStream
+    };
   }
 };
+
+function singleChunkTextStream(text: string): LlmTextStreamResult {
+  return {
+    getText: () => Promise.resolve(text),
+    textStream: (async function* streamSingleChunk() {
+      yield text;
+    })()
+  };
+}
 
 function buildConfiguredLanguageModel(
   provider: LlmProviderStatus,

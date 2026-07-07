@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorResponse } from "@/lib/api-error";
 import { readJsonObject } from "@/lib/api-request";
 import { isSourceImportTooLarge, sourceImportTooLargeMessage } from "@/lib/source-import-limits";
 import { importSourceAdapterPayload, previewSourceAdapterPayload } from "@/lib/source-adapters";
@@ -106,10 +107,7 @@ async function importSourcePayload(
 
     return NextResponse.json(await importSourceAdapterPayload(sourceId, input));
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to import source records." },
-      { status: 400 }
-    );
+    return errorResponse(error, "Unable to import source records.", 400);
   }
 }
 

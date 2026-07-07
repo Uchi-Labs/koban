@@ -1,14 +1,15 @@
 import { RulesPanel, type RuleView } from "@/components/rules-panel";
-import { appCategories } from "@/lib/categories";
-import { getEffectiveLlmEnrichmentStatus, listEnrichmentSuggestionItems, listTransactionRules } from "@/lib/db/finance-db";
+import { listEnrichmentSuggestionItems, listTagStyles, listTransactionRules } from "@/lib/db/finance-db";
+import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
 import { getFinanceData } from "@/lib/finance-data";
 
 export default async function RulesPage() {
-  await getFinanceData();
-  const [rules, suggestions, provider] = await Promise.all([
+  const [financeData, rules, suggestions, provider, tagStyles] = await Promise.all([
+    getFinanceData(),
     listTransactionRules(),
     listEnrichmentSuggestionItems({ limit: 20 }),
-    getEffectiveLlmEnrichmentStatus()
+    getEffectiveLlmEnrichmentStatus(),
+    listTagStyles()
   ]);
 
   return (
@@ -17,7 +18,7 @@ export default async function RulesPage() {
         <span className="text-[13px] font-semibold tracking-tight">Rules</span>
       </header>
       <RulesPanel
-        categories={appCategories}
+        categories={financeData.categories}
         initialProvider={{
           baseUrl: provider.baseUrl,
           configured: provider.configured,
@@ -65,6 +66,7 @@ export default async function RulesPage() {
           pattern: rule.pattern,
           tags: rule.tags
         } satisfies RuleView))}
+        tagStyles={tagStyles}
       />
     </main>
   );

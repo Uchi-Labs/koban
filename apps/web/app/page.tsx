@@ -63,7 +63,10 @@ export default async function DashboardPage() {
         ) : null}
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2" aria-label="Dashboard overview">
+      {/* Content sits beside a 256px sidebar, so the 2-up grid only has room once the
+          viewport clears ~1024px (md's 768px leaves cards ~250px wide with the sidebar
+          open) -- below that, cards stack single-column instead of cramming. */}
+      <section className="grid gap-4 lg:grid-cols-2" aria-label="Dashboard overview">
         <DashboardCard title="Monthly spending" action={{ label: "Transactions", href: "/transactions" }}>
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
@@ -108,16 +111,22 @@ export default async function DashboardPage() {
         <DashboardNetWorthCard
           accountStats={[
             {
+              animatedCurrency: dashboardSummary.currency,
+              animatedValue: dashboardSummary.cashBalance,
               label: "Cash",
               tone: "positive",
               value: formatCurrency(dashboardSummary.cashBalance, dashboardSummary.currency)
             },
             {
+              animatedCurrency: dashboardSummary.currency,
+              animatedValue: Math.abs(dashboardSummary.creditBalance),
               label: "Credit",
               tone: dashboardSummary.creditBalance < 0 ? "negative" : "muted",
               value: formatCurrency(Math.abs(dashboardSummary.creditBalance), dashboardSummary.currency)
             },
             {
+              animatedCurrency: dashboardSummary.currency,
+              animatedValue: investmentBalance,
               label: "Invest",
               tone: "primary",
               value: formatCurrency(investmentBalance, dashboardSummary.currency)
@@ -157,7 +166,7 @@ export default async function DashboardPage() {
                       <span className="text-sm font-medium tabular-nums text-foreground">
                         {formatCurrency(amount, dashboardSummary.currency)}
                       </span>
-                      <span className="col-start-2 text-xs tabular-nums text-muted-foreground min-[390px]:col-start-auto min-[390px]:w-16 min-[390px]:text-right">
+                      <span className="col-start-2 text-xs whitespace-nowrap tabular-nums text-muted-foreground min-[390px]:col-start-auto min-[390px]:w-24 min-[390px]:text-right">
                         {formatCurrency(remaining, dashboardSummary.currency)} left
                       </span>
                     </div>
@@ -180,7 +189,7 @@ export default async function DashboardPage() {
             {recurringViews.length > 0 ? (
               <div className="divide-y divide-border">
                 {recurringViews.slice(0, 2).map((item) => (
-                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 py-2 min-[390px]:grid-cols-[3.5rem_minmax(0,1fr)_auto_auto]" key={item.id}>
+                  <div className="flex items-center gap-3 py-2" key={item.id}>
                     <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-sm font-medium text-foreground">{item.merchant}</span>
@@ -190,7 +199,7 @@ export default async function DashboardPage() {
                       Recurring
                     </Badge>
                     <CategoryPill className="hidden min-[390px]:inline-flex" category={item.category} />
-                    <span className="text-sm font-medium tabular-nums text-foreground">
+                    <span className="min-w-[5rem] text-right text-sm font-medium tabular-nums text-foreground">
                       {formatCurrency(Math.abs(item.amount), item.currency)}
                     </span>
                   </div>

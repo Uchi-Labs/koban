@@ -102,7 +102,7 @@ export async function embedTexts(
   return embedTextsWithVoyage(texts, model, options.inputType ?? "document");
 }
 
-export function localHashEmbedText(text: string): number[] {
+function localHashEmbedText(text: string): number[] {
   const vectorValues = new Array<number>(localEmbeddingDimensions).fill(0);
   const tokens = tokenize(text);
 

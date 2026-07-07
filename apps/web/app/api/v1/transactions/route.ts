@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  filterTransactionsForList,
   paginateById,
   parseListParams,
+  parseTransactionAmountFilters,
   parseTransactionReviewFilter,
-  serializeTransaction,
-  transactionMatchesQuery,
-  transactionMatchesReviewFilter
+  serializeTransaction
 } from "@/lib/finance-api";
 import { getFinanceData } from "@/lib/finance-data";
 
@@ -22,17 +22,24 @@ export async function GET(request: NextRequest) {
   });
   const status = request.nextUrl.searchParams.get("status");
   const { limit, startingAfter } = parseListParams(request.nextUrl.searchParams);
-  const rows = transactions
-    .filter((transaction) => (accountId ? transaction.accountId === accountId : true))
-    .filter((transaction) => (categoryId ? transaction.categoryId === categoryId : true))
-    .filter((transaction) => (status ? transaction.status === status : true))
-    .filter((transaction) => transactionMatchesReviewFilter(transaction, reviewFilter))
-    .filter((transaction) => transactionMatchesQuery(transaction, query))
-    .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id));
+  const amountFilters = parseTransactionAmountFilters(request.nextUrl.searchParams);
+  const rows = filterTransactionsForList(
+    transactions,
+    {
+      accountId,
+      categoryId,
+      query,
+      reviewFilter,
+      status,
+      ...amountFilters
+    },
+    { accounts, categories }
+  );
   const page = paginateById(rows, { limit, startingAfter });
 
   return NextResponse.json({
     ...page,
-    data: page.data.map((transaction) => serializeTransaction(transaction, { accounts, categories }))
+    data: page.data.map((transaction) => serializeTransaction(transaction, { accounts, categories })),
+    total_count: rows.length
   });
 }

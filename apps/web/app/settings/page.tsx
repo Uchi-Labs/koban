@@ -1,27 +1,44 @@
+import { ApiTokensPanel } from "@/components/api-tokens-panel";
 import { AiProviderPanel } from "@/components/sync-everything-panel";
+import Link from "next/link";
 import { LocalDataPanel, TellerConnectSetup } from "@/components/teller-connect-setup";
+import { PlaidConnectSetup } from "@/components/plaid-connect-setup";
+import { SecuritySettingsPanel } from "@/components/security-settings-panel";
+import { SnapTradeConnectSetup } from "@/components/snaptrade-connect-setup";
+import { SimpleFinConnectSetup } from "@/components/simplefin-connect-setup";
 import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
+import { SoundSettingsPanel } from "@/components/sound-settings-panel";
 import { SyncEverythingPanel } from "@/components/sync-everything-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import {
   ensureAppSyncSchedule,
-  getEffectiveLlmEnrichmentStatus,
   getLatestAppSyncRun,
   listEvidenceLinks,
   listAppSyncRuns,
   listSourceItems
 } from "@/lib/db/finance-db";
 import { activeEmbeddingModel } from "@/lib/embeddings";
+import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { isHostedAuthMode } from "@/lib/auth";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
+import { getPlaidSetupStatus } from "@/lib/plaid-server";
 import { getSourceAdapterDiagnostics, summarizeSourceReadiness } from "@/lib/source-adapters";
 import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/source-preview";
+import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
+import { FinanceKitConnectSetup } from "@/components/financekit-connect-setup";
+import { getFinanceKitSetupStatus } from "@/lib/financekit-server";
+import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
 import { getTellerSetupStatus } from "@/lib/teller-server";
 
 export default async function SettingsPage() {
   const [
     tellerStatus,
+    snapTradeStatus,
+    plaidStatus,
+    simpleFinStatus,
+    financeKitStatus,
     sourceDiagnostics,
     llmProvider,
     latestAppSyncRun,
@@ -31,6 +48,10 @@ export default async function SettingsPage() {
     evidenceLinks
   ] = await Promise.all([
     getTellerSetupStatus(),
+    getSnapTradeSetupStatus(),
+    getPlaidSetupStatus(),
+    getSimpleFinSetupStatus(),
+    getFinanceKitSetupStatus(),
     getSourceAdapterDiagnostics(),
     getEffectiveLlmEnrichmentStatus(),
     getLatestAppSyncRun(),
@@ -55,7 +76,10 @@ export default async function SettingsPage() {
     },
     ready: {
       enrichment: isEnrichmentProviderReady(llmProvider),
+      plaid: plaidStatus.readyForSync,
+      simplefin: simpleFinStatus.readyForSync,
       sources: sourceReadiness.ready,
+      snaptrade: snapTradeStatus.readyForSync,
       teller: tellerStatus.readyForApi
     },
     sources: {
@@ -70,6 +94,34 @@ export default async function SettingsPage() {
       ready_for_api: tellerStatus.readyForApi,
       stored_account_count: tellerStatus.storedAccountCount,
       stored_transaction_count: tellerStatus.storedTransactionCount
+    },
+    snaptrade: {
+      configured: snapTradeStatus.configured,
+      connection_count: snapTradeStatus.connectionCount,
+      last_synced_at: snapTradeStatus.lastSyncedAt,
+      ready_for_sync: snapTradeStatus.readyForSync,
+      registered: snapTradeStatus.registered,
+      stored_account_count: snapTradeStatus.storedAccountCount,
+      stored_position_count: snapTradeStatus.storedPositionCount
+    },
+    plaid: {
+      configured: plaidStatus.configured,
+      item_count: plaidStatus.itemCount,
+      last_synced_at: plaidStatus.lastSyncedAt,
+      ready_for_sync: plaidStatus.readyForSync,
+      standby_institution_names: plaidStatus.standbyInstitutionNames,
+      stored_account_count: plaidStatus.storedAccountCount,
+      stored_transaction_count: plaidStatus.storedTransactionCount
+    },
+    simplefin: {
+      configured: simpleFinStatus.configured,
+      connection_count: simpleFinStatus.connectionCount,
+      last_errors: simpleFinStatus.lastErrors,
+      last_synced_at: simpleFinStatus.lastSyncedAt,
+      latest_balance_as_of: simpleFinStatus.latestBalanceAsOf,
+      ready_for_sync: simpleFinStatus.readyForSync,
+      stored_account_count: simpleFinStatus.storedAccountCount,
+      stored_transaction_count: simpleFinStatus.storedTransactionCount
     },
     last_run: latestAppSyncRun ? appSyncRunRecordToPayload(latestAppSyncRun) : null,
     recent_runs: recentAppSyncRuns.map(appSyncRunRecordToPayload)
@@ -183,6 +235,11 @@ export default async function SettingsPage() {
     sourceItemCount: sourceDiagnostics.summary.sourceItemCount
   });
   const tellerStatusPayload = toSerializable(tellerStatus);
+  const snapTradeStatusPayload = toSerializable(snapTradeStatus);
+  const plaidStatusPayload = toSerializable(plaidStatus);
+  const simpleFinStatusPayload = toSerializable(simpleFinStatus);
+  const financeKitStatusPayload = toSerializable(financeKitStatus);
+  const hostedAuth = isHostedAuthMode();
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6">
@@ -198,11 +255,17 @@ export default async function SettingsPage() {
           <TabsTrigger value="connections">Connections</TabsTrigger>
           <TabsTrigger value="sync">Sync</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="access">Access</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
         </TabsList>
 
         <TabsContent value="connections" className="flex flex-col gap-6">
           <TellerConnectSetup initialStatus={tellerStatusPayload} />
+          <PlaidConnectSetup initialStatus={plaidStatusPayload} />
+          <SimpleFinConnectSetup initialStatus={simpleFinStatusPayload} />
+          <SnapTradeConnectSetup initialStatus={snapTradeStatusPayload} />
+          <FinanceKitConnectSetup endpointUrl="/api/v1/financekit/ingest" initialStatus={financeKitStatusPayload} />
           <SourceAdaptersPanel
             initialAdapters={sourceAdapterPayload}
             initialEvidenceLinks={initialEvidenceLinks}
@@ -219,10 +282,25 @@ export default async function SettingsPage() {
           <AiProviderPanel initialProvider={aiProviderPayload} />
         </TabsContent>
 
-        <TabsContent value="data">
+        <TabsContent value="security">
+          <SecuritySettingsPanel hostedAuth={hostedAuth} />
+        </TabsContent>
+
+        <TabsContent value="access">
+          <ApiTokensPanel hostedAuth={hostedAuth} />
+        </TabsContent>
+
+        <TabsContent value="data" className="flex flex-col gap-6">
+          <SoundSettingsPanel />
           <LocalDataPanel initialStatus={tellerStatusPayload} />
         </TabsContent>
       </Tabs>
+
+      <footer className="border-t border-border pt-4 text-xs text-muted-foreground">
+        <Link className="underline-offset-4 hover:underline" href="/privacy">
+          Koban Privacy Policy
+        </Link>
+      </footer>
     </main>
   );
 }

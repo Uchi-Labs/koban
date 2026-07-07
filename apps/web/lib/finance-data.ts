@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountGroup,
+  Category,
   DashboardSummary,
   ProviderConnection,
   RecurringItem,
@@ -9,11 +10,11 @@ import type {
 import { unstable_noStore as noStore } from "next/cache";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { appCategories } from "@/lib/categories";
 import { displayCurrencyCode } from "@/lib/currency";
 import {
   consumeFinanceDbRecoveryEvent,
   financeDbExists,
+  listCategories,
   readFinanceDbSnapshot,
   readShellSnapshot,
   replaceTellerLedgerInDb,
@@ -30,7 +31,7 @@ export interface FinanceData {
   source: "empty" | "teller";
   accounts: Account[];
   accountGroups: AccountGroup[];
-  categories: typeof appCategories;
+  categories: Category[];
   dashboardSummary: DashboardSummary;
   providerConnections: ProviderConnection[];
   recurringItems: RecurringItem[];
@@ -71,46 +72,65 @@ export interface ShellData {
   accounts: Account[];
   accountGroups: AccountGroup[];
   lastSyncedAt?: string;
+  reviewActionableCount: number;
   source: "empty" | "teller";
   transactionCount: number;
 }
 
 let loggedReadPathNormalizationMigration = false;
 let readPathNormalizationMigrationScheduled = false;
+let shellDataCache: { expiresAt: number; value: ShellData } | null = null;
+
+const shellDataCacheTtlMs = 30_000;
+
+export function invalidateShellDataCache(): void {
+  shellDataCache = null;
+}
 
 // Light read for the app shell: accounts and counts only. The full ledger read
 // stays in getFinanceData for pages that need it.
 export async function getShellData(): Promise<ShellData> {
   noStore();
 
-  const snapshot = await readShellSnapshot();
-  if (!snapshot) {
-    return { accounts: [], accountGroups: [], source: "empty", transactionCount: 0 };
+  const now = Date.now();
+  if (shellDataCache && shellDataCache.expiresAt > now) {
+    return shellDataCache.value;
   }
 
-  return {
+  const snapshot = await readShellSnapshot();
+  if (!snapshot) {
+    const value = { accounts: [], accountGroups: [], reviewActionableCount: 0, source: "empty" as const, transactionCount: 0 };
+    shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
+    return value;
+  }
+
+  const value = {
     accounts: snapshot.accounts,
     accountGroups: createAccountGroups(snapshot.accounts),
     lastSyncedAt: snapshot.lastSyncedAt,
-    source: "teller",
+    reviewActionableCount: snapshot.reviewActionableCount,
+    source: "teller" as const,
     transactionCount: snapshot.transactionCount
   };
+  shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
+  return value;
 }
 
 export async function getFinanceData(): Promise<FinanceData> {
   noStore();
 
+  const categories = await listCategories({ includeArchived: true });
   const financeDbLedger = await getFinanceDbLedger();
   if (financeDbLedger && financeDbLedger.accounts.length > 0) {
     scheduleReadPathNormalizationMigration(financeDbLedger);
-    return createFinanceDataFromLedger(financeDbLedger);
+    return createFinanceDataFromLedger(financeDbLedger, categories);
   }
 
   if (consumeFinanceDbRecoveryEvent()) {
     const restored = await importTellerLedgerBackupFile();
 
     if (restored && restored.accounts.length > 0) {
-      return createFinanceDataFromLedger(restored);
+      return createFinanceDataFromLedger(restored, categories);
     }
   }
 
@@ -118,10 +138,11 @@ export async function getFinanceData(): Promise<FinanceData> {
     source: "empty",
     accounts: [],
     accountGroups: [],
-    categories: appCategories,
+    categories,
     dashboardSummary: createDashboardSummary({
       accounts: [],
       accountGroups: [],
+      categories,
       transactions: [],
       recurringItems: [],
       providerConnections: [],
@@ -200,13 +221,15 @@ export async function updateStoredTransactionInDb(
   return updateDbTransaction(transactionId, update);
 }
 
-function createFinanceDataFromLedger(tellerLedger: TellerLedger): FinanceData {
+function createFinanceDataFromLedger(tellerLedger: TellerLedger, categories: Category[]): FinanceData {
   const accountGroups = createAccountGroups(tellerLedger.accounts);
-  const recurringItems = createRecurringItems(tellerLedger.transactions);
+  const metricTransactions = filterTransactionsForIncludedAccounts(tellerLedger.accounts, tellerLedger.transactions);
+  const recurringItems = createRecurringItems(metricTransactions);
   const dashboardSummary = createDashboardSummary({
     accounts: tellerLedger.accounts,
     accountGroups,
-    transactions: tellerLedger.transactions,
+    categories,
+    transactions: metricTransactions,
     recurringItems,
     providerConnections: tellerLedger.providerConnections,
     asOf: tellerLedger.lastSyncedAt
@@ -216,7 +239,7 @@ function createFinanceDataFromLedger(tellerLedger: TellerLedger): FinanceData {
     source: "teller",
     accounts: tellerLedger.accounts,
     accountGroups,
-    categories: appCategories,
+    categories,
     dashboardSummary,
     providerConnections: tellerLedger.providerConnections,
     recurringItems,
@@ -288,8 +311,9 @@ export function createAccountGroups(accounts: Account[]): AccountGroup[] {
 
   return groupSpecs.flatMap((group) => {
     const groupAccounts = accounts.filter((account) => group.types.includes(account.type));
+    const includedGroupAccounts = groupAccounts.filter((account) => account.includedInNetWorth);
 
-    if (groupAccounts.length === 0) {
+    if (includedGroupAccounts.length === 0) {
       return [];
     }
 
@@ -297,9 +321,9 @@ export function createAccountGroups(accounts: Account[]): AccountGroup[] {
       {
         id: group.id,
         name: group.name,
-        accountIds: groupAccounts.map((account) => account.id),
-        currency: displayCurrencyCode(groupAccounts.map((account) => account.currency)),
-        totalBalance: sum(groupAccounts.map((account) => account.currentBalance)),
+        accountIds: includedGroupAccounts.map((account) => account.id),
+        currency: displayCurrencyCode(includedGroupAccounts.map((account) => account.currency)),
+        totalBalance: sum(includedGroupAccounts.map((account) => account.currentBalance)),
         includedInNetWorth: true,
         sortOrder: group.sortOrder
       } satisfies AccountGroup
@@ -322,6 +346,7 @@ export function getAccountNetWorthContribution(account: Account): number {
 export function createDashboardSummary({
   accounts,
   accountGroups,
+  categories,
   transactions,
   recurringItems,
   providerConnections,
@@ -329,15 +354,17 @@ export function createDashboardSummary({
 }: {
   accounts: Account[];
   accountGroups: AccountGroup[];
+  categories?: Category[];
   transactions: Transaction[];
   recurringItems: RecurringItem[];
   providerConnections: ProviderConnection[];
   asOf: string;
 }): DashboardSummary {
-  const monthKey = getSummaryMonth(transactions);
-  const monthTransactions = transactions.filter((transaction) => transaction.date.startsWith(monthKey));
+  const metricTransactions = filterTransactionsForIncludedAccounts(accounts, transactions);
+  const monthKey = getSummaryMonth(metricTransactions);
+  const monthTransactions = metricTransactions.filter((transaction) => transaction.date.startsWith(monthKey));
   const spendingByCategory = new Map<string, { amount: number; transactionCount: number; budgetAmount?: number }>();
-  const categoryById = new Map(appCategories.map((category) => [category.id, category]));
+  const categoryById = new Map((categories ?? []).map((category) => [category.id, category]));
 
   for (const transaction of monthTransactions) {
     if (!isSpendingTransaction(transaction)) {
@@ -359,8 +386,8 @@ export function createDashboardSummary({
     creditBalance: sum(accountGroups.filter((group) => group.id === "group_credit").map((group) => group.totalBalance)),
     monthlyIncome: sum(monthTransactions.filter(isIncomeTransaction).map((transaction) => transaction.amount)),
     monthlySpending: sum(monthTransactions.filter(isSpendingTransaction).map((transaction) => transaction.amount)),
-    transactionsToReview: transactions.filter(isReviewActionableTransaction).length,
-    pendingTransactionCount: transactions.filter((transaction) => transaction.status === "pending").length,
+    transactionsToReview: metricTransactions.filter(isReviewActionableTransaction).length,
+    pendingTransactionCount: metricTransactions.filter((transaction) => transaction.status === "pending").length,
     topCategories: Array.from(spendingByCategory.entries())
       .map(([categoryId, summary]) => ({ categoryId, ...summary, amount: roundMoney(summary.amount) }))
       .sort((left, right) => Math.abs(right.amount) - Math.abs(left.amount))
@@ -431,6 +458,16 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
       return rightLastCharged.localeCompare(leftLastCharged) || Math.abs(right.averageAmount) - Math.abs(left.averageAmount);
     })
     .slice(0, 20);
+}
+
+export function filterTransactionsForIncludedAccounts(accounts: Account[], transactions: Transaction[]): Transaction[] {
+  const includedAccountIds = new Set(accounts.filter((account) => account.includedInNetWorth).map((account) => account.id));
+
+  if (includedAccountIds.size === accounts.length) {
+    return transactions;
+  }
+
+  return transactions.filter((transaction) => includedAccountIds.has(transaction.accountId));
 }
 
 function getSummaryMonth(transactions: Transaction[]): string {

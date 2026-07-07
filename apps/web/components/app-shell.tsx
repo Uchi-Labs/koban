@@ -2,9 +2,11 @@
 
 import type { Account, AccountGroup } from "@ai-finances/schema";
 import {
+  ArrowLeftRight,
   BarChart3,
   Bot,
   CreditCard,
+  Flag,
   Layers,
   LayoutDashboard,
   PieChart,
@@ -19,7 +21,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { formatCurrency } from "@/lib/format";
-import { attachGlobalUiSounds, playError, playSuccess, playTap } from "@/lib/ui-sound";
+import { attachGlobalUiSounds, playClose, playError, playOpen, playSuccess, prepareUiSound } from "@/lib/ui-sound";
+import { AgentPanelProvider, useAgentPanel } from "@/components/agent-panel-provider";
 import { CommandPalette } from "@/components/command-palette";
 import {
   Sidebar,
@@ -30,13 +33,17 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
-  SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarTrigger
+  SidebarTrigger,
+  useSidebar
 } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+import { SharedLayoutBg } from "@/components/ui/shared-layout-bg";
+import { SyncStatusIsland } from "@/components/ui/sync-status-island";
+import { StatefulButton } from "@/components/ui/stateful-button";
+import { ToastProvider, useToast } from "@/components/ui/toast";
+import { deriveSyncIslandState } from "@/lib/sync-island-state";
 import { cn } from "@/lib/utils";
 
 const accountColorByType = {
@@ -51,14 +58,113 @@ const accountColorByType = {
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, activePath: "/" },
   { label: "Transactions", href: "/transactions", icon: Layers, activePath: "/transactions" },
+  { label: "Goals", href: "/goals", icon: Flag, activePath: "/goals" },
+  { label: "Cash flow", href: "/cash-flow", icon: ArrowLeftRight, activePath: "/cash-flow" },
   { label: "Accounts", href: "/accounts", icon: CreditCard, activePath: "/accounts" },
   { label: "Investments", href: "/investments", icon: BarChart3, activePath: "/investments" },
   { label: "Categories", href: "/categories", icon: PieChart, activePath: "/categories" },
   { label: "Recurrings", href: "/recurrings", icon: Repeat2, activePath: "/recurrings" },
   { label: "Rules", href: "/rules", icon: ScrollText, activePath: "/rules" },
-  { label: "Agent", href: "/assistant", icon: Bot, activePath: "/assistant" },
   { label: "Settings", href: "/settings", icon: Settings, activePath: "/settings" }
 ];
+
+const SIDEBAR_MIN_WIDTH = 208;
+const SIDEBAR_MAX_WIDTH = 320;
+const SIDEBAR_DEFAULT_WIDTH = 256;
+const SIDEBAR_WIDTH_STORAGE_KEY = "koban:sidebar-width";
+
+function clampSidebarWidth(px: number) {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, px));
+}
+
+function readStoredSidebarWidth() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+  if (!stored) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(stored, 10);
+  return Number.isFinite(parsed) ? clampSidebarWidth(parsed) : null;
+}
+
+function SidebarResizeHandle({
+  onReset,
+  onResize,
+  onResizeEnd,
+  onResizeStart
+}: {
+  onReset: () => void;
+  onResize: (px: number) => void;
+  onResizeEnd: (px: number) => void;
+  onResizeStart: () => void;
+}) {
+  const { isMobile, state } = useSidebar();
+  const [dragging, setDragging] = useState(false);
+  const latestWidth = React.useRef(SIDEBAR_DEFAULT_WIDTH);
+
+  if (isMobile || state === "collapsed") {
+    return null;
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const container = event.currentTarget.closest<HTMLElement>('[data-slot="sidebar-container"]');
+    const left = container?.getBoundingClientRect().left ?? 0;
+
+    setDragging(true);
+    onResizeStart();
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const next = clampSidebarWidth(moveEvent.clientX - left);
+      latestWidth.current = next;
+      onResize(next);
+    };
+
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      setDragging(false);
+      onResizeEnd(latestWidth.current);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }
+
+  return (
+    <button
+      aria-label="Drag to resize sidebar. Double-click to reset."
+      className="group/resize absolute inset-y-0 -right-1 z-30 hidden w-2 cursor-col-resize touch-none select-none group-data-[collapsible=icon]:hidden md:block"
+      data-dragging={dragging ? "true" : undefined}
+      onDoubleClick={onReset}
+      onPointerDown={handlePointerDown}
+      tabIndex={-1}
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-y-0 right-1 w-0.5 transition-colors motion-reduce:transition-none",
+          dragging ? "bg-primary" : "bg-transparent group-hover/resize:bg-primary/50"
+        )}
+      />
+    </button>
+  );
+}
 
 const syncAgeFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
@@ -67,35 +173,119 @@ const syncAgeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short"
 });
 
-export function AppShell({
+interface AppShellProps {
+  accountGroups: AccountGroup[];
+  accounts: Account[];
+  children: React.ReactNode;
+  lastSyncedAt?: string;
+  reviewActionableCount: number;
+  source: "empty" | "teller";
+  transactionCount: number;
+}
+
+export function AppShell(props: AppShellProps) {
+  return (
+    <ToastProvider>
+      <AgentPanelProvider>
+        <AppShellContent {...props} />
+      </AgentPanelProvider>
+    </ToastProvider>
+  );
+}
+
+function AppShellContent({
   accountGroups,
   accounts,
   lastSyncedAt,
+  reviewActionableCount,
   source,
   transactionCount,
   children
-}: {
-  accountGroups: AccountGroup[];
-  accounts: Account[];
-  lastSyncedAt?: string;
-  source: "empty" | "teller";
-  transactionCount: number;
-  children: React.ReactNode;
-}) {
+}: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const agentPanel = useAgentPanel();
+  const { showToast, updateToast } = useToast();
   const [syncing, setSyncing] = useState(false);
+  const [syncPhaseIndex, setSyncPhaseIndex] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<"error" | "idle" | "success" | "syncing">("idle");
   const accountById = React.useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
+  const syncIslandState = deriveSyncIslandState({
+    accountCount: accounts.length,
+    lastSyncedAt,
+    phaseIndex: syncPhaseIndex,
+    source,
+    status: syncStatus,
+    transactionCount
+  });
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number | null>(() => readStoredSidebarWidth());
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+
+  const persistSidebarWidth = React.useCallback((px: number | null) => {
+    if (px === null) {
+      window.localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(px));
+    }
+  }, []);
+
+  const changePaletteOpen = React.useCallback((open: boolean) => {
+    setPaletteOpen((current) => {
+      if (current === open) {
+        return current;
+      }
+
+      if (open) {
+        playOpen();
+      } else {
+        playClose();
+      }
+
+      return open;
+    });
+  }, []);
 
   React.useEffect(() => attachGlobalUiSounds(), []);
+
+  React.useEffect(() => {
+    if (syncStatus !== "syncing") {
+      return;
+    }
+
+    setSyncPhaseIndex(0);
+    const interval = window.setInterval(() => {
+      setSyncPhaseIndex((current) => current + 1);
+    }, 900);
+    return () => window.clearInterval(interval);
+  }, [syncStatus]);
+
+  React.useEffect(() => {
+    if (syncStatus !== "success" && syncStatus !== "error") {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setSyncStatus("idle"), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [syncStatus]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        setPaletteOpen((current) => !current);
+        prepareUiSound();
+        setPaletteOpen((current) => {
+          const next = !current;
+
+          if (next) {
+            playOpen();
+          } else {
+            playClose();
+          }
+
+          return next;
+        });
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -104,46 +294,152 @@ export function AppShell({
 
   async function syncNow() {
     setSyncing(true);
-    playTap();
+    setSyncStatus("syncing");
+    const loadingDescription = "Teller, sources, semantic updates, and AI enrichment are running.";
+    const toastId = showToast({
+      description: (
+        <span className="t-shimmer" data-text={loadingDescription}>
+          {loadingDescription}
+        </span>
+      ),
+      duration: 0,
+      status: "loading",
+      title: "Sync started",
+    });
+
     try {
       const response = await fetch("/api/v1/sync-runs", {
         body: JSON.stringify({}),
         headers: { "content-type": "application/json" },
         method: "POST"
       });
-      if (response.ok) {
-        playSuccess();
-      } else {
-        playError();
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Sync failed.");
       }
+
+      playSuccess();
+      setSyncStatus("success");
+      updateToast(toastId, {
+        description: "The local ledger has been refreshed.",
+        duration: 3600,
+        status: "success",
+        title: "Sync complete",
+      });
       router.refresh();
+    } catch (error) {
+      playError();
+      setSyncStatus("error");
+      updateToast(toastId, {
+        description: error instanceof Error ? error.message : "Sync failed.",
+        duration: 5200,
+        status: "error",
+        title: "Sync failed",
+      });
     } finally {
       setSyncing(false);
     }
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      data-resizing={resizingSidebar ? "true" : undefined}
+      style={
+        sidebarWidth !== null
+          ? ({ ["--sidebar-width" as string]: `${sidebarWidth}px` } as React.CSSProperties)
+          : undefined
+      }
+    >
       <Sidebar collapsible="icon" variant="sidebar">
-        <SidebarHeader>
-          <div className="flex items-center gap-2 px-1 py-0.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary group-data-[collapsible=icon]:hidden">
-              <WalletCards className="size-4" />
-            </div>
-            <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-              AI Finances
-            </span>
-            <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:ml-0" />
-          </div>
-        </SidebarHeader>
+        <SidebarResizeHandle
+          onReset={() => {
+            setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+            persistSidebarWidth(null);
+          }}
+          onResize={(px) => setSidebarWidth(px)}
+          onResizeEnd={(px) => {
+            setResizingSidebar(false);
+            persistSidebarWidth(clampSidebarWidth(px));
+          }}
+          onResizeStart={() => setResizingSidebar(true)}
+        />
+        <AppSidebarSections
+          accountById={accountById}
+          accountGroups={accountGroups}
+          accountCount={accounts.length}
+          agentPanel={agentPanel}
+          lastSyncedAt={lastSyncedAt}
+          onOpenPalette={() => changePaletteOpen(true)}
+          pathname={pathname}
+          reviewActionableCount={reviewActionableCount}
+          source={source}
+          syncIslandState={syncIslandState}
+          syncing={syncing}
+          syncNow={syncNow}
+          transactionCount={transactionCount}
+        />
+      </Sidebar>
 
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
+      {/* ponytail: legacy pages offset themselves by --sidebar-width; zero it inside the inset until every page is migrated */}
+      <SidebarInset style={{ ["--sidebar-width" as string]: "0px" }}>{children}</SidebarInset>
+      <CommandPalette onOpenChangeAction={changePaletteOpen} open={paletteOpen} />
+    </SidebarProvider>
+  );
+}
+
+function AppSidebarSections({
+  accountById,
+  accountGroups,
+  accountCount,
+  agentPanel,
+  lastSyncedAt,
+  onOpenPalette,
+  pathname,
+  reviewActionableCount,
+  source,
+  syncIslandState,
+  syncing,
+  syncNow,
+  transactionCount
+}: {
+  accountById: Map<string, Account>;
+  accountGroups: AccountGroup[];
+  accountCount: number;
+  agentPanel: ReturnType<typeof useAgentPanel>;
+  lastSyncedAt?: string;
+  onOpenPalette: () => void;
+  pathname: string;
+  reviewActionableCount: number;
+  source: AppShellProps["source"];
+  syncIslandState: ReturnType<typeof deriveSyncIslandState>;
+  syncing: boolean;
+  syncNow: () => void;
+  transactionCount: number;
+}) {
+  return (
+    <>
+      <SidebarHeader>
+        <div className="flex items-center gap-2 px-1 py-0.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary group-data-[collapsible=icon]:hidden">
+            <WalletCards className="size-4" />
+          </div>
+          <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            Koban
+          </span>
+          <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:ml-0" />
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <div className="mx-2 mb-1 flex items-center gap-1 group-data-[collapsible=icon]:mx-auto">
               <button
                 aria-label="Open search"
-                className="mx-2 mb-1 flex h-8 items-center gap-2 rounded-lg border border-input bg-input/30 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-input/50 hover:text-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-                onClick={() => setPaletteOpen(true)}
+                className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-input/30 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-input/50 hover:text-foreground group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+                data-sound="none"
+                onClick={onOpenPalette}
                 type="button"
               >
                 <Search className="size-4 shrink-0" />
@@ -152,87 +448,129 @@ export function AppShell({
                   ⌘K
                 </kbd>
               </button>
-              <SidebarMenu aria-label="Primary">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const active =
-                    item.activePath === "/"
+              <button
+                aria-label="Ask the finance agent"
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-lg border border-input bg-input/30 text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary group-data-[collapsible=icon]:hidden",
+                  agentPanel.open && "border-primary/40 bg-primary/15 text-primary"
+                )}
+                data-sound="open"
+                onClick={() => agentPanel.openAgent()}
+                title="Ask the finance agent"
+                type="button"
+              >
+                <Bot className="size-4" />
+              </button>
+            </div>
+            <SharedLayoutBg
+              aria-label="Primary"
+              as="ul"
+              className="flex w-full min-w-0 flex-col gap-0.5"
+              data-sidebar="menu"
+              data-slot="sidebar-menu"
+              pillClassName="rounded-xl bg-sidebar-accent/70"
+            >
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const active =
+                  "action" in item
+                    ? agentPanel.open
+                    : item.activePath === "/"
                       ? pathname === "/"
                       : Boolean(item.activePath && pathname.startsWith(item.activePath));
 
-                  return (
-                    <SidebarMenuItem key={item.label}>
+                return (
+                  <SidebarMenuItem key={item.label}>
+                    {"action" in item ? (
                       <SidebarMenuButton
+                        data-sound="none"
+                        isActive={active}
+                        onClick={() => agentPanel.openAgent()}
+                        tooltip={item.label}
+                      >
+                        <Icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    ) : (
+                      <SidebarMenuButton
+                        className={cn(item.label === "Transactions" && "relative overflow-visible")}
                         isActive={active}
                         render={<Link href={item.href} />}
                         tooltip={item.label}
                       >
                         <Icon />
                         <span>{item.label}</span>
+                        {item.label === "Transactions" && reviewActionableCount > 0 ? (
+                          <span
+                            aria-label={`${reviewActionableCount.toLocaleString()} transactions need review`}
+                            className="t-badge group-data-[collapsible=icon]:hidden"
+                            data-open="true"
+                          >
+                            <span className="t-badge-dot text-xs font-medium text-muted-foreground tabular-nums">
+                              {reviewActionableCount.toLocaleString()}
+                            </span>
+                          </span>
+                        ) : null}
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
+                    )}
+                  </SidebarMenuItem>
+                );
+              })}
+            </SharedLayoutBg>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {accountGroups.map((group) => (
+          <SidebarGroup className="group-data-[collapsible=icon]:hidden" key={group.id}>
+            <SidebarGroupLabel>{group.name}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <ul className="flex flex-col gap-0.5 px-2">
+                {group.accountIds.flatMap((accountId) => {
+                  const account = accountById.get(accountId);
+
+                  return account ? [
+                    <li className="flex items-center gap-2 rounded-md px-2 py-1 text-xs" key={account.id}>
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: accountColorByType[account.type] }}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>
+                      <span className="shrink-0 font-medium tabular-nums">
+                        {formatCurrency(Math.abs(account.currentBalance), account.currency)}
+                      </span>
+                    </li>
+                  ] : [];
                 })}
-              </SidebarMenu>
+              </ul>
             </SidebarGroupContent>
           </SidebarGroup>
+        ))}
+      </SidebarContent>
 
-          {accountGroups.map((group) => (
-            <SidebarGroup className="group-data-[collapsible=icon]:hidden" key={group.id}>
-              <SidebarGroupLabel>{group.name}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <ul className="flex flex-col gap-0.5 px-2">
-                  {group.accountIds.flatMap((accountId) => {
-                    const account = accountById.get(accountId);
-
-                    return account ? [
-                      <li className="flex items-center gap-2 rounded-md px-2 py-1 text-xs" key={account.id}>
-                        <span
-                          aria-hidden="true"
-                          className="size-1.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: accountColorByType[account.type] }}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>
-                        <span className="shrink-0 font-medium tabular-nums">
-                          {formatCurrency(Math.abs(account.currentBalance), account.currency)}
-                        </span>
-                      </li>
-                    ] : [];
-                  })}
-                </ul>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ))}
-        </SidebarContent>
-
-        <SidebarFooter className="group-data-[collapsible=icon]:hidden">
-          <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/50 p-3 text-xs">
-            <p className="font-medium">
-              {source === "teller" ? "Teller synced" : "No Teller data"}
-            </p>
-            <p className="mt-1 text-sidebar-foreground/60">
-              {source === "teller"
-                ? `${accounts.length} accounts · ${transactionCount.toLocaleString()} transactions. ${formatSyncAge(lastSyncedAt)}`
-                : "Connect Teller in Settings to populate accounts and transactions."}
-            </p>
-            <Button
-              className="mt-2 w-full"
-              disabled={syncing}
-              onClick={syncNow}
-              size="sm"
-              variant="outline"
-            >
-              <RefreshCw className={cn("size-3.5", syncing && "animate-spin")} />
-              {syncing ? "Syncing…" : "Sync now"}
-            </Button>
-          </div>
-        </SidebarFooter>
-      </Sidebar>
-
-      {/* ponytail: legacy pages offset themselves by --sidebar-width; zero it inside the inset until every page is migrated */}
-      <SidebarInset style={{ ["--sidebar-width" as string]: "0px" }}>{children}</SidebarInset>
-      <CommandPalette onOpenChangeAction={setPaletteOpen} open={paletteOpen} />
-    </SidebarProvider>
+      <SidebarFooter className="group-data-[collapsible=icon]:hidden">
+        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/50 p-3 text-xs">
+          <SyncStatusIsland state={syncIslandState} />
+          <p className="mt-2 text-sidebar-foreground/60">
+            {source === "teller"
+              ? `${accountCount} accounts · ${transactionCount.toLocaleString()} transactions. ${formatSyncAge(lastSyncedAt)}`
+              : "Connect Teller in Settings to populate accounts and transactions."}
+          </p>
+          <StatefulButton
+            className="mt-2 w-full"
+            data-sound="sync"
+            disabled={syncing}
+            onClick={syncNow}
+            size="sm"
+            state={syncing ? "loading" : "idle"}
+            variant="outline"
+            loadingText="Syncing"
+          >
+            <span className="inline-flex items-center gap-1.5"><RefreshCw className={cn("size-3.5", syncing && "animate-spin")} /> Sync now</span>
+          </StatefulButton>
+        </div>
+      </SidebarFooter>
+    </>
   );
 }
 

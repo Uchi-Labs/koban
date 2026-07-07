@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isIncomeTransaction,
+  isLikelyCardPaymentCreditTransaction,
   isLikelyGroceryTransaction,
   isLikelyIncomeTransaction,
   isLikelyTransferLikeTransaction,
@@ -46,6 +47,69 @@ describe("transaction classification", () => {
         transactionType: "ach"
       })
     ).toBe(false);
+  });
+
+  it("recognizes card-side payment credits only on positive credit-card transactions", () => {
+    expect(
+      isLikelyTransferLikeTransaction({
+        accountType: "credit_card",
+        amount: 3781.31,
+        description: "Automatic Payment - Thank You",
+        merchantName: "AMERICAN EXPRESS"
+      })
+    ).toBe(true);
+    expect(
+      isLikelyTransferLikeTransaction({
+        accountType: "credit_card",
+        amount: 1200,
+        description: "Payment Thank You-Mobile",
+        merchantName: "CHASE CARD"
+      })
+    ).toBe(true);
+    expect(
+      isLikelyTransferLikeTransaction({
+        accountType: "checking",
+        amount: 1200,
+        description: "Payment Thank You-Mobile",
+        merchantName: "CHASE CARD"
+      })
+    ).toBe(false);
+    expect(
+      isLikelyTransferLikeTransaction({
+        accountType: "credit_card",
+        amount: -1200,
+        description: "Payment Thank You-Mobile",
+        merchantName: "CHASE CARD"
+      })
+    ).toBe(false);
+    expect(
+      isLikelyTransferLikeTransaction({
+        accountType: "credit_card",
+        amount: 45.28,
+        description: "AMAZON CREDIT",
+        merchantName: "AMAZON"
+      })
+    ).toBe(false);
+  });
+
+  it("only treats statement credits as card-payment text when pair matching allows it", () => {
+    expect(
+      isLikelyCardPaymentCreditTransaction({
+        accountType: "credit_card",
+        amount: 99,
+        description: "Statement Credit",
+        merchantName: "CHASE CARD"
+      })
+    ).toBe(false);
+    expect(
+      isLikelyTransferLikeTransaction({
+        accountType: "credit_card",
+        allowPairedStatementCredit: true,
+        amount: 99,
+        description: "Statement Credit",
+        merchantName: "CHASE CARD"
+      })
+    ).toBe(true);
   });
 
   it("excludes transfer categories from spending and income rollups", () => {
