@@ -8,7 +8,7 @@ import { DashboardCard } from "@/components/dashboard-card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
-import { FinanceStatItem, FinanceStatStrip, MoneyHero, type FinanceStatTone } from "@/components/money-hero";
+import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
 import { getFinanceData, type FinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
@@ -53,7 +53,7 @@ export default async function DashboardPage() {
   const projectedOverBudget = !projectionIsEarly && projectedMonthlySpending > monthlyBudget && monthlyBudget > 0;
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="dashboard-page">
+    <main className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="dashboard-page">
       <div className="mb-5 flex items-center gap-3">
         <h1 className="text-lg font-semibold tracking-tight text-foreground">Dashboard</h1>
         {source === "teller" ? (
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
       {/* Content sits beside a 256px sidebar, so the 2-up grid only has room once the
           viewport clears ~1024px (md's 768px leaves cards ~250px wide with the sidebar
           open) -- below that, cards stack single-column instead of cramming. */}
-      <section className="grid gap-4 lg:grid-cols-2" aria-label="Dashboard overview">
+      <section className="grid gap-3 lg:grid-cols-2" aria-label="Dashboard overview">
         <DashboardCard title="Monthly spending" action={{ label: "Transactions", href: "/transactions" }}>
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
           </FinanceStatStrip>
           <MiniLineChart
             budget={monthlyBudget}
-            className="mt-3 h-36"
+            className="mt-3 h-32"
             points={spendingTrend}
             projection={{
               amount: projectedMonthlySpending,
@@ -146,7 +146,7 @@ export default async function DashboardPage() {
           />
         </DashboardCard>
 
-        <div className="grid content-start gap-4">
+        <div className="grid content-start gap-3">
           <DashboardCard title="Top categories" action={{ label: "View all", href: "/categories" }}>
             <div className="grid gap-3">
               {dashboardSummary.topCategories.map((summary) => {
@@ -212,23 +212,11 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      {accountGroups.length > 0 ? (
-        <section className="mt-4" aria-label="Account summary">
-          <DashboardCard title="Account summary" action={{ label: "Accounts", href: "/accounts" }}>
-            <FinanceStatStrip className="overflow-x-auto">
-              {accountGroups.map((group) => (
-                <FinanceStatItem
-                  className="min-w-36"
-                  key={group.id}
-                  label={group.name}
-                  tone={accountGroupTone(group.id)}
-                  value={formatCurrency(group.totalBalance, group.currency)}
-                />
-              ))}
-            </FinanceStatStrip>
-          </DashboardCard>
-        </section>
-      ) : (
+      {/* The populated "Account summary" card duplicated the Net worth card's
+          Cash/Credit/Invest breakdown, so it's removed to keep the dashboard in
+          one viewport. The zero-account onboarding CTA is kept — it's the only
+          connect-an-account affordance on an empty dashboard. */}
+      {accountGroups.length === 0 ? (
         <section className="mt-4" aria-label="Account summary">
           <DashboardCard title="Account summary" action={{ label: "Settings", href: "/settings" }}>
             <EmptyState
@@ -250,7 +238,7 @@ export default async function DashboardPage() {
             />
           </DashboardCard>
         </section>
-      )}
+      ) : null}
     </main>
   );
 }
@@ -409,19 +397,6 @@ function addDays(date: string, offset: number) {
 
 function getLatestTransactionDate(transactions: FinanceData["transactions"]) {
   return transactions.map((transaction) => transaction.date).sort().at(-1) ?? new Date().toISOString().slice(0, 10);
-}
-
-function accountGroupTone(groupId: string): FinanceStatTone {
-  switch (groupId) {
-    case "group_cash":
-      return "positive";
-    case "group_credit":
-      return "negative";
-    case "group_investments":
-      return "primary";
-    default:
-      return "muted";
-  }
 }
 
 function formatMonthLabel(month: string) {

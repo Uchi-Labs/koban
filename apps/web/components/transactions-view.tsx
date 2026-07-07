@@ -2118,20 +2118,22 @@ function TransactionsList({ model }: { model: TransactionsViewModel }) {
 function StaticTransactionsList({ model }: { model: TransactionsViewModel }) {
   return (
     <div className="transaction-list-scroll scroll-fade min-h-0 flex-1 overflow-auto">
-      {model.groupedTransactions.map((group) => (
-        <section className="transaction-date-group" key={group.label}>
-          <TransactionDateHeader label={group.label} />
-          {group.rows.map((transaction) => (
-            <TransactionRow
-              isSelected={transaction.id === model.selectedTransaction?.id}
-              key={transaction.id}
-              model={model}
-              transaction={transaction}
-            />
-          ))}
-        </section>
-      ))}
-      <TransactionListEmptyState model={model} />
+      <div className="mx-auto w-full max-w-[70rem]">
+        {model.groupedTransactions.map((group) => (
+          <section className="transaction-date-group" key={group.label}>
+            <TransactionDateHeader label={group.label} />
+            {group.rows.map((transaction) => (
+              <TransactionRow
+                isSelected={transaction.id === model.selectedTransaction?.id}
+                key={transaction.id}
+                model={model}
+                transaction={transaction}
+              />
+            ))}
+          </section>
+        ))}
+        <TransactionListEmptyState model={model} />
+      </div>
     </div>
   );
 }
@@ -2175,7 +2177,7 @@ function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }
     <div className="transaction-list-scroll scroll-fade min-h-0 flex-1 overflow-auto" ref={parentRef}>
       {items.length > 0 ? (
         <div
-          className="relative w-full"
+          className="relative mx-auto w-full max-w-[70rem]"
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`
           }}

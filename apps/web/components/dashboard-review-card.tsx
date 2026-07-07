@@ -41,7 +41,7 @@ export function DashboardReviewCard({
   const [message, setMessage] = useState("");
   const remainingCount = Math.max(0, totalToReview - reviewedCount);
   const rowsToMark = rows.slice(0, 10);
-  const displayRows = rows.slice(0, 8);
+  const displayRows = rows.slice(0, 5);
   const displayCurrency = currency ?? rows[0]?.currency ?? initialRows[0]?.currency ?? "USD";
   const reviewTotalAmount = rows.reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
 

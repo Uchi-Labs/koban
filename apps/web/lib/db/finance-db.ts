@@ -40,7 +40,6 @@ import {
   openPgliteFinanceDb,
   quarantinePgliteDirectory
 } from "@/lib/db/pglite-driver";
-import { dbWriteContext } from "@/lib/db/write-context";
 import {
   activeEmbeddingModel,
   embedTexts,
@@ -4409,8 +4408,7 @@ export async function deleteSyncStateValue(key: string): Promise<void> {
 
 function enqueueDbWrite<T>(operation: () => Promise<T>): Promise<T> {
   const state = getFinanceDbState();
-  const runOperation = () => dbWriteContext.run({ inWrite: true }, operation);
-  const nextOperation = state.writeQueue.then(runOperation, runOperation);
+  const nextOperation = state.writeQueue.then(operation, operation);
   state.writeQueue = nextOperation.then(
     () => undefined,
     () => undefined

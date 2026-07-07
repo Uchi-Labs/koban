@@ -493,7 +493,7 @@ function AppSidebarSections({
                       </SidebarMenuButton>
                     ) : (
                       <SidebarMenuButton
-                        className={cn(item.label === "Transactions" && "relative overflow-visible")}
+                        className={cn(item.label === "Transactions" && "relative overflow-visible group-data-[collapsible=icon]:overflow-hidden")}
                         isActive={active}
                         render={<Link href={item.href} />}
                         tooltip={item.label}
