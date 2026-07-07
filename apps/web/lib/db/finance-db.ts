@@ -154,6 +154,7 @@ interface InvestmentPositionRow {
   description: string;
   units: number;
   price: number | null;
+  cost_basis: number | null;
   currency: string;
   market_value_minor: number;
 }
@@ -4540,6 +4541,7 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       description TEXT NOT NULL,
       units REAL NOT NULL,
       price REAL,
+      cost_basis REAL,
       currency TEXT NOT NULL,
       market_value_minor INTEGER NOT NULL
     );
@@ -4800,6 +4802,8 @@ async function runMigrations(db: FinanceDb): Promise<void> {
     CREATE INDEX IF NOT EXISTS transactions_paired_idx ON transactions(paired_transaction_id);
     ALTER TABLE tag_registry
       ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'user';
+    ALTER TABLE investment_positions
+      ADD COLUMN IF NOT EXISTS cost_basis REAL;
   `);
 
   await db.exec(`
@@ -5215,15 +5219,17 @@ async function upsertInvestmentPosition(db: FinanceDb, position: InvestmentPosit
       description,
       units,
       price,
+      cost_basis,
       currency,
       market_value_minor
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (id) DO UPDATE SET
       account_id = EXCLUDED.account_id,
       symbol = EXCLUDED.symbol,
       description = EXCLUDED.description,
       units = EXCLUDED.units,
       price = EXCLUDED.price,
+      cost_basis = EXCLUDED.cost_basis,
       currency = EXCLUDED.currency,
       market_value_minor = EXCLUDED.market_value_minor`,
     [
@@ -5233,6 +5239,7 @@ async function upsertInvestmentPosition(db: FinanceDb, position: InvestmentPosit
       position.description,
       position.units,
       position.price ?? null,
+      position.costBasis ?? null,
       position.currency,
       moneyToMinor(position.marketValue)
     ]
@@ -6676,6 +6683,7 @@ function investmentPositionFromRow(row: InvestmentPositionRow): InvestmentPositi
     description: row.description,
     units: Number(row.units),
     price: row.price === null ? undefined : Number(row.price),
+    costBasis: row.cost_basis === null || row.cost_basis === undefined ? undefined : Number(row.cost_basis),
     currency: row.currency,
     marketValue: minorToMoney(row.market_value_minor)
   };
