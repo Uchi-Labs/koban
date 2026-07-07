@@ -53,10 +53,6 @@ textarea {
   letter-spacing: 0;
 }
 
-button {
-  color: inherit;
-}
-
 .app-shell {
   min-height: 100vh;
   background: linear-gradient(180deg, var(--bg), #000610 78%, #00030b);
