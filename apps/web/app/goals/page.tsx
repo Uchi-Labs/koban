@@ -19,7 +19,7 @@ export default async function GoalsPage() {
         <span className="text-[13px] font-semibold tracking-tight">Goals</span>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <section>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Savings goals</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Goals</h1>

@@ -126,7 +126,7 @@ export default async function AccountsPage() {
         <NetWorthAccountsDialog groups={buildNetWorthToggleGroups(accounts)} />
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <section>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Teller account ledger</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Balance by account</h1>
@@ -165,7 +165,7 @@ export default async function AccountsPage() {
               return (
                 <div className="flex flex-col gap-1" key={group.id}>
                   <div
-                    className="flex items-center justify-between rounded-lg px-1.5 py-1"
+                    className="flex items-center justify-between rounded-lg px-3 py-1"
                     style={{ backgroundColor: `color-mix(in oklab, var(${accent.colorVar}) 7%, transparent)` }}
                   >
                     <div className="flex items-center gap-2">
@@ -182,7 +182,12 @@ export default async function AccountsPage() {
                       <h3 className="text-sm font-semibold">{group.name}</h3>
                       <span className="text-xs text-muted-foreground">{groupRows.length.toLocaleString()} accounts</span>
                     </div>
-                    <strong className="text-sm font-semibold tabular-nums">{formatCurrency(groupContribution, groupCurrency)}</strong>
+                    {/* Trailing spacer mirrors each row's arrow column (gap-3 + size-4) so the
+                        group subtotal right-aligns with the per-row Net-worth impact figures. */}
+                    <div className="flex items-center gap-3">
+                      <strong className="text-sm font-semibold tabular-nums">{formatCurrency(groupContribution, groupCurrency)}</strong>
+                      <span aria-hidden="true" className="size-4 shrink-0" />
+                    </div>
                   </div>
                   <div className="flex flex-col gap-0.5">
                     {groupRows.map((row) => (
