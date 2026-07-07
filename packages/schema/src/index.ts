@@ -50,6 +50,13 @@ export interface InvestmentPosition {
   description: string;
   units: number;
   price?: number;
+  /**
+   * Average purchase price *per share/unit* (SnapTrade `AccountPosition.cost_basis`,
+   * which is per-unit for equities and per-contract for options — not the total book
+   * cost of the lot). Multiply by `units` for the position's total cost basis. Absent
+   * when the provider does not report it or the position predates cost-basis capture.
+   */
+  costBasis?: number;
   currency: CurrencyCode;
   marketValue: number;
 }

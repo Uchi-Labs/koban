@@ -15,10 +15,10 @@ import { formatCurrency } from "@/lib/format";
 import type { HoldingView, InvestmentsData } from "@/lib/investments";
 import { cn } from "@/lib/utils";
 
-type SortKey = "symbol" | "account" | "units" | "price" | "marketValue" | "weight";
+type SortKey = "symbol" | "account" | "units" | "price" | "marketValue" | "gain" | "weight";
 type SortDir = "asc" | "desc";
 
-const HOLDINGS_COLSPAN = 8;
+const HOLDINGS_COLSPAN = 9;
 
 const unitsFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 const spanYearFormatter = new Intl.DateTimeFormat("en-US", { year: "numeric" });
@@ -117,6 +117,8 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
           return factor * ((left.price ?? 0) - (right.price ?? 0));
         case "weight":
           return factor * (left.weight - right.weight);
+        case "gain":
+          return factor * ((left.unrealizedPnl ?? 0) - (right.unrealizedPnl ?? 0));
         case "marketValue":
         default:
           return factor * (Math.abs(left.marketValue) - Math.abs(right.marketValue));
@@ -186,6 +188,32 @@ function InvestmentTotalsSection({
           <div className="min-w-0">
             <MoneyHero amount={data.totalMarketValue} currency={data.currency} />
             <div className="mt-1 text-xs text-muted-foreground">Total across investment accounts</div>
+            {data.totalUnrealizedPnl !== undefined ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                <span className="text-muted-foreground">Total gain</span>
+                <span
+                  className={cn(
+                    "font-medium tabular-nums",
+                    data.totalUnrealizedPnl >= 0 ? "text-(--positive)" : "text-(--negative)"
+                  )}
+                >
+                  {data.totalUnrealizedPnl >= 0 ? "+" : "−"}
+                  {formatCurrency(Math.abs(data.totalUnrealizedPnl), data.currency)}
+                  {data.totalUnrealizedPnlPercent !== undefined
+                    ? ` (${data.totalUnrealizedPnl >= 0 ? "+" : "−"}${Math.abs(data.totalUnrealizedPnlPercent).toFixed(2)}%)`
+                    : ""}
+                </span>
+                {data.costBasisCoverage.coveredMarketValue < data.totalMarketValue - 1 ? (
+                  <span className="text-muted-foreground tabular-nums">
+                    · on {formatCurrency(data.costBasisCoverage.coveredMarketValue, data.currency)} with cost basis
+                  </span>
+                ) : data.costBasisCoverage.withCostBasis < data.costBasisCoverage.total ? (
+                  <span className="text-muted-foreground tabular-nums">
+                    · {data.costBasisCoverage.withCostBasis} of {data.costBasisCoverage.total} holdings
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {change ? (
             <Badge
@@ -355,6 +383,7 @@ function HoldingsSection({
                   <SortableTh align="right" active={sortKey === "units"} className="hidden lg:table-cell" dir={sortDir} label="Units" onClick={() => onToggleSort("units")} />
                   <SortableTh align="right" active={sortKey === "price"} className="hidden lg:table-cell" dir={sortDir} label="Price" onClick={() => onToggleSort("price")} />
                   <SortableTh label="Market value" align="right" active={sortKey === "marketValue"} dir={sortDir} onClick={() => onToggleSort("marketValue")} />
+                  <SortableTh align="right" active={sortKey === "gain"} className="hidden md:table-cell" dir={sortDir} label="Total G/L" onClick={() => onToggleSort("gain")} />
                   <SortableTh align="right" active={sortKey === "weight"} className="hidden md:table-cell" dir={sortDir} label="Weight" onClick={() => onToggleSort("weight")} />
                 </tr>
               </thead>
@@ -438,6 +467,9 @@ function HoldingRow({
       </td>
       <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">
         {formatCurrency(holding.marketValue, holding.currency)}
+      </td>
+      <td className="hidden px-3 py-2.5 text-right tabular-nums md:table-cell">
+        <GainDisplay holding={holding} />
       </td>
       <td className="hidden px-3 py-2.5 text-right md:table-cell">
         <span className="inline-flex items-center gap-2">
@@ -564,12 +596,35 @@ function HoldingDetailRow({
                 ) : null}
               </div>
 
-              <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <DetailStat label="Market value" tone="strong" value={formatCurrency(holding.marketValue, holding.currency)} />
                 <DetailStat label="Units" value={unitsFormatter.format(holding.units)} />
                 <DetailStat
                   label="Price"
                   value={holding.price === undefined ? "—" : formatCurrency(holding.price, holding.currency)}
+                />
+                <DetailStat
+                  label="Avg cost"
+                  value={holding.costBasis === undefined ? "—" : formatCurrency(holding.costBasis, holding.currency)}
+                />
+                <DetailStat
+                  accent={
+                    holding.unrealizedPnl === undefined
+                      ? undefined
+                      : holding.unrealizedPnl >= 0
+                        ? "--positive"
+                        : "--negative"
+                  }
+                  label="Total gain"
+                  value={
+                    holding.unrealizedPnl === undefined
+                      ? "—"
+                      : `${formatSignedCurrency(holding.unrealizedPnl, holding.currency)}${
+                          holding.unrealizedPnlPercent === undefined
+                            ? ""
+                            : ` (${holding.unrealizedPnl >= 0 ? "+" : "−"}${Math.abs(holding.unrealizedPnlPercent).toFixed(1)}%)`
+                        }`
+                  }
                 />
                 <DetailStat accent={accent} label="Weight" value={`${holding.weight.toFixed(1)}%`} />
               </div>
@@ -582,6 +637,30 @@ function HoldingDetailRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function formatSignedCurrency(value: number, currency: string): string {
+  return `${value >= 0 ? "+" : "−"}${formatCurrency(Math.abs(value), currency)}`;
+}
+
+/** Per-holding total (open) unrealized gain/loss, or an em dash when cost basis is unknown. */
+function GainDisplay({ holding }: { holding: HoldingView }) {
+  if (holding.unrealizedPnl === undefined) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const positive = holding.unrealizedPnl >= 0;
+  return (
+    <span className={cn("tabular-nums", positive ? "text-(--positive)" : "text-(--negative)")}>
+      {formatSignedCurrency(holding.unrealizedPnl, holding.currency)}
+      {holding.unrealizedPnlPercent !== undefined ? (
+        <span className="ml-1 text-[11px] opacity-80">
+          ({positive ? "+" : "−"}
+          {Math.abs(holding.unrealizedPnlPercent).toFixed(1)}%)
+        </span>
+      ) : null}
+    </span>
   );
 }
 

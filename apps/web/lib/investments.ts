@@ -18,10 +18,40 @@ export interface HoldingView {
   units: number;
   price?: number;
   marketValue: number;
+  /** Average purchase price per share/unit, when the provider reports it. */
+  costBasis?: number;
+  /** Total cost basis for the position (costBasis × units), when known. */
+  costBasisValue?: number;
+  /** Total (open) unrealized gain/loss: marketValue − costBasisValue. */
+  unrealizedPnl?: number;
+  /** Unrealized gain/loss as a percentage of cost basis. */
+  unrealizedPnlPercent?: number;
   currency: string;
   /** Portfolio weight as a percentage (0-100) of total holdings market value. */
   weight: number;
   tradingViewSymbol: string | null;
+}
+
+/**
+ * Total (open) unrealized gain/loss for a position from its stored per-unit cost
+ * basis. Returns empty fields when cost basis is unknown — we never fabricate a
+ * gain, and SnapTrade positions carry no intraday/day-change figure, so there is
+ * deliberately no "today's gain" here.
+ */
+export function computeUnrealized(position: {
+  units: number;
+  marketValue: number;
+  costBasis?: number;
+}): { costBasisValue?: number; unrealizedPnl?: number; unrealizedPnlPercent?: number } {
+  if (position.costBasis === undefined) {
+    return {};
+  }
+
+  const costBasisValue = roundMoney(position.costBasis * position.units);
+  const unrealizedPnl = roundMoney(position.marketValue - costBasisValue);
+  const unrealizedPnlPercent = costBasisValue !== 0 ? (unrealizedPnl / Math.abs(costBasisValue)) * 100 : undefined;
+
+  return { costBasisValue, unrealizedPnl, unrealizedPnlPercent };
 }
 
 export interface InvestmentAccountView {
@@ -50,6 +80,19 @@ export interface InvestmentsData {
   history: PortfolioPoint[];
   accounts: InvestmentAccountView[];
   holdings: HoldingView[];
+  /** Total cost basis summed over holdings that report it (undefined when none do). */
+  totalCostBasis?: number;
+  /** Total (open) unrealized gain/loss across holdings that report cost basis. */
+  totalUnrealizedPnl?: number;
+  /** Total unrealized gain/loss as a percentage of covered cost basis. */
+  totalUnrealizedPnlPercent?: number;
+  /**
+   * Honest coverage for the total gain: how many holdings carry cost basis, and
+   * the market value those holdings represent. `coveredMarketValue` is usually far
+   * below `totalMarketValue` because some accounts (e.g. RSU accounts) sync a
+   * balance but no position-level rows, so their gain cannot be computed.
+   */
+  costBasisCoverage: { withCostBasis: number; total: number; coveredMarketValue: number };
 }
 
 /** Convert an ISO timestamp (or plain date) to unix seconds, best effort. */
@@ -200,6 +243,7 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
   const weightedPositions = computeHoldingWeights(positions);
   const holdings: HoldingView[] = weightedPositions.map((position) => {
     const account = accountById.get(position.accountId);
+    const { costBasisValue, unrealizedPnl, unrealizedPnlPercent } = computeUnrealized(position);
     return {
       id: position.id,
       symbol: position.symbol,
@@ -209,6 +253,10 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
       units: position.units,
       price: position.price,
       marketValue: position.marketValue,
+      costBasis: position.costBasis,
+      costBasisValue,
+      unrealizedPnl,
+      unrealizedPnlPercent,
       currency: position.currency,
       weight: position.weight,
       tradingViewSymbol: tradingViewSymbol(position, account)
@@ -241,6 +289,18 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
   );
   const currency = displayCurrencyCode(accounts.map((account) => account.currency));
 
+  // Portfolio-level unrealized gain/loss covers only holdings that report cost
+  // basis; coverage is surfaced so a partial figure is never presented as complete.
+  const covered = holdings.filter((holding) => holding.unrealizedPnl !== undefined);
+  const totalCostBasis =
+    covered.length > 0 ? roundMoney(covered.reduce((sum, holding) => sum + (holding.costBasisValue ?? 0), 0)) : undefined;
+  const totalUnrealizedPnl =
+    covered.length > 0 ? roundMoney(covered.reduce((sum, holding) => sum + (holding.unrealizedPnl ?? 0), 0)) : undefined;
+  const totalUnrealizedPnlPercent =
+    totalCostBasis !== undefined && totalCostBasis !== 0 && totalUnrealizedPnl !== undefined
+      ? (totalUnrealizedPnl / Math.abs(totalCostBasis)) * 100
+      : undefined;
+
   return {
     totalMarketValue,
     currency,
@@ -248,7 +308,15 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
     change: computePortfolioChange(history),
     history,
     accounts: accountViews.sort((left, right) => Math.abs(right.balance) - Math.abs(left.balance)),
-    holdings: holdings.sort((left, right) => Math.abs(right.marketValue) - Math.abs(left.marketValue))
+    holdings: holdings.sort((left, right) => Math.abs(right.marketValue) - Math.abs(left.marketValue)),
+    totalCostBasis,
+    totalUnrealizedPnl,
+    totalUnrealizedPnlPercent,
+    costBasisCoverage: {
+      withCostBasis: covered.length,
+      total: holdings.length,
+      coveredMarketValue: roundMoney(covered.reduce((sum, holding) => sum + holding.marketValue, 0))
+    }
   };
 }
 

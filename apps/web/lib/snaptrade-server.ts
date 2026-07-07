@@ -426,6 +426,10 @@ export function mapSnapTradePositionToDomain({
   const symbol = instrumentSymbol(instrument);
   const description = cleanString(readStringField(instrument, "description")) ?? symbol;
   const currency = normalizeProviderCurrencyCode(position.currency ?? readStringField(instrument, "currency"));
+  // `cost_basis` is the average purchase price *per share/unit* (per-contract for
+  // options) — not the total book cost. Persist it so the UI can derive unrealized
+  // gain/loss as (price − cost_basis) × units. Absent for some brokerages/positions.
+  const costBasis = parseDecimal(position.cost_basis);
 
   return {
     id: investmentPositionId(accountId, instrument, symbol, description),
@@ -434,6 +438,7 @@ export function mapSnapTradePositionToDomain({
     description,
     units,
     price,
+    costBasis,
     currency,
     marketValue: roundMoney(units * price)
   };
