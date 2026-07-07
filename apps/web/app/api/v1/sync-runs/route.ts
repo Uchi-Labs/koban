@@ -4,20 +4,26 @@ import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/ap
 import { runAppSync } from "@/lib/app-sync-service";
 import {
   ensureAppSyncSchedule,
-  getEffectiveLlmEnrichmentStatus,
   getLatestAppSyncRun,
   listAppSyncRuns
 } from "@/lib/db/finance-db";
+import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
 import { getSourceAdapterDiagnostics, summarizeSourceReadiness } from "@/lib/source-adapters";
+import { getPlaidSetupStatus } from "@/lib/plaid-server";
+import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
+import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
 import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync-request";
 import { getTellerSetupStatus } from "@/lib/teller-server";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [teller, sources, lastRun, recentRuns, schedule] = await Promise.all([
+  const [teller, snaptrade, plaid, simplefin, sources, lastRun, recentRuns, schedule] = await Promise.all([
     getTellerSetupStatus(),
+    getSnapTradeSetupStatus(),
+    getPlaidSetupStatus(),
+    getSimpleFinSetupStatus(),
     getSourceAdapterDiagnostics(),
     getLatestAppSyncRun(),
     listAppSyncRuns(5),
@@ -30,7 +36,10 @@ export async function GET() {
     object: "app_sync_status",
     ready: {
       enrichment: isEnrichmentProviderReady(llmProvider),
+      plaid: plaid.readyForSync,
+      simplefin: simplefin.readyForSync,
       sources: sourceReadiness.ready,
+      snaptrade: snaptrade.readyForSync,
       teller: teller.readyForApi
     },
     teller: {
@@ -38,6 +47,34 @@ export async function GET() {
       ready_for_api: teller.readyForApi,
       stored_account_count: teller.storedAccountCount,
       stored_transaction_count: teller.storedTransactionCount
+    },
+    snaptrade: {
+      configured: snaptrade.configured,
+      connection_count: snaptrade.connectionCount,
+      last_synced_at: snaptrade.lastSyncedAt,
+      ready_for_sync: snaptrade.readyForSync,
+      registered: snaptrade.registered,
+      stored_account_count: snaptrade.storedAccountCount,
+      stored_position_count: snaptrade.storedPositionCount
+    },
+    plaid: {
+      configured: plaid.configured,
+      item_count: plaid.itemCount,
+      last_synced_at: plaid.lastSyncedAt,
+      ready_for_sync: plaid.readyForSync,
+      standby_institution_names: plaid.standbyInstitutionNames,
+      stored_account_count: plaid.storedAccountCount,
+      stored_transaction_count: plaid.storedTransactionCount
+    },
+    simplefin: {
+      configured: simplefin.configured,
+      connection_count: simplefin.connectionCount,
+      last_errors: simplefin.lastErrors,
+      last_synced_at: simplefin.lastSyncedAt,
+      latest_balance_as_of: simplefin.latestBalanceAsOf,
+      ready_for_sync: simplefin.readyForSync,
+      stored_account_count: simplefin.storedAccountCount,
+      stored_transaction_count: simplefin.storedTransactionCount
     },
     sources: {
       blocked_count: sourceReadiness.blockedCount,
@@ -80,7 +117,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: sourceIds.error }, { status: 400 });
   }
 
-  const run = await runAppSync({ enrichmentLimit: enrichmentLimit.value, sourceIds: sourceIds.value });
+  const run = await runAppSync({
+    enrichmentLimit: enrichmentLimit.value,
+    includePlaid: true,
+    includeSimpleFin: true,
+    sourceIds: sourceIds.value
+  });
 
   return NextResponse.json(appSyncRunRecordToPayload(run));
 }

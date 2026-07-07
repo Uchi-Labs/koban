@@ -1,8 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  deleteWorkspaceEnv,
   readWorkspaceEnv,
-  upsertWorkspaceEnv,
   type WorkspaceEnv
 } from "@/lib/workspace-env";
 
@@ -28,36 +26,69 @@ interface OAuthTokenResponse {
   refresh_token?: string;
 }
 
-export const chatGptOAuthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
-export const chatGptOAuthAuthorizeUrl = "https://auth.openai.com/oauth/authorize";
+const chatGptOAuthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
+const chatGptOAuthAuthorizeUrl = "https://auth.openai.com/oauth/authorize";
 export const chatGptOAuthTokenUrl = "https://auth.openai.com/oauth/token";
 export const chatGptCodexBaseUrl = "https://chatgpt.com/backend-api/codex";
 export const chatGptOAuthTokensEnvKey = "CHATGPT_OAUTH_TOKENS_B64";
+export const chatGptOAuthTokensStateKey = "chatgpt_oauth_tokens_v1";
 export const chatGptOAuthPendingCookie = "ai_finances_chatgpt_oauth";
 
 const pendingStateTtlMs = 10 * 60 * 1000;
 const refreshWindowMs = 5 * 60 * 1000;
 const fallbackExpiryMs = 15 * 60 * 1000;
+const chatGptOAuthEnvSeededStateKey = "chatgpt_oauth_tokens_env_seeded_v1";
 const chatGptOAuthScope = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 
 export function isChatGptOAuthEnabled(env: WorkspaceEnv = readWorkspaceEnv()): boolean {
   return env.AI_FINANCES_ENABLE_CHATGPT_OAUTH === "1";
 }
 
-export function getStoredChatGptOAuthTokens(env: WorkspaceEnv = readWorkspaceEnv()): ChatGptOAuthTokens | undefined {
-  return parseChatGptOAuthTokens(env[chatGptOAuthTokensEnvKey]);
+async function readStoredOAuthValue(key: string): Promise<string | undefined> {
+  const { readSyncStateValue } = await import("@/lib/db/finance-db");
+  return readSyncStateValue(key);
 }
 
-export function hasStoredChatGptOAuthTokens(env: WorkspaceEnv = readWorkspaceEnv()): boolean {
-  return getStoredChatGptOAuthTokens(env) !== undefined;
+async function writeStoredOAuthValue(key: string, value: string): Promise<void> {
+  const { writeSyncStateValue } = await import("@/lib/db/finance-db");
+  await writeSyncStateValue(key, value);
 }
 
-export function chatGptOAuthStatus(env: WorkspaceEnv = readWorkspaceEnv()): {
+async function deleteStoredOAuthValue(key: string): Promise<void> {
+  const { deleteSyncStateValue } = await import("@/lib/db/finance-db");
+  await deleteSyncStateValue(key);
+}
+
+export async function getStoredChatGptOAuthTokens(env: WorkspaceEnv = readWorkspaceEnv()): Promise<ChatGptOAuthTokens | undefined> {
+  const storedTokens = parseChatGptOAuthTokens(await readStoredOAuthValue(chatGptOAuthTokensStateKey));
+
+  if (storedTokens) {
+    return storedTokens;
+  }
+
+  const envTokens = parseChatGptOAuthTokens(env[chatGptOAuthTokensEnvKey]);
+
+  if (!envTokens) {
+    return undefined;
+  }
+
+  const seededAt = await readStoredOAuthValue(chatGptOAuthEnvSeededStateKey);
+
+  if (seededAt) {
+    return undefined;
+  }
+
+  await writeStoredOAuthValue(chatGptOAuthTokensStateKey, encodeChatGptOAuthTokens(envTokens));
+  await writeStoredOAuthValue(chatGptOAuthEnvSeededStateKey, new Date().toISOString());
+  return envTokens;
+}
+
+export async function chatGptOAuthStatus(env: WorkspaceEnv = readWorkspaceEnv()): Promise<{
   connected: boolean;
   enabled: boolean;
   expiresAt?: string;
-} {
-  const tokens = getStoredChatGptOAuthTokens(env);
+}> {
+  const tokens = await getStoredChatGptOAuthTokens(env);
 
   return {
     connected: tokens !== undefined,
@@ -129,7 +160,7 @@ export async function exchangeChatGptOAuthCode({
   return tokensFromResponse(await readTokenResponse(response));
 }
 
-export async function refreshChatGptOAuthTokens(
+async function refreshChatGptOAuthTokens(
   tokens: ChatGptOAuthTokens,
   fetcher: FetchLike = fetch
 ): Promise<ChatGptOAuthTokens> {
@@ -155,13 +186,14 @@ export async function refreshChatGptOAuthTokens(
 export async function getFreshChatGptOAuthAccessToken(
   env: WorkspaceEnv = readWorkspaceEnv(),
   fetcher: FetchLike = fetch,
-  persistTokens: (tokens: ChatGptOAuthTokens) => Promise<void> = saveChatGptOAuthTokens
+  persistTokens: (tokens: ChatGptOAuthTokens) => Promise<void> = saveChatGptOAuthTokens,
+  readTokens: (env: WorkspaceEnv) => Promise<ChatGptOAuthTokens | undefined> = getStoredChatGptOAuthTokens
 ): Promise<string | undefined> {
   if (!isChatGptOAuthEnabled(env)) {
     return undefined;
   }
 
-  const tokens = getStoredChatGptOAuthTokens(env);
+  const tokens = await readTokens(env);
 
   if (!tokens) {
     return undefined;
@@ -177,13 +209,11 @@ export async function getFreshChatGptOAuthAccessToken(
 }
 
 export async function saveChatGptOAuthTokens(tokens: ChatGptOAuthTokens): Promise<void> {
-  await upsertWorkspaceEnv({
-    [chatGptOAuthTokensEnvKey]: encodeChatGptOAuthTokens(tokens)
-  });
+  await writeStoredOAuthValue(chatGptOAuthTokensStateKey, encodeChatGptOAuthTokens(tokens));
 }
 
 export async function clearChatGptOAuthTokens(): Promise<void> {
-  await deleteWorkspaceEnv([chatGptOAuthTokensEnvKey]);
+  await deleteStoredOAuthValue(chatGptOAuthTokensStateKey);
 }
 
 export function encodeChatGptOAuthTokens(tokens: ChatGptOAuthTokens): string {

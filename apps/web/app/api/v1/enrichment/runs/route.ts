@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readOptionalJsonObject } from "@/lib/api-request";
-import { generateEnrichmentSuggestions } from "@/lib/db/finance-db";
+import { generateEnrichmentSuggestions } from "@/lib/enrichment-runs";
 import { parseBoundedLimit } from "@/lib/finance-api";
 import { getFinanceData } from "@/lib/finance-data";
 

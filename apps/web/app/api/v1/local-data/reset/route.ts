@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readJsonObject } from "@/lib/api-request";
+import { authenticateApiRequest } from "@/lib/auth";
 import { resetLocalAppData } from "@/lib/db/finance-db";
 
 export const runtime = "nodejs";
@@ -7,6 +8,12 @@ export const runtime = "nodejs";
 const requiredConfirmation = "DELETE LOCAL DATA";
 
 export async function POST(request: Request) {
+  const auth = await authenticateApiRequest(request);
+
+  if (!auth.authenticated) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+
   const parsed = await readJsonObject(request);
 
   if (!parsed.ok) {
@@ -37,6 +44,7 @@ function toApiSummary(summary: Awaited<ReturnType<typeof resetLocalAppData>>) {
     account_count: summary.accountCount,
     app_sync_run_count: summary.appSyncRunCount,
     evidence_link_count: summary.evidenceLinkCount,
+    investment_position_count: summary.investmentPositionCount,
     provider_connection_count: summary.providerConnectionCount,
     rule_count: summary.ruleCount,
     schedule_count: summary.scheduleCount,

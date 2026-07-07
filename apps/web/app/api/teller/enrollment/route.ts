@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { errorResponse } from "@/lib/api-error";
 import { readJsonObject } from "@/lib/api-request";
-import { saveTellerEnrollment, TellerSetupError, type TellerEnrollmentPayload } from "@/lib/teller-server";
+import { saveTellerEnrollment, type TellerEnrollmentPayload } from "@/lib/teller-server";
 
 export const runtime = "nodejs";
 
@@ -19,9 +20,6 @@ export async function POST(request: NextRequest) {
     response.cookies.delete("teller_connect_nonce");
     return response;
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to save Teller enrollment." },
-      { status: error instanceof TellerSetupError ? error.status : 500 }
-    );
+    return errorResponse(error, "Unable to save Teller enrollment.");
   }
 }

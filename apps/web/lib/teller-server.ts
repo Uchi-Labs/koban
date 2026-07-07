@@ -4,8 +4,14 @@ import { request } from "node:https";
 import path from "node:path";
 import type { Account, AccountType, ProviderConnection, Transaction } from "@ai-finances/schema";
 import { appCategories } from "@/lib/categories";
-import { getFinanceDbSummary, readFinanceDbSnapshot, replaceTellerLedgerInDb } from "@/lib/db/finance-db";
-import type { AccountBalanceSnapshot } from "@/lib/finance-data";
+import {
+  deleteProviderConnection,
+  getFinanceDbSummary,
+  listConnectionInventory,
+  readFinanceDbSnapshot,
+  replaceTellerLedgerInDb
+} from "@/lib/db/finance-db";
+import { invalidateShellDataCache, type AccountBalanceSnapshot } from "@/lib/finance-data";
 import { runServerEffect } from "@/lib/effect/runtime";
 import { TellerSyncError, syncErrorMessage } from "@/lib/effect/sync-errors";
 import {
@@ -18,17 +24,39 @@ import {
   isLikelyIncomeTransaction,
   isLikelyTransferLikeTransaction
 } from "@/lib/transaction-classification";
-import { findWorkspaceRoot, readWorkspaceEnv, upsertWorkspaceEnv, type WorkspaceEnv } from "@/lib/workspace-env";
+import {
+  deleteWorkspaceEnv,
+  findWorkspaceRoot,
+  readWorkspaceEnv,
+  upsertWorkspaceEnv,
+  type WorkspaceEnv
+} from "@/lib/workspace-env";
 import { Effect, Either, Schedule } from "effect";
 
 export type TellerEnvironment = "sandbox" | "development" | "production";
 
+export interface TellerConnectionAccountSummary {
+  currency: string;
+  currentBalance: number;
+  id: string;
+  mask?: string;
+  name: string;
+  type: AccountType;
+}
+
 export interface TellerConnectionSummary {
+  accountCount: number;
+  accounts: TellerConnectionAccountSummary[];
   createdAt?: string;
+  /* The full Teller enrollment id. Not a secret (the access token is, and it
+     never leaves the server) — used as the stable key to view or remove a
+     connection. */
+  id: string;
   enrollmentIdSuffix: string;
   environment?: string;
   institutionName?: string;
   lastUpdatedAt?: string;
+  transactionCount: number;
 }
 
 export interface TellerSetupStatus {
@@ -153,21 +181,61 @@ export async function getTellerSetupStatus(): Promise<TellerSetupStatus> {
   const accessTokenConfigured =
     enrollments.length > 0 || hasValue(env.TELLER_ACCESS_TOKEN) || hasValue(env.TELLER_ENROLLMENT_ACCESS_TOKEN);
   const latestEnrollment = enrollments.at(-1);
-  const ledgerSummary = await getFinanceDbSummary();
+  const [ledgerSummary, inventory] = await Promise.all([getFinanceDbSummary(), listConnectionInventory()]);
+  const accountsByConnection = new Map<string, TellerConnectionAccountSummary[]>();
+  const tellerProviderConnectionIds = new Set(
+    enrollments.map((enrollment) => providerConnectionIdForEnrollment(enrollment.enrollmentId))
+  );
+  for (const [providerConnectionId, provider] of Object.entries(inventory.providerByConnection)) {
+    if (provider === "teller") {
+      tellerProviderConnectionIds.add(providerConnectionId);
+    }
+  }
+  let storedAccountCount = 0;
+  let storedTransactionCount = 0;
+  for (const account of inventory.accounts) {
+    if (!tellerProviderConnectionIds.has(account.providerConnectionId)) {
+      continue;
+    }
+
+    const list = accountsByConnection.get(account.providerConnectionId) ?? [];
+    list.push({
+      currency: account.currency,
+      currentBalance: account.currentBalance,
+      id: account.id,
+      mask: account.mask,
+      name: account.name,
+      type: account.type
+    });
+    accountsByConnection.set(account.providerConnectionId, list);
+    storedAccountCount += 1;
+  }
+
+  for (const providerConnectionId of tellerProviderConnectionIds) {
+    storedTransactionCount += inventory.transactionCountByConnection[providerConnectionId] ?? 0;
+  }
 
   return {
     applicationConfigured,
     certificateConfigured,
     privateKeyConfigured,
     accessTokenConfigured,
-    connections: enrollments.map((enrollment) => ({
-      createdAt: enrollment.createdAt,
-      // Last 6 chars only — enough to disambiguate, never the full id or token.
-      enrollmentIdSuffix: enrollment.enrollmentId.slice(-6),
-      environment: enrollment.environment,
-      institutionName: enrollment.institutionName,
-      lastUpdatedAt: enrollment.lastUpdatedAt
-    })),
+    connections: enrollments.map((enrollment) => {
+      const providerConnectionId = providerConnectionIdForEnrollment(enrollment.enrollmentId);
+      const accounts = accountsByConnection.get(providerConnectionId) ?? [];
+      return {
+        accountCount: accounts.length,
+        accounts,
+        createdAt: enrollment.createdAt,
+        id: enrollment.enrollmentId,
+        // Last 6 chars only — enough to disambiguate at a glance.
+        enrollmentIdSuffix: enrollment.enrollmentId.slice(-6),
+        environment: enrollment.environment,
+        institutionName: enrollment.institutionName,
+        lastUpdatedAt: enrollment.lastUpdatedAt,
+        transactionCount: inventory.transactionCountByConnection[providerConnectionId] ?? 0
+      };
+    }),
     enrollmentCount: enrollments.length,
     tokenSigningKeyConfigured: hasValue(env.TELLER_TOKEN_SIGNING_PUBLIC_KEY),
     environment: normalizeTellerEnvironment(env.TELLER_ENVIRONMENT),
@@ -176,8 +244,8 @@ export async function getTellerSetupStatus(): Promise<TellerSetupStatus> {
     products: tellerProducts,
     readyForConnect: applicationConfigured,
     readyForApi: applicationConfigured && certificateConfigured && privateKeyConfigured && accessTokenConfigured,
-    storedAccountCount: ledgerSummary.storedAccountCount,
-    storedTransactionCount: ledgerSummary.storedTransactionCount
+    storedAccountCount,
+    storedTransactionCount
   };
 }
 
@@ -253,6 +321,67 @@ export async function saveTellerEnrollment(payload: TellerEnrollmentPayload, exp
     saved: true,
     verification,
     status: await getTellerSetupStatus()
+  };
+}
+
+export interface TellerConnectionRemoval {
+  accountCount: number;
+  removed: boolean;
+  status: TellerSetupStatus;
+  transactionCount: number;
+}
+
+/* Remove a bank connection: cascade-delete its ledger rows (accounts,
+   transactions, snapshots, links) and drop the enrollment from the credential
+   bundle so it stops syncing. Note: on a hosted deploy the enrollment bundle
+   also lives in a platform env var; the .env rewrite holds for the running
+   container but a redeploy can restore the platform value — persisting removals
+   across redeploys needs the enrollment store moved to the DB (follow-up). */
+export async function deleteTellerConnection(enrollmentId: string): Promise<TellerConnectionRemoval> {
+  const env = readWorkspaceEnv();
+  const enrollments = getStoredTellerEnrollments(env);
+  const target = enrollments.find((candidate) => candidate.enrollmentId === enrollmentId);
+  const remaining = enrollments.filter((candidate) => candidate.enrollmentId !== enrollmentId);
+
+  const deletion = await deleteProviderConnection(providerConnectionIdForEnrollment(enrollmentId));
+
+  if (remaining.length === 0) {
+    // Nothing left — clear the bundle and the legacy single-token mirror so the
+    // connection cannot resurrect from either source.
+    await deleteWorkspaceEnv([
+      "TELLER_ENROLLMENTS_B64",
+      "TELLER_ACCESS_TOKEN",
+      "TELLER_ENROLLMENT_ID",
+      "TELLER_USER_ID",
+      "TELLER_LAST_ENROLLED_AT"
+    ]);
+  } else {
+    const update: WorkspaceEnv = {
+      TELLER_ENROLLMENTS_B64: encodeTellerEnrollments(remaining)
+    };
+
+    // The legacy single-token vars mirror one enrollment. If they point at the
+    // removed one, re-point them at the newest remaining enrollment.
+    if (asOptionalString(env.TELLER_ENROLLMENT_ID) === enrollmentId) {
+      const latest = remaining.at(-1);
+      if (latest) {
+        update.TELLER_ACCESS_TOKEN = latest.accessToken;
+        update.TELLER_ENROLLMENT_ID = latest.enrollmentId;
+        update.TELLER_USER_ID = latest.userId;
+        update.TELLER_LAST_ENROLLED_AT = latest.lastUpdatedAt ?? latest.createdAt ?? "";
+      }
+    }
+
+    await upsertWorkspaceEnv(update);
+  }
+
+  invalidateShellDataCache();
+
+  return {
+    accountCount: deletion.accountCount,
+    removed: deletion.removed || Boolean(target),
+    status: await getTellerSetupStatus(),
+    transactionCount: deletion.transactionCount
   };
 }
 
@@ -436,7 +565,10 @@ export function syncTellerDataEffect(): Effect.Effect<TellerSyncResult, TellerSy
       }
     } as const;
 
-    yield* tellerPromise(() => replaceTellerLedgerInDb(ledger), "Failed to replace Teller ledger.");
+    yield* tellerPromise(async () => {
+      await replaceTellerLedgerInDb(ledger);
+      invalidateShellDataCache();
+    }, "Failed to replace Teller ledger.");
 
     return {
       ok: errors.length === 0,
@@ -802,6 +934,8 @@ function mapTellerTransaction({
   const merchantName = counterparty && counterparty.length > 0 ? counterparty : cleanDescription(transaction.description);
   const amount = normalizeTellerAmountForAccountType(parseMoney(transaction.amount), accountType);
   const categoryId = mapTellerTransactionCategory({
+    accountType,
+    amount,
     description: transaction.description,
     merchantName,
     providerCategory: transaction.details?.category,
@@ -827,11 +961,15 @@ function mapTellerTransaction({
 }
 
 function mapTellerTransactionCategory({
+  accountType,
+  amount,
   description,
   merchantName,
   providerCategory,
   transactionType
 }: {
+  accountType: AccountType;
+  amount: number;
   description: string;
   merchantName: string;
   providerCategory: string | null | undefined;
@@ -839,6 +977,8 @@ function mapTellerTransactionCategory({
 }) {
   if (
     isLikelyTransferLikeTransaction({
+      accountType,
+      amount,
       description,
       merchantName,
       providerCategory,

@@ -10,10 +10,27 @@ export interface ListPage<T> {
 
 export type TransactionReviewFilter = "actionable" | "all" | "reviewed" | "unreviewed";
 
+export interface TransactionListFilters {
+  accountId?: string | null;
+  categoryId?: string | null;
+  maxAmount?: number;
+  minAmount?: number;
+  query?: string;
+  reviewFilter: TransactionReviewFilter;
+  status?: string | null;
+}
+
 export function parseListParams(searchParams: URLSearchParams, defaultLimit = 50) {
   return {
     limit: parseBoundedLimit(searchParams.get("limit"), defaultLimit),
     startingAfter: searchParams.get("starting_after") ?? undefined
+  };
+}
+
+export function parseTransactionAmountFilters(searchParams: URLSearchParams) {
+  return {
+    maxAmount: parseOptionalAbsoluteAmount(searchParams.get("max_amount")),
+    minAmount: parseOptionalAbsoluteAmount(searchParams.get("min_amount"))
   };
 }
 
@@ -68,9 +85,13 @@ export function serializeCategory(category: Category, transactionCount = 0, spen
     name: category.name,
     parent_id: category.parentId,
     icon: category.icon,
+    emoji: category.emoji,
     color: category.color,
+    archived: category.archived,
     budget_amount: category.budgetAmount,
     sort_order: category.sortOrder,
+    created_at: category.createdAt,
+    updated_at: category.updatedAt,
     transaction_count: transactionCount,
     spending
   };
@@ -108,7 +129,9 @@ export function serializeTransaction(
     needs_review: isReviewActionableTransaction(transaction),
     tags: transaction.tags,
     notes: transaction.notes,
-    pending_transaction_id: transaction.pendingTransactionId
+    pending_transaction_id: transaction.pendingTransactionId,
+    financial_goal_id: transaction.financialGoalId ?? null,
+    paired_transaction_id: transaction.pairedTransactionId ?? null
   };
 }
 
@@ -163,7 +186,32 @@ export function serializeDashboardSummary(summary: DashboardSummary) {
   };
 }
 
-export function transactionMatchesQuery(transaction: Transaction, query: string): boolean {
+export function filterTransactionsForList(
+  transactions: Transaction[],
+  filters: TransactionListFilters,
+  context: {
+    accounts: Account[];
+    categories: Category[];
+  }
+): Transaction[] {
+  return transactions
+    .filter((transaction) => (filters.accountId ? transaction.accountId === filters.accountId : true))
+    .filter((transaction) => (filters.categoryId ? transaction.categoryId === filters.categoryId : true))
+    .filter((transaction) => (filters.status ? transaction.status === filters.status : true))
+    .filter((transaction) => transactionMatchesReviewFilter(transaction, filters.reviewFilter))
+    .filter((transaction) => transactionMatchesAmountFilters(transaction, filters))
+    .filter((transaction) => transactionMatchesQuery(transaction, filters.query ?? "", context))
+    .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id));
+}
+
+function transactionMatchesQuery(
+  transaction: Transaction,
+  query: string,
+  context?: {
+    accounts?: Account[];
+    categories?: Category[];
+  }
+): boolean {
   const normalized = query.trim().toLowerCase();
 
   if (!normalized) {
@@ -175,6 +223,8 @@ export function transactionMatchesQuery(transaction: Transaction, query: string)
     transaction.description,
     transaction.notes ?? "",
     transaction.categoryId,
+    context?.accounts ? getAccountName(transaction.accountId, context.accounts) : "",
+    context?.categories ? getCategory(transaction.categoryId, context.categories).name : "",
     ...transaction.tags
   ].some((value) => value.toLowerCase().includes(normalized));
 }
@@ -250,6 +300,23 @@ function parseNumericLimit(value: unknown, defaultLimit: number): number {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : defaultLimit;
+}
+
+function parseOptionalAbsoluteAmount(value: string | null): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const parsed = Number(value.replace(/[$,\s]/g, ""));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function transactionMatchesAmountFilters(transaction: Transaction, filters: TransactionListFilters): boolean {
+  const absoluteAmount = Math.abs(transaction.amount);
+  return (
+    (filters.minAmount === undefined || absoluteAmount >= filters.minAmount) &&
+    (filters.maxAmount === undefined || absoluteAmount <= filters.maxAmount)
+  );
 }
 
 function normalizeReviewFilterValue(value: string | null): string {

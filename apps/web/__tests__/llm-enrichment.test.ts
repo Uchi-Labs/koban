@@ -760,6 +760,11 @@ function createLlmClient(overrides: Partial<LlmGenerationClient>): LlmGeneration
       overrides.generateText ??
       (async () => {
         throw new Error("Unexpected LLM text generation.");
+      }),
+    streamText:
+      overrides.streamText ??
+      (async () => {
+        throw new Error("Unexpected LLM stream generation.");
       })
   };
 }

@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   closeFinanceDbForTests,
+  createFinancialGoal,
   createTransactionEvidenceLink,
   createTransactionContextNote,
   createTransactionVoiceNote,
@@ -16,8 +17,6 @@ import {
   ensureExternalSourceCatalog,
   applyTransactionRules,
   applyEnrichmentSuggestion,
-  generateEnrichmentSuggestions,
-  getEffectiveLlmEnrichmentStatus,
   getExternalSourceStates,
   getFinanceDbSummary,
   getFinanceDbWriteQueueForTests,
@@ -25,28 +24,42 @@ import {
   getSemanticDocumentSummary,
   getSourceStoreSourceSummaries,
   getSourceStoreSummary,
+  listCategories,
   listEvidenceLinks,
   listAppSyncRuns,
   listEnrichmentSuggestionItems,
   listEnrichmentSuggestions,
+  listTransactionSemanticDocumentsForTests,
+  listTagStyles,
   listTransactionRules,
   listTransactionEvidence,
   listSourceItems,
   readFinanceDbSnapshot,
   recordAppSyncRun,
   recordAppSyncScheduleRun,
-  recordLlmProviderHealth,
   recordSourceSyncRun,
   refreshSourceEvidenceMatches,
   replaceTellerLedgerInDb,
   resetLocalAppData,
+  runInternalTransferPairMatching,
   semanticSearchFinanceResources,
   semanticSearchTransactions,
+  setTransactionFinancialGoal,
+  createCategory,
+  deleteFinancialGoal,
+  updateCategory,
   updateAppSyncSchedule,
   updateDbTransaction,
   updateTransactionEvidenceStatus,
-  updateTransactionRule
+  updateTransactionRule,
+  upsertTagStyle
 } from "@/lib/db/finance-db";
+import { categoryColorPalette } from "@/lib/category-style";
+import {
+  generateEnrichmentSuggestions,
+  getEffectiveLlmEnrichmentStatus,
+  recordLlmProviderHealth
+} from "@/lib/enrichment-runs";
 import type { TellerLedger } from "@/lib/finance-data";
 import { setEmbeddingFetchForTests } from "@/lib/embeddings";
 import {
@@ -141,6 +154,239 @@ describe("finance db", () => {
     });
   }, 15_000);
 
+  it("clears transaction goal assignments when deleting a financial goal", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+
+    const goal = await createFinancialGoal({ name: "Emergency fund", targetAmountMinor: 500_00 });
+    await setTransactionFinancialGoal("txn_1", goal.id);
+
+    const assignedSnapshot = await readFinanceDbSnapshot();
+    expect(assignedSnapshot?.transactions.find((transaction) => transaction.id === "txn_1")).toMatchObject({
+      financialGoalId: goal.id
+    });
+
+    await deleteFinancialGoal(goal.id);
+
+    const clearedSnapshot = await readFinanceDbSnapshot();
+    expect(clearedSnapshot?.transactions).toHaveLength(1);
+    expect(clearedSnapshot?.transactions.find((transaction) => transaction.id === "txn_1")?.financialGoalId).toBeUndefined();
+  }, 15_000);
+
+  it("clears paired transaction links when a ledger replace prunes the counterpart", async () => {
+    useTempDb();
+    const ledger = createTransferPairLedgerForPruneTest();
+    await replaceTellerLedgerInDb(ledger);
+
+    const pairSummary = await runInternalTransferPairMatching();
+    const pairedSnapshot = await readFinanceDbSnapshot();
+    const pairedById = new Map((pairedSnapshot?.transactions ?? []).map((transaction) => [transaction.id, transaction]));
+
+    expect(pairSummary.linkedPairs).toBeGreaterThanOrEqual(1);
+    expect(pairedById.get("txn_checking_payment")).toMatchObject({
+      pairedTransactionId: "txn_card_payment"
+    });
+    expect(pairedById.get("txn_card_payment")).toMatchObject({
+      pairedTransactionId: "txn_checking_payment"
+    });
+
+    await replaceTellerLedgerInDb({
+      ...ledger,
+      transactions: ledger.transactions.filter((transaction) => transaction.id !== "txn_card_payment"),
+      syncSummary: {
+        ...ledger.syncSummary,
+        transactionCount: ledger.transactions.length - 1
+      }
+    });
+
+    const prunedSnapshot = await readFinanceDbSnapshot();
+    const prunedById = new Map((prunedSnapshot?.transactions ?? []).map((transaction) => [transaction.id, transaction]));
+
+    expect(prunedById.has("txn_card_payment")).toBe(false);
+    expect(prunedById.get("txn_checking_payment")?.pairedTransactionId).toBeUndefined();
+  }, 15_000);
+
+  it("renames categories without changing stable category ids", async () => {
+    useTempDb();
+    const food = (await listCategories()).find((category) => category.id === "cat_food");
+
+    expect(food).toBeDefined();
+
+    const renamed = await updateCategory("cat_food", { name: "Groceries & Dining" });
+    const categories = await listCategories();
+
+    expect(renamed).toMatchObject({
+      id: "cat_food",
+      name: "Groceries & Dining"
+    });
+    expect(categories.find((category) => category.id === "cat_food")).toMatchObject({
+      id: "cat_food",
+      name: "Groceries & Dining"
+    });
+  });
+
+  it("round-trips tag registry colors without migrating transaction tag arrays", async () => {
+    useTempDb();
+    const color = categoryColorPalette[3];
+
+    await upsertTagStyle("trip", color);
+    await upsertTagStyle("uncategorized", null);
+
+    expect(await listTagStyles()).toEqual([
+      expect.objectContaining({
+        color,
+        kind: "user",
+        name: "trip"
+      }),
+      expect.objectContaining({
+        color: undefined,
+        kind: "user",
+        name: "uncategorized"
+      })
+    ]);
+  });
+
+  it("classifies tag registry entries as 'source' for provider-shaped names and 'user' otherwise", async () => {
+    useTempDb();
+
+    const bareAdapterNames = await Promise.all(
+      ["simplefin", "plaid", "teller", "snaptrade", "financekit"].map((name) => upsertTagStyle(name))
+    );
+    const namespaced = await upsertTagStyle("teller:card_payment");
+    const humanTags = await Promise.all(["Boston Trip", "Sapiex", "uncategorized"].map((name) => upsertTagStyle(name)));
+
+    for (const style of bareAdapterNames) {
+      expect(style).toMatchObject({ kind: "source" });
+    }
+    expect(namespaced).toMatchObject({ kind: "source", name: "teller:card_payment" });
+    for (const style of humanTags) {
+      expect(style).toMatchObject({ kind: "user" });
+    }
+  });
+
+  it("auto-registers sync-written provider tags as kind 'source' without an explicit tag-color call", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+
+    const styles = await listTagStyles();
+    const tellerStyle = styles.find((style) => style.name === "teller");
+
+    expect(tellerStyle).toMatchObject({ kind: "source", name: "teller" });
+  });
+
+  it("auto-registers user-edited transaction tags as kind 'user'", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+
+    await updateDbTransaction("txn_1", { tags: ["Boston Trip"] });
+
+    const styles = await listTagStyles();
+    const tripStyle = styles.find((style) => style.name === "Boston Trip");
+    // The overwritten "teller" tag no longer sits on the transaction, but its
+    // registry row (registered as 'source' the moment the sync wrote it) is
+    // untouched — registry rows are never deleted when a tag falls off a row.
+    const tellerStyle = styles.find((style) => style.name === "teller");
+
+    expect(tripStyle).toMatchObject({ kind: "user", name: "Boston Trip" });
+    expect(tellerStyle).toMatchObject({ kind: "source", name: "teller" });
+  });
+
+  it("registers rule-applied tags as kind 'user' (rules express user intent)", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
+
+    await createTransactionRule({
+      categoryId: "cat_food",
+      markReviewed: true,
+      matchField: "merchant_or_description",
+      matchOperator: "contains",
+      name: "Dinner place food",
+      pattern: "Dinner Place",
+      tags: ["roadtrip"]
+    });
+
+    const styles = await listTagStyles();
+    const ruleTagStyle = styles.find((style) => style.name === "roadtrip");
+
+    expect(ruleTagStyle).toMatchObject({ kind: "user", name: "roadtrip" });
+  });
+
+  // Regression coverage for the category-color trust boundary: `normalizeRegistryColor`
+  // used to accept ONLY the 12 categoryColorPalette tokens (any other value, including
+  // everything the BloomColorPicker produces, was silently dropped and the previous
+  // color kept). It now validates against `isValidCssColor` — a structural allowlist for
+  // hex/rgb/hsl/oklch/oklab shapes — so custom picker colors persist exactly, while
+  // hostile/malformed strings are explicitly rejected instead of silently discarded.
+  it("persists a custom hex color exactly on category create and update", async () => {
+    useTempDb();
+
+    const created = await createCategory({ color: "#8B5CF6", name: "Hobbies" });
+    expect(created.color).toBe("#8B5CF6");
+
+    const categories = await listCategories();
+    expect(categories.find((category) => category.id === created.id)).toMatchObject({ color: "#8B5CF6" });
+
+    const updated = await updateCategory(created.id, { color: "#10b981" });
+    expect(updated?.color).toBe("#10b981");
+    expect((await listCategories()).find((category) => category.id === created.id)).toMatchObject({
+      color: "#10b981"
+    });
+  });
+
+  it("persists a custom oklch() color exactly on category create", async () => {
+    useTempDb();
+
+    const created = await createCategory({ color: "oklch(0.6 0.2 45)", name: "Travel Fund" });
+    expect(created.color).toBe("oklch(0.6 0.2 45)");
+    expect((await listCategories()).find((category) => category.id === created.id)).toMatchObject({
+      color: "oklch(0.6 0.2 45)"
+    });
+  });
+
+  it("still accepts categoryColorPalette tokens on category create", async () => {
+    useTempDb();
+
+    const paletteColor = categoryColorPalette[5];
+    const created = await createCategory({ color: paletteColor, name: "Subscriptions" });
+    expect(created.color).toBe(paletteColor);
+  });
+
+  it("rejects a hostile color value on category create and update instead of silently discarding it", async () => {
+    useTempDb();
+
+    await expect(createCategory({ color: "red;background:url(x)", name: "Bad Color" })).rejects.toThrow(
+      /invalid category color/i
+    );
+
+    const existing = await createCategory({ color: "#123456", name: "Good Category" });
+    await expect(updateCategory(existing.id, { color: "var(--foreground)" })).rejects.toThrow(
+      /invalid category color/i
+    );
+
+    // Rejection must not have mutated the stored color.
+    expect((await listCategories()).find((category) => category.id === existing.id)).toMatchObject({
+      color: "#123456"
+    });
+  });
+
+  it("round-trips a custom hex color on the tag registry too", async () => {
+    useTempDb();
+
+    await upsertTagStyle("groceries", "#8B5CF6");
+    expect(await listTagStyles()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ color: "#8B5CF6", name: "groceries" })])
+    );
+
+    // Tag registry writes intentionally were NOT switched to the throwing
+    // `assertValidRegistryColorInput` (out of scope for this fix — see
+    // normalizeRegistryColor in lib/db/finance-db.ts), so they keep the
+    // pre-existing silent-drop behavior for invalid values: the shared
+    // `isValidCssColor` allowlist still rejects the shape, it's just discarded
+    // instead of throwing here.
+    const afterHostileWrite = await upsertTagStyle("groceries", "javascript:alert(1)");
+    expect(afterHostileWrite.color).toBeUndefined();
+  });
+
   it("rebuilds semantic embeddings when the active embedding model changes", async () => {
     useTempDb();
     process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
@@ -203,6 +449,81 @@ describe("finance db", () => {
       transactionEmbeddingCount: 1
     });
     expect(voyageCalls).toHaveLength(0);
+  }, 15_000);
+
+  it("rewrites only changed transaction semantic documents during teller resync", async () => {
+    useTempDb();
+    const ledger = createRepeatedMerchantLedger();
+
+    await replaceTellerLedgerInDb(ledger);
+    const firstDocuments = await listTransactionSemanticDocumentsForTests();
+
+    expect(firstDocuments).toHaveLength(3);
+
+    await waitForClockTick();
+    await replaceTellerLedgerInDb(ledger);
+    const secondDocuments = await listTransactionSemanticDocumentsForTests();
+
+    expect(documentsByResourceId(secondDocuments)).toEqual(documentsByResourceId(firstDocuments));
+
+    const changedLedger = {
+      ...ledger,
+      transactions: ledger.transactions.map((transaction) =>
+        transaction.id === "txn_2"
+          ? {
+              ...transaction,
+              description: "ADVISOR COFFEE",
+              merchantName: "Advisor Coffee"
+            }
+          : transaction
+      )
+    } satisfies TellerLedger;
+
+    await waitForClockTick();
+    await replaceTellerLedgerInDb(changedLedger);
+    const changedDocuments = documentsByResourceId(await listTransactionSemanticDocumentsForTests());
+    const firstDocumentsById = documentsByResourceId(firstDocuments);
+
+    expect(changedDocuments.get("txn_1")).toEqual(firstDocumentsById.get("txn_1"));
+    expect(changedDocuments.get("txn_3")).toEqual(firstDocumentsById.get("txn_3"));
+    expect(changedDocuments.get("txn_2")?.bodyHash).not.toBe(firstDocumentsById.get("txn_2")?.bodyHash);
+    expect(changedDocuments.get("txn_2")?.updatedAt).not.toBe(firstDocumentsById.get("txn_2")?.updatedAt);
+
+    const searchResults = await semanticSearchTransactions("advisor coffee", 5);
+    expect(searchResults[0]).toMatchObject({
+      resourceId: "txn_2",
+      resourceType: "transaction"
+    });
+  }, 15_000);
+
+  it("prunes transaction semantic documents for removed and empty teller ledgers", async () => {
+    useTempDb();
+    const ledger = createRepeatedMerchantLedger();
+
+    await replaceTellerLedgerInDb(ledger);
+    expect(await listTransactionSemanticDocumentsForTests()).toHaveLength(3);
+
+    await replaceTellerLedgerInDb({
+      ...ledger,
+      transactions: [ledger.transactions[0]],
+      syncSummary: {
+        ...ledger.syncSummary,
+        transactionCount: 1
+      }
+    });
+    expect((await listTransactionSemanticDocumentsForTests()).map((document) => document.resourceId)).toEqual([
+      "txn_1"
+    ]);
+
+    await replaceTellerLedgerInDb({
+      ...ledger,
+      transactions: [],
+      syncSummary: {
+        ...ledger.syncSummary,
+        transactionCount: 0
+      }
+    });
+    expect(await listTransactionSemanticDocumentsForTests()).toEqual([]);
   }, 15_000);
 
   it("lets provider-inferred transfer categories repair untouched Other overlays on resync", async () => {
@@ -1413,6 +1734,21 @@ function mkdirForTestDb() {
   mkdirSync(testDbPath, { recursive: true });
 }
 
+function documentsByResourceId(
+  documents: Array<{ bodyHash: string; resourceId: string; updatedAt: string }>
+): Map<string, { bodyHash: string; updatedAt: string }> {
+  return new Map(
+    documents.map((document) => [
+      document.resourceId,
+      { bodyHash: document.bodyHash, updatedAt: document.updatedAt }
+    ])
+  );
+}
+
+async function waitForClockTick(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+}
+
 function createLedger({
   description = "DINNER PLACE",
   merchantName = "Dinner Place",
@@ -1568,5 +1904,116 @@ function createNonActionableLedger(): TellerLedger {
       transactionCount: 6,
       errors: []
     }
+  };
+}
+
+function createTransferPairLedgerForPruneTest(): TellerLedger {
+  const providerConnection = {
+    configured: true,
+    displayName: "Teller - Test Bank",
+    id: "provider_teller_test",
+    lastSyncedAt: "2026-05-31T00:00:00.000Z",
+    provider: "teller",
+    status: "connected"
+  } satisfies ProviderConnection;
+  const checking = createTestAccount({
+    groupId: "group_cash",
+    id: "acct_checking",
+    name: "Checking",
+    providerConnectionId: providerConnection.id,
+    type: "checking"
+  });
+  const card = createTestAccount({
+    groupId: "group_credit",
+    id: "acct_card",
+    name: "Card",
+    providerConnectionId: providerConnection.id,
+    type: "credit_card"
+  });
+  const transactions = [
+    createTestTransaction({
+      accountId: checking.id,
+      amount: -1000,
+      categoryId: "cat_transfer",
+      description: "Payment to Card ending in 1234",
+      id: "txn_checking_payment",
+      merchantName: "CARD PAYMENT"
+    }),
+    createTestTransaction({
+      accountId: card.id,
+      amount: -1000,
+      description: "Payment Thank You-Mobile",
+      id: "txn_card_payment",
+      merchantName: "CARD"
+    }),
+    createTestTransaction({
+      accountId: checking.id,
+      amount: 1200,
+      categoryId: "cat_income",
+      description: "BNYMELLON PAYROLL",
+      id: "txn_payroll",
+      merchantName: "BNYMELLON"
+    }),
+    createTestTransaction({
+      accountId: checking.id,
+      amount: -40,
+      categoryId: "cat_food",
+      description: "GROCER",
+      id: "txn_food",
+      merchantName: "GROCER"
+    })
+  ];
+
+  return {
+    accounts: [checking, card],
+    enrollmentCount: 1,
+    lastSyncedAt: "2026-05-31T00:00:00.000Z",
+    providerConnections: [providerConnection],
+    source: "teller",
+    syncStartDate: "2026-01-01",
+    syncSummary: {
+      accountCount: 2,
+      errors: [],
+      transactionCount: transactions.length
+    },
+    transactions,
+    version: 1
+  };
+}
+
+function createTestAccount(input: Partial<Account>): Account {
+  return {
+    availableBalance: 900,
+    currency: "USD",
+    currentBalance: 1000,
+    groupId: "group_cash",
+    id: "acct",
+    includedInNetWorth: true,
+    institutionName: "Test Bank",
+    lastUpdatedAt: "2026-05-31T00:00:00.000Z",
+    mask: "1234",
+    name: "Account",
+    providerConnectionId: "provider_teller_test",
+    type: "checking",
+    ...input
+  };
+}
+
+function createTestTransaction(input: Partial<Transaction>): Transaction {
+  return {
+    accountId: "acct_checking",
+    amount: -100,
+    categoryId: "cat_other",
+    currency: "USD",
+    date: "2026-05-30",
+    description: "Transaction",
+    id: "txn",
+    merchantName: "Merchant",
+    postedDate: "2026-05-30",
+    providerConnectionId: "provider_teller_test",
+    reviewed: false,
+    status: "posted",
+    tags: ["teller"],
+    ...input
   };
 }

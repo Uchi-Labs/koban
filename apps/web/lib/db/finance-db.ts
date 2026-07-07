@@ -1,13 +1,18 @@
 import type {
   Account,
+  Category,
   EnrichmentSuggestion,
   EnrichmentSuggestionAction,
   EnrichmentSuggestionStatus,
   EvidenceRelationship,
   ExternalSourceKind,
   ExternalSourceStatus,
+  FinancialGoal,
+  FinancialGoalState,
+  InvestmentPosition,
   ProviderConnection,
   SourceItem,
+  TagStyle,
   Transaction,
   TransactionEvidenceLink,
   TransactionRule,
@@ -18,6 +23,14 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { appCategories } from "@/lib/categories";
+import {
+  categoryPaletteColor,
+  inferCategoryEmoji,
+  isCategoryColor,
+  isValidCssColor,
+  neutralCategoryColor,
+  neutralCategoryEmoji
+} from "@/lib/category-style";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import type { FinanceDbDriver } from "@/lib/db/finance-db-driver";
 import { PgFinanceDbDriver } from "@/lib/db/pg-driver";
@@ -27,21 +40,22 @@ import {
   openPgliteFinanceDb,
   quarantinePgliteDirectory
 } from "@/lib/db/pglite-driver";
+import { dbWriteContext } from "@/lib/db/write-context";
 import {
   activeEmbeddingModel,
   embedTexts,
   type EmbeddingModelInfo
 } from "@/lib/embeddings";
-import type { AccountBalanceSnapshot, TellerLedger } from "@/lib/finance-data";
 import {
-  generateLlmEnrichmentSuggestions,
-  getLlmEnrichmentStatus,
-  type LlmEnrichmentRunSummary,
-  type LlmEvidenceSummary,
-  type LlmProviderStatus
-} from "@/lib/llm-enrichment";
+  buildInternalTransferPairMatchPlan,
+  buildOneSidedInternalTransferPlan,
+  internalTransferHeuristicSource,
+  internalTransferPairMatcherSource
+} from "@/lib/internal-transfer-pairing";
+import { invalidateShellDataCache, type AccountBalanceSnapshot, type TellerLedger } from "@/lib/finance-data";
 import { normalizeTellerLedgerAmounts, tellerInternalAmountSignConvention } from "@/lib/teller-normalization";
 import {
+  isLikelyCatastrophicRegex,
   validateTransactionRuleCreateBody,
   validateTransactionRuleUpdateBody
 } from "@/lib/transaction-rule-input";
@@ -51,10 +65,11 @@ import {
   isLikelyTransferLikeTransaction,
   isReviewActionableTransaction
 } from "@/lib/transaction-classification";
-import { findWorkspaceRoot, readWorkspaceEnv, type WorkspaceEnv } from "@/lib/workspace-env";
+import { findWorkspaceRoot, readWorkspaceEnv } from "@/lib/workspace-env";
 
 type FinanceDb = FinanceDbDriver;
-const appCategoryIdSet = new Set(appCategories.map((category) => category.id));
+
+const maxRegexRuleCandidateLength = 512;
 
 export interface SemanticSearchResult {
   body: string;
@@ -73,6 +88,27 @@ interface TransactionOverlayRow {
   reviewed: boolean;
   tags: unknown;
   notes: string | null;
+  financial_goal_id: string | null;
+  paired_transaction_id: string | null;
+}
+
+interface CategoryRegistryRow {
+  archived: boolean;
+  color: string;
+  created_at: string;
+  emoji: string;
+  id: string;
+  name: string;
+  sort_order: number;
+  updated_at: string;
+}
+
+interface TagRegistryRow {
+  color: string | null;
+  created_at: string;
+  kind: string;
+  name: string;
+  updated_at: string;
 }
 
 interface ProviderConnectionRow {
@@ -112,6 +148,17 @@ interface AccountBalanceSnapshotRow {
   source: string;
 }
 
+interface InvestmentPositionRow {
+  id: string;
+  account_id: string;
+  symbol: string;
+  description: string;
+  units: number;
+  price: number | null;
+  currency: string;
+  market_value_minor: number;
+}
+
 interface TransactionRow {
   id: string;
   account_id: string;
@@ -129,6 +176,23 @@ interface TransactionRow {
   tags: unknown;
   notes: string | null;
   pending_transaction_id: string | null;
+  financial_goal_id: string | null;
+  paired_transaction_id: string | null;
+}
+
+interface FinancialGoalRow {
+  id: string;
+  name: string;
+  emoji: string | null;
+  target_amount_minor: number | null;
+  state: FinancialGoalState;
+  created_at: string;
+  updated_at: string;
+}
+
+interface FinancialGoalStatsRow extends FinancialGoalRow {
+  saved_amount_minor: number;
+  transaction_count: number;
 }
 
 interface TransactionRuleRow {
@@ -172,7 +236,57 @@ interface SyncStateRow {
   value: string;
 }
 
-interface LlmProviderHealthSnapshot extends LlmProviderStatus {
+export type FinanceDbLlmProviderName = "none" | "ollama" | "openai_compatible";
+export type FinanceDbLlmCredentialSource = "none" | "openai_api_key" | "chatgpt_oauth" | "ollama" | "local";
+
+export interface FinanceDbLlmProviderStatus {
+  baseUrl?: string;
+  chatGptOAuthConnected?: boolean;
+  chatGptOAuthEnabled?: boolean;
+  configured: boolean;
+  credentialSource?: FinanceDbLlmCredentialSource;
+  errorMessage?: string;
+  model?: string;
+  provider: FinanceDbLlmProviderName;
+  status: ExternalSourceStatus;
+  timeoutMs: number;
+}
+
+export interface FinanceDbLlmEvidenceSummary {
+  confidence: number;
+  relationship: string;
+  status: string;
+  summary: string;
+  title: string;
+}
+
+export interface FinanceDbLlmEnrichmentContext {
+  evidenceByTransactionId: Map<string, FinanceDbLlmEvidenceSummary[]>;
+  existingRules: TransactionRule[];
+  limit: number;
+  transactions: Transaction[];
+}
+
+export interface FinanceDbLlmEnrichmentRunSummary {
+  completed: boolean;
+  errorMessage?: string;
+  provider: FinanceDbLlmProviderStatus;
+  source?: string;
+  suggestionsAccepted: number;
+  suggestionsRejected: number;
+  suggestionsSeen: number;
+}
+
+export interface FinanceDbLlmEnrichmentRunResult extends FinanceDbLlmEnrichmentRunSummary {
+  suggestions: EnrichmentSuggestionInput[];
+}
+
+export interface FinanceDbLlmEnrichmentDependencies {
+  generateLlmEnrichmentSuggestions(context: FinanceDbLlmEnrichmentContext): Promise<FinanceDbLlmEnrichmentRunResult>;
+  getProviderStatus(): Promise<FinanceDbLlmProviderStatus>;
+}
+
+interface LlmProviderHealthSnapshot extends FinanceDbLlmProviderStatus {
   checkedAt: string;
 }
 
@@ -195,6 +309,10 @@ interface EvidenceSummaryRow {
   summary: string;
   status: TransactionEvidenceLink["status"];
   title: string;
+}
+
+interface EvidenceSummaryBatchRow extends EvidenceSummaryRow {
+  transaction_id: string;
 }
 
 interface SourceItemMatchRow extends SourceItemRow {
@@ -239,9 +357,17 @@ interface AppSyncRunRow {
   started_at: string;
   finished_at: string;
   teller_status: AppSyncRunStatus;
+  financekit_status?: AppSyncRunStatus;
+  plaid_status?: AppSyncRunStatus;
+  snaptrade_status?: AppSyncRunStatus;
+  simplefin_status?: AppSyncRunStatus;
   sources_status: AppSyncRunStatus;
   enrichment_status: AppSyncRunStatus;
   teller_summary: unknown;
+  financekit_summary?: unknown;
+  plaid_summary?: unknown;
+  snaptrade_summary?: unknown;
+  simplefin_summary?: unknown;
   sources_summary: unknown;
   enrichment_summary: unknown;
   error_message: string | null;
@@ -329,8 +455,16 @@ export interface AppSyncRunInput {
   enrichmentSummary: Record<string, unknown>;
   errorMessage?: string;
   finishedAt: string;
+  financekitStatus?: AppSyncRunStatus;
+  financekitSummary?: Record<string, unknown>;
+  plaidStatus?: AppSyncRunStatus;
+  plaidSummary?: Record<string, unknown>;
+  simplefinStatus?: AppSyncRunStatus;
+  simplefinSummary?: Record<string, unknown>;
   sourcesStatus: AppSyncRunStatus;
   sourcesSummary: Record<string, unknown>;
+  snaptradeStatus?: AppSyncRunStatus;
+  snaptradeSummary?: Record<string, unknown>;
   startedAt: string;
   status: AppSyncRunStatus;
   tellerStatus: AppSyncRunStatus;
@@ -401,15 +535,56 @@ export interface TransactionRuleInput {
   tags?: string[];
 }
 
+export interface CategoryCreateInput {
+  color?: string;
+  emoji?: string;
+  name: string;
+}
+
+export interface CategoryUpdateInput {
+  archived?: boolean;
+  color?: string;
+  emoji?: string;
+  name?: string;
+  sortOrder?: number;
+}
+
 export interface RuleApplyResult {
   rulesApplied: number;
   transactionsUpdated: number;
 }
 
+export interface FinancialGoalCreateInput {
+  emoji?: string;
+  name: string;
+  targetAmountMinor?: number;
+}
+
+export interface FinancialGoalUpdateInput {
+  emoji?: string | null;
+  name?: string;
+  state?: FinancialGoalState;
+  targetAmountMinor?: number | null;
+}
+
+/** A goal plus computed roll-ups over its assigned transactions. */
+export interface FinancialGoalWithStats extends FinancialGoal {
+  /**
+   * Sum of assigned transaction amounts, sign-normalized so money set aside reads
+   * positive. Outflow amounts are negative in this app (a goal-funding transfer
+   * out of checking is negative), so we negate: saved = -SUM(amount_minor). This
+   * also nets correctly — a later refund/withdrawal (positive amount) subtracts
+   * from progress.
+   */
+  savedAmountMinor: number;
+  transactionCount: number;
+}
+
 export interface EnrichmentRunResult {
   generatedAt: string;
+  pairMatcher: InternalTransferPairMatchRunSummary;
   pendingSuggestions: number;
-  provider: LlmEnrichmentRunSummary;
+  provider: FinanceDbLlmEnrichmentRunSummary;
   suggestionsCreated: number;
   suggestionsSeen: number;
 }
@@ -437,9 +612,31 @@ export interface EnrichmentSuggestionItem {
   transaction?: Transaction;
 }
 
-export async function getEffectiveLlmEnrichmentStatus(env: WorkspaceEnv = readWorkspaceEnv()): Promise<LlmProviderStatus> {
-  const configuredProvider = getLlmEnrichmentStatus(env);
+export interface InternalTransferPairMatchRunSummary {
+  autoAppliedPairs: number;
+  autoAppliedSuggestions: number;
+  candidatePairs: number;
+  queuedPairs: number;
+  queuedSuggestions: number;
+  /** Hard-linked counterpart pairs written to `paired_transaction_id`. */
+  linkedPairs: number;
+  /** One-sided internal transfers marked by the vocabulary heuristic (no connected counterpart). */
+  autoAppliedOneSided: number;
+}
 
+const emptyInternalTransferPairMatchRunSummary: InternalTransferPairMatchRunSummary = {
+  autoAppliedPairs: 0,
+  autoAppliedSuggestions: 0,
+  candidatePairs: 0,
+  queuedPairs: 0,
+  queuedSuggestions: 0,
+  linkedPairs: 0,
+  autoAppliedOneSided: 0
+};
+
+export async function applyPersistedLlmProviderHealth(
+  configuredProvider: FinanceDbLlmProviderStatus
+): Promise<FinanceDbLlmProviderStatus> {
   if (!configuredProvider.configured || !financeDbExists()) {
     return configuredProvider;
   }
@@ -471,7 +668,7 @@ export async function getEffectiveLlmEnrichmentStatus(env: WorkspaceEnv = readWo
 }
 
 export async function recordLlmProviderHealth(
-  provider: LlmProviderStatus,
+  provider: FinanceDbLlmProviderStatus,
   checkedAt = new Date().toISOString()
 ): Promise<void> {
   await enqueueDbWrite(async () => {
@@ -540,6 +737,7 @@ export interface LocalAppDataResetSummary {
   accountCount: number;
   appSyncRunCount: number;
   evidenceLinkCount: number;
+  investmentPositionCount: number;
   providerConnectionCount: number;
   ruleCount: number;
   scheduleCount: number;
@@ -575,7 +773,21 @@ const llmProviderHealthStateKey = "llm_provider_health_v1";
 
 export function getFinanceDbPath(): string {
   const env = readWorkspaceEnv();
-  return env.AI_FINANCES_PGLITE_DIR || path.join(findWorkspaceRoot(), "data", "local", "pglite");
+
+  if (env.AI_FINANCES_PGLITE_DIR) {
+    return env.AI_FINANCES_PGLITE_DIR;
+  }
+
+  // Belt-and-suspenders: test runners must NEVER open the user's real store.
+  // Two separate agent-run incidents wiped data/local/pglite through test
+  // cleanup paths; tests are required to set AI_FINANCES_PGLITE_DIR.
+  if (process.env.NODE_ENV === "test" || process.env.VITEST || process.env.PLAYWRIGHT_TEST_BASE_URL) {
+    throw new Error(
+      "Refusing to open the default PGlite store in a test environment. Set AI_FINANCES_PGLITE_DIR to a throwaway directory."
+    );
+  }
+
+  return path.join(findWorkspaceRoot(), "data", "local", "pglite");
 }
 
 export function financeDbExists(): boolean {
@@ -585,7 +797,14 @@ export function financeDbExists(): boolean {
     return true;
   }
 
-  const dbPath = getFinanceDbPath();
+  let dbPath: string;
+  try {
+    dbPath = getFinanceDbPath();
+  } catch {
+    // Test env without AI_FINANCES_PGLITE_DIR: report "no store" instead of
+    // throwing — only actual opens must fail loudly.
+    return false;
+  }
   return dbPath === ":memory:" || existsSync(dbPath);
 }
 
@@ -598,6 +817,127 @@ export function consumeFinanceDbRecoveryEvent(): { originalPath: string; recover
 
 export async function replaceTellerLedgerInDb(ledger: TellerLedger): Promise<void> {
   return enqueueDbWrite(() => replaceTellerLedgerInDbNow(ledger));
+}
+
+export interface SnapTradeInvestmentSnapshotInput {
+  accounts: Account[];
+  balanceSnapshots: AccountBalanceSnapshot[];
+  errors: string[];
+  finishedAt: string;
+  positionAccountIds: string[];
+  positions: InvestmentPosition[];
+  providerConnections: ProviderConnection[];
+  startedAt: string;
+  successfulProviderConnectionIds: string[];
+}
+
+export interface SnapTradeInvestmentSnapshotRecord {
+  accountCount: number;
+  connectionCount: number;
+  errorCount: number;
+  lastSyncedAt: string;
+  positionCount: number;
+}
+
+export interface SimpleFinLedgerSnapshotInput {
+  accounts: Account[];
+  balanceSnapshots: AccountBalanceSnapshot[];
+  errors: unknown[];
+  finishedAt: string;
+  newestPostedAt?: number;
+  providerConnections: ProviderConnection[];
+  requestEndUnix: number;
+  requestStartUnix: number;
+  startedAt: string;
+  successful: boolean;
+  transactions: Transaction[];
+}
+
+export interface PlaidLedgerSnapshotInput {
+  accounts: Account[];
+  balanceSnapshots: AccountBalanceSnapshot[];
+  errors: string[];
+  finishedAt: string;
+  providerConnections: ProviderConnection[];
+  removedTransactionIds: string[];
+  startedAt: string;
+  successfulProviderConnectionIds: string[];
+  syncState: Record<string, string>;
+  transactions: Transaction[];
+}
+
+export interface FinanceKitLedgerSnapshotInput {
+  accounts: Account[];
+  balanceSnapshots: AccountBalanceSnapshot[];
+  deviceName?: string;
+  finishedAt: string;
+  providerConnection: ProviderConnection;
+  startedAt: string;
+  transactions: Transaction[];
+}
+
+export interface SimpleFinLedgerSnapshotRecord {
+  accountCount: number;
+  connectionCount: number;
+  errorCount: number;
+  lastSyncedAt: string;
+  newestPostedAt?: number;
+  transactionCount: number;
+}
+
+export interface PlaidLedgerSnapshotRecord {
+  accountCount: number;
+  connectionCount: number;
+  errorCount: number;
+  lastSyncedAt: string;
+  removedTransactionCount: number;
+  transactionCount: number;
+}
+
+export interface FinanceKitLedgerSnapshotRecord {
+  accountsUpserted: number;
+  lastIngestedAt: string;
+  transactionsAdded: number;
+  transactionsUnchanged: number;
+  transactionsUpdated: number;
+}
+
+export async function replaceSnapTradeInvestmentSnapshot(
+  input: SnapTradeInvestmentSnapshotInput
+): Promise<SnapTradeInvestmentSnapshotRecord> {
+  return enqueueDbWrite(() => replaceSnapTradeInvestmentSnapshotNow(input));
+}
+
+/**
+ * Additively upsert balance snapshots without deleting any existing rows.
+ * Used for provider history backfills (e.g. SnapTrade daily account value
+ * history) where each row is keyed one-per-account-per-day. Idempotent on the
+ * snapshot id, so re-running a backfill tops up new dates and refreshes known
+ * ones while leaving live intraday sync captures untouched. Snapshots whose
+ * account no longer exists are skipped rather than failing the batch.
+ */
+export async function upsertAccountBalanceSnapshots(snapshots: AccountBalanceSnapshot[]): Promise<number> {
+  if (snapshots.length === 0) {
+    return 0;
+  }
+
+  return enqueueDbWrite(() => upsertAccountBalanceSnapshotsNow(snapshots));
+}
+
+export async function replacePlaidLedgerSnapshot(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
+  return enqueueDbWrite(() => replacePlaidLedgerSnapshotNow(input));
+}
+
+export async function replaceSimpleFinLedgerSnapshot(
+  input: SimpleFinLedgerSnapshotInput
+): Promise<SimpleFinLedgerSnapshotRecord> {
+  return enqueueDbWrite(() => replaceSimpleFinLedgerSnapshotNow(input));
+}
+
+export async function ingestFinanceKitLedgerSnapshot(
+  input: FinanceKitLedgerSnapshotInput
+): Promise<FinanceKitLedgerSnapshotRecord> {
+  return enqueueDbWrite(() => ingestFinanceKitLedgerSnapshotNow(input));
 }
 
 export async function resetLocalAppData(): Promise<LocalAppDataResetSummary> {
@@ -616,6 +956,7 @@ export async function resetLocalAppData(): Promise<LocalAppDataResetSummary> {
       await db.query("DELETE FROM enrichment_suggestions");
       await db.query("DELETE FROM transaction_rules");
       await db.query("DELETE FROM transactions");
+      await db.query("DELETE FROM investment_positions");
       await db.query("DELETE FROM account_balance_snapshots");
       await db.query("DELETE FROM accounts");
       await db.query("DELETE FROM sync_run_items");
@@ -635,6 +976,321 @@ export async function resetLocalAppData(): Promise<LocalAppDataResetSummary> {
   });
 }
 
+export async function listCategories({
+  includeArchived = true
+}: {
+  includeArchived?: boolean;
+} = {}): Promise<Category[]> {
+  const db = await getFinanceDb();
+  return listCategoriesInDb(db, { includeArchived });
+}
+
+export async function createCategory(input: CategoryCreateInput): Promise<Category> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const name = normalizeCategoryName(input.name);
+
+    if (!name) {
+      throw new Error("Category name is required.");
+    }
+
+    const existingCategories = await listCategoriesInDb(db, { includeArchived: true });
+    const timestamp = new Date().toISOString();
+    const nextSortOrder = Math.max(0, ...existingCategories.map((category) => category.sortOrder)) + 10;
+    const category: Category = {
+      archived: false,
+      color: assertValidRegistryColorInput(input.color) ?? categoryPaletteColor(existingCategories.length),
+      createdAt: timestamp,
+      emoji: normalizeEmoji(input.emoji) ?? inferCategoryEmoji(name, neutralCategoryEmoji),
+      icon: "circle",
+      id: `cat_custom_${stableIdSuffix(`${name}:${timestamp}`)}`,
+      name,
+      sortOrder: nextSortOrder,
+      updatedAt: timestamp
+    };
+
+    await upsertCategoryRegistryRow(db, category);
+    return category;
+  });
+}
+
+export async function updateCategory(categoryId: string, input: CategoryUpdateInput): Promise<Category | null> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const category = await getCategoryInDb(db, categoryId);
+
+    if (!category) {
+      return null;
+    }
+
+    const nextName = input.name === undefined ? category.name : normalizeCategoryName(input.name);
+
+    if (!nextName) {
+      throw new Error("Category name is required.");
+    }
+
+    const nextCategory: Category = {
+      ...category,
+      archived: input.archived ?? category.archived,
+      color: assertValidRegistryColorInput(input.color) ?? category.color,
+      // Keep the stored emoji unless the caller sets one — re-inferring from the
+      // name here would clobber a custom emoji on every color/name-only PATCH.
+      emoji: normalizeEmoji(input.emoji) ?? category.emoji,
+      name: nextName,
+      sortOrder: input.sortOrder === undefined ? category.sortOrder : normalizeSortOrder(input.sortOrder, category.sortOrder),
+      updatedAt: new Date().toISOString()
+    };
+
+    await upsertCategoryRegistryRow(db, nextCategory);
+    return nextCategory;
+  });
+}
+
+export async function getCategoryIdsForValidation(): Promise<Set<string>> {
+  const categories = await listCategories({ includeArchived: false });
+  return new Set(categories.map((category) => category.id));
+}
+
+/**
+ * List all goals with computed roll-ups over their assigned transactions.
+ * `saved_amount_minor` is sign-normalized (negated) so money set aside reads
+ * positive — see {@link FinancialGoalWithStats}.
+ */
+export async function listFinancialGoals(): Promise<FinancialGoalWithStats[]> {
+  const db = await getFinanceDb();
+  const result = await db.query<FinancialGoalStatsRow>(
+    `SELECT
+      g.id,
+      g.name,
+      g.emoji,
+      g.target_amount_minor,
+      g.state,
+      g.created_at,
+      g.updated_at,
+      COALESCE(-SUM(t.amount_minor), 0)::int AS saved_amount_minor,
+      COUNT(t.id)::int AS transaction_count
+    FROM financial_goals g
+    LEFT JOIN transactions t ON t.financial_goal_id = g.id
+    GROUP BY g.id
+    ORDER BY g.created_at DESC, g.id DESC`
+  );
+
+  return result.rows.map(financialGoalStatsFromRow);
+}
+
+export async function getFinancialGoalIdsForValidation(): Promise<Set<string>> {
+  const db = await getFinanceDb();
+  const result = await db.query<{ id: string }>("SELECT id FROM financial_goals");
+  return new Set(result.rows.map((row) => row.id));
+}
+
+export async function createFinancialGoal(input: FinancialGoalCreateInput): Promise<FinancialGoal> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const name = normalizeGoalName(input.name);
+
+    if (!name) {
+      throw new Error("Goal name is required.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const goal: FinancialGoal = {
+      id: `goal_${stableIdSuffix(`${name}:${timestamp}`)}`,
+      name,
+      emoji: normalizeEmoji(input.emoji),
+      targetAmountMinor: normalizeTargetAmount(input.targetAmountMinor),
+      state: "active",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    await upsertFinancialGoalRow(db, goal);
+    return goal;
+  });
+}
+
+export async function updateFinancialGoal(
+  goalId: string,
+  input: FinancialGoalUpdateInput
+): Promise<FinancialGoal | null> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const existing = await db.query<FinancialGoalRow>("SELECT * FROM financial_goals WHERE id = $1", [goalId]);
+    const row = existing.rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    const current = financialGoalFromRow(row);
+    const nextName = input.name === undefined ? current.name : normalizeGoalName(input.name);
+
+    if (!nextName) {
+      throw new Error("Goal name is required.");
+    }
+
+    const nextGoal: FinancialGoal = {
+      ...current,
+      name: nextName,
+      emoji: input.emoji === undefined ? current.emoji : normalizeEmoji(input.emoji ?? undefined),
+      targetAmountMinor:
+        input.targetAmountMinor === undefined
+          ? current.targetAmountMinor
+          : normalizeTargetAmount(input.targetAmountMinor ?? undefined),
+      state: input.state ?? current.state,
+      updatedAt: new Date().toISOString()
+    };
+
+    await upsertFinancialGoalRow(db, nextGoal);
+    return nextGoal;
+  });
+}
+
+/**
+ * Delete a goal. Transactions are NOT deleted — their assignment is cleared so
+ * they return to the unassigned pool.
+ */
+export async function deleteFinancialGoal(goalId: string): Promise<boolean> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+
+    await db.exec("BEGIN");
+    try {
+      await db.query("UPDATE transactions SET financial_goal_id = NULL WHERE financial_goal_id = $1", [goalId]);
+      const result = await db.query<{ id: string }>("DELETE FROM financial_goals WHERE id = $1 RETURNING id", [goalId]);
+      await db.exec("COMMIT");
+      return result.rows.length > 0;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
+/**
+ * Assign (or, with `null`, unassign) a transaction to a goal. The goal id is a
+ * user overlay stored on the transaction row itself (Copilot-style).
+ */
+export async function setTransactionFinancialGoal(
+  transactionId: string,
+  financialGoalId: string | null
+): Promise<Transaction | null> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const existing = await db.query<TransactionRow>("SELECT * FROM transactions WHERE id = $1", [transactionId]);
+    const row = existing.rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    const nextTransaction: Transaction = {
+      ...transactionFromRow(row),
+      financialGoalId: financialGoalId ?? undefined
+    };
+
+    return upsertTransaction(db, nextTransaction);
+  });
+}
+
+async function upsertFinancialGoalRow(db: FinanceDb, goal: FinancialGoal): Promise<void> {
+  await db.query(
+    `INSERT INTO financial_goals (
+      id,
+      name,
+      emoji,
+      target_amount_minor,
+      state,
+      created_at,
+      updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      emoji = EXCLUDED.emoji,
+      target_amount_minor = EXCLUDED.target_amount_minor,
+      state = EXCLUDED.state,
+      updated_at = EXCLUDED.updated_at`,
+    [
+      goal.id,
+      goal.name,
+      goal.emoji ?? null,
+      goal.targetAmountMinor ?? null,
+      goal.state,
+      goal.createdAt,
+      goal.updatedAt
+    ]
+  );
+}
+
+function financialGoalFromRow(row: FinancialGoalRow): FinancialGoal {
+  return {
+    id: row.id,
+    name: row.name,
+    emoji: row.emoji ?? undefined,
+    targetAmountMinor: row.target_amount_minor ?? undefined,
+    state: row.state,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function financialGoalStatsFromRow(row: FinancialGoalStatsRow): FinancialGoalWithStats {
+  return {
+    ...financialGoalFromRow(row),
+    savedAmountMinor: Number(row.saved_amount_minor),
+    transactionCount: Number(row.transaction_count)
+  };
+}
+
+function normalizeGoalName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
+function normalizeTargetAmount(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  const rounded = Math.round(value);
+  return rounded > 0 ? rounded : undefined;
+}
+
+export async function listTagStyles(): Promise<TagStyle[]> {
+  const db = await getFinanceDb();
+  const result = await db.query<TagRegistryRow>("SELECT * FROM tag_registry ORDER BY lower(name), name");
+  return result.rows.map(tagStyleFromRow);
+}
+
+export async function upsertTagStyle(name: string, color?: string | null): Promise<TagStyle> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const tagName = normalizeTagName(name);
+
+    if (!tagName) {
+      throw new Error("Tag name is required.");
+    }
+
+    const normalizedColor = color === null ? null : normalizeRegistryColor(color);
+    const timestamp = new Date().toISOString();
+    const result = await db.query<TagRegistryRow>(
+      `INSERT INTO tag_registry (
+        name,
+        color,
+        kind,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $4)
+      ON CONFLICT (name) DO UPDATE SET
+        color = EXCLUDED.color,
+        updated_at = EXCLUDED.updated_at
+      RETURNING *`,
+      [tagName, normalizedColor ?? null, classifyTagKind(tagName), timestamp]
+    );
+
+    return tagStyleFromRow(result.rows[0]);
+  });
+}
+
 async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
   const normalizedLedger = normalizeTellerLedgerAmounts(ledger).ledger;
   const db = await getFinanceDb();
@@ -642,11 +1298,9 @@ async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
 
   await db.exec("BEGIN");
   try {
-    await db.query("DELETE FROM provider_connections");
-    await db.query("DELETE FROM accounts");
-    await db.query("DELETE FROM account_balance_snapshots");
-    await db.query("DELETE FROM sync_runs");
-    await db.query("DELETE FROM sync_run_items");
+    await db.query("DELETE FROM provider_connections WHERE provider = 'teller'");
+    await db.query("DELETE FROM sync_run_items WHERE sync_run_id IN (SELECT id FROM sync_runs WHERE provider = 'teller')");
+    await db.query("DELETE FROM sync_runs WHERE provider = 'teller'");
 
     await db.query(
       `INSERT INTO sync_runs (
@@ -726,6 +1380,7 @@ async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
       await upsertTransaction(db, mergeTransactionOverlay(transaction, overlay));
     }
 
+    await clearDanglingTransactionPairs(db);
     await applyTransactionRulesNow(db);
     await replaceTransactionSemanticDocuments(db, normalizedLedger);
 
@@ -744,6 +1399,638 @@ async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
     await db.exec("ROLLBACK");
     throw error;
   }
+}
+
+async function replaceSnapTradeInvestmentSnapshotNow(
+  input: SnapTradeInvestmentSnapshotInput
+): Promise<SnapTradeInvestmentSnapshotRecord> {
+  const db = await getFinanceDb();
+  const connectionIds = input.providerConnections.map((connection) => connection.id);
+  const accountIds = input.accounts.map((account) => account.id);
+  const successfulConnectionIds = [...new Set(input.successfulProviderConnectionIds)];
+  const positionAccountIds = [...new Set(input.positionAccountIds)];
+
+  await db.exec("BEGIN");
+  try {
+    if (connectionIds.length === 0) {
+      await db.query("DELETE FROM provider_connections WHERE provider = 'snaptrade'");
+    } else {
+      await db.query("DELETE FROM provider_connections WHERE provider = 'snaptrade' AND NOT (id = ANY($1))", [
+        connectionIds
+      ]);
+    }
+
+    await db.query(
+      `INSERT INTO sync_runs (
+        id,
+        provider,
+        status,
+        started_at,
+        finished_at,
+        accounts_seen,
+        transactions_seen,
+        error_count,
+        error_message
+      ) VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)
+      ON CONFLICT (id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        status = EXCLUDED.status,
+        started_at = EXCLUDED.started_at,
+        finished_at = EXCLUDED.finished_at,
+        accounts_seen = EXCLUDED.accounts_seen,
+        error_count = EXCLUDED.error_count,
+        error_message = EXCLUDED.error_message`,
+      [
+        `sync_snaptrade_${input.finishedAt.replace(/[^0-9a-z]/gi, "")}`,
+        "snaptrade",
+        input.errors.length > 0 ? "error" : "succeeded",
+        input.startedAt,
+        input.finishedAt,
+        input.accounts.length,
+        input.errors.length,
+        input.errors.join("\n") || null
+      ]
+    );
+
+    for (const connection of input.providerConnections) {
+      await upsertProviderConnection(db, connection);
+    }
+
+    if (successfulConnectionIds.length > 0) {
+      if (accountIds.length > 0) {
+        await db.query(
+          `DELETE FROM accounts
+          WHERE provider_connection_id = ANY($1)
+            AND NOT (id = ANY($2))`,
+          [successfulConnectionIds, accountIds]
+        );
+      } else {
+        await db.query("DELETE FROM accounts WHERE provider_connection_id = ANY($1)", [successfulConnectionIds]);
+      }
+    }
+
+    for (const account of input.accounts) {
+      await upsertAccount(db, account);
+    }
+
+    for (const snapshot of input.balanceSnapshots) {
+      await db.query(
+        `INSERT INTO account_balance_snapshots (
+          id,
+          account_id,
+          as_of_date,
+          captured_at,
+          ledger_balance_minor,
+          available_balance_minor,
+          currency,
+          source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id) DO UPDATE SET
+          ledger_balance_minor = EXCLUDED.ledger_balance_minor,
+          available_balance_minor = EXCLUDED.available_balance_minor,
+          captured_at = EXCLUDED.captured_at`,
+        [
+          snapshot.id,
+          snapshot.accountId,
+          snapshot.asOfDate,
+          snapshot.capturedAt,
+          moneyToMinor(snapshot.ledgerBalance),
+          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+          snapshot.currency,
+          snapshot.source
+        ]
+      );
+    }
+
+    if (positionAccountIds.length > 0) {
+      await db.query("DELETE FROM investment_positions WHERE account_id = ANY($1)", [positionAccountIds]);
+    }
+
+    for (const position of input.positions) {
+      await upsertInvestmentPosition(db, position);
+    }
+
+    await writeSyncState(db, {
+      snaptrade_last_synced_at: input.finishedAt,
+      snaptrade_connection_count: String(input.providerConnections.length),
+      snaptrade_account_count: String(input.accounts.length),
+      snaptrade_position_count: String(input.positions.length),
+      snaptrade_error_count: String(input.errors.length)
+    });
+
+    await db.exec("COMMIT");
+  } catch (error) {
+    await db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return {
+    accountCount: input.accounts.length,
+    connectionCount: input.providerConnections.length,
+    errorCount: input.errors.length,
+    lastSyncedAt: input.finishedAt,
+    positionCount: input.positions.length
+  };
+}
+
+async function upsertAccountBalanceSnapshotsNow(snapshots: AccountBalanceSnapshot[]): Promise<number> {
+  const db = await getFinanceDb();
+  const knownAccountIds = new Set(
+    (await db.query<{ id: string }>("SELECT id FROM accounts")).rows.map((row) => row.id)
+  );
+
+  await db.exec("BEGIN");
+  try {
+    let written = 0;
+
+    for (const snapshot of snapshots) {
+      if (!knownAccountIds.has(snapshot.accountId)) {
+        continue;
+      }
+
+      await db.query(
+        `INSERT INTO account_balance_snapshots (
+          id,
+          account_id,
+          as_of_date,
+          captured_at,
+          ledger_balance_minor,
+          available_balance_minor,
+          currency,
+          source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id) DO UPDATE SET
+          as_of_date = EXCLUDED.as_of_date,
+          captured_at = EXCLUDED.captured_at,
+          ledger_balance_minor = EXCLUDED.ledger_balance_minor,
+          available_balance_minor = EXCLUDED.available_balance_minor,
+          currency = EXCLUDED.currency,
+          source = EXCLUDED.source`,
+        [
+          snapshot.id,
+          snapshot.accountId,
+          snapshot.asOfDate,
+          snapshot.capturedAt,
+          moneyToMinor(snapshot.ledgerBalance),
+          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+          snapshot.currency,
+          snapshot.source
+        ]
+      );
+      written++;
+    }
+
+    await db.exec("COMMIT");
+    return written;
+  } catch (error) {
+    await db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+async function replacePlaidLedgerSnapshotNow(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
+  const db = await getFinanceDb();
+  const existingOverlays = await readTransactionOverlays(db);
+  const removedTransactionIds = [...new Set(input.removedTransactionIds)];
+  const erroredConnectionIds = input.providerConnections
+    .filter((connection) => connection.status === "error")
+    .map((connection) => connection.id);
+
+  await db.exec("BEGIN");
+  try {
+    await db.query(
+      `INSERT INTO sync_runs (
+        id,
+        provider,
+        status,
+        started_at,
+        finished_at,
+        accounts_seen,
+        transactions_seen,
+        error_count,
+        error_message
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        status = EXCLUDED.status,
+        started_at = EXCLUDED.started_at,
+        finished_at = EXCLUDED.finished_at,
+        accounts_seen = EXCLUDED.accounts_seen,
+        transactions_seen = EXCLUDED.transactions_seen,
+        error_count = EXCLUDED.error_count,
+        error_message = EXCLUDED.error_message`,
+      [
+        `sync_plaid_${input.finishedAt.replace(/[^0-9a-z]/gi, "")}`,
+        "plaid",
+        input.errors.length > 0 ? "error" : "succeeded",
+        input.startedAt,
+        input.finishedAt,
+        input.accounts.length,
+        input.transactions.length,
+        input.errors.length,
+        input.errors.join("\n") || null
+      ]
+    );
+
+    for (const connection of input.providerConnections) {
+      await upsertProviderConnection(db, connection);
+    }
+
+    for (const account of input.accounts) {
+      await upsertAccount(db, account);
+    }
+
+    if (erroredConnectionIds.length > 0) {
+      await db.query("UPDATE accounts SET included_in_net_worth = FALSE WHERE provider_connection_id = ANY($1)", [
+        erroredConnectionIds
+      ]);
+    }
+
+    for (const snapshot of input.balanceSnapshots) {
+      await db.query(
+        `INSERT INTO account_balance_snapshots (
+          id,
+          account_id,
+          as_of_date,
+          captured_at,
+          ledger_balance_minor,
+          available_balance_minor,
+          currency,
+          source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id) DO UPDATE SET
+          ledger_balance_minor = EXCLUDED.ledger_balance_minor,
+          available_balance_minor = EXCLUDED.available_balance_minor,
+          captured_at = EXCLUDED.captured_at`,
+        [
+          snapshot.id,
+          snapshot.accountId,
+          snapshot.asOfDate,
+          snapshot.capturedAt,
+          moneyToMinor(snapshot.ledgerBalance),
+          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+          snapshot.currency,
+          snapshot.source
+        ]
+      );
+    }
+
+    if (removedTransactionIds.length > 0) {
+      await db.query("DELETE FROM transactions WHERE id = ANY($1)", [removedTransactionIds]);
+    }
+
+    for (const transaction of input.transactions) {
+      const pendingOverlay = transaction.pendingTransactionId
+        ? existingOverlays.get(transaction.pendingTransactionId)
+        : undefined;
+      const overlay = existingOverlays.get(transaction.id) ?? pendingOverlay;
+
+      if (transaction.pendingTransactionId && transaction.pendingTransactionId !== transaction.id) {
+        await db.query("DELETE FROM transactions WHERE id = $1", [transaction.pendingTransactionId]);
+      }
+
+      await upsertTransaction(db, mergeTransactionOverlay(transaction, overlay));
+    }
+
+    await clearDanglingTransactionPairs(db);
+    await applyTransactionRulesNow(db);
+    await replaceTransactionSemanticDocuments(db, {
+      source: "teller",
+      version: 1,
+      lastSyncedAt: input.finishedAt,
+      syncStartDate: input.startedAt.slice(0, 10),
+      enrollmentCount: input.providerConnections.length,
+      accounts: input.accounts,
+      transactions: input.transactions,
+      providerConnections: input.providerConnections,
+      syncSummary: {
+        accountCount: input.accounts.length,
+        transactionCount: input.transactions.length,
+        errors: input.errors
+      }
+    });
+
+    await writeSyncState(db, {
+      plaid_last_synced_at: input.finishedAt,
+      plaid_connection_count: String(input.providerConnections.length),
+      plaid_account_count: String(input.accounts.length),
+      plaid_transaction_count: String(input.transactions.length),
+      plaid_removed_transaction_count: String(removedTransactionIds.length),
+      plaid_error_count: String(input.errors.length),
+      ...input.syncState
+    });
+
+    await db.exec("COMMIT");
+  } catch (error) {
+    await db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return {
+    accountCount: input.accounts.length,
+    connectionCount: input.providerConnections.length,
+    errorCount: input.errors.length,
+    lastSyncedAt: input.finishedAt,
+    removedTransactionCount: removedTransactionIds.length,
+    transactionCount: input.transactions.length
+  };
+}
+
+async function replaceSimpleFinLedgerSnapshotNow(
+  input: SimpleFinLedgerSnapshotInput
+): Promise<SimpleFinLedgerSnapshotRecord> {
+  const db = await getFinanceDb();
+  const existingOverlays = await readTransactionOverlays(db);
+  const connectionIds = input.providerConnections.map((connection) => connection.id);
+  const accountIds = input.accounts.map((account) => account.id);
+
+  await db.exec("BEGIN");
+  try {
+    if (input.successful) {
+      if (connectionIds.length === 0) {
+        await db.query("DELETE FROM provider_connections WHERE provider = 'simplefin'");
+      } else {
+        await db.query("DELETE FROM provider_connections WHERE provider = 'simplefin' AND NOT (id = ANY($1))", [
+          connectionIds
+        ]);
+      }
+    }
+
+    await db.query(
+      `INSERT INTO sync_runs (
+        id,
+        provider,
+        status,
+        started_at,
+        finished_at,
+        accounts_seen,
+        transactions_seen,
+        error_count,
+        error_message
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        status = EXCLUDED.status,
+        started_at = EXCLUDED.started_at,
+        finished_at = EXCLUDED.finished_at,
+        accounts_seen = EXCLUDED.accounts_seen,
+        transactions_seen = EXCLUDED.transactions_seen,
+        error_count = EXCLUDED.error_count,
+        error_message = EXCLUDED.error_message`,
+      [
+        `sync_simplefin_${input.finishedAt.replace(/[^0-9a-z]/gi, "")}`,
+        "simplefin",
+        input.errors.length > 0 ? "error" : "succeeded",
+        input.startedAt,
+        input.finishedAt,
+        input.accounts.length,
+        input.transactions.length,
+        input.errors.length,
+        simpleFinErrorsToMessage(input.errors)
+      ]
+    );
+
+    for (const connection of input.providerConnections) {
+      await upsertProviderConnection(db, connection);
+    }
+
+    if (input.successful && connectionIds.length > 0) {
+      if (accountIds.length > 0) {
+        await db.query(
+          `DELETE FROM accounts
+          WHERE provider_connection_id = ANY($1)
+            AND NOT (id = ANY($2))`,
+          [connectionIds, accountIds]
+        );
+      } else {
+        await db.query("DELETE FROM accounts WHERE provider_connection_id = ANY($1)", [connectionIds]);
+      }
+    }
+
+    for (const account of input.accounts) {
+      await upsertAccount(db, account);
+    }
+
+    for (const snapshot of input.balanceSnapshots) {
+      await db.query(
+        `INSERT INTO account_balance_snapshots (
+          id,
+          account_id,
+          as_of_date,
+          captured_at,
+          ledger_balance_minor,
+          available_balance_minor,
+          currency,
+          source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id) DO UPDATE SET
+          ledger_balance_minor = EXCLUDED.ledger_balance_minor,
+          available_balance_minor = EXCLUDED.available_balance_minor,
+          captured_at = EXCLUDED.captured_at`,
+        [
+          snapshot.id,
+          snapshot.accountId,
+          snapshot.asOfDate,
+          snapshot.capturedAt,
+          moneyToMinor(snapshot.ledgerBalance),
+          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+          snapshot.currency,
+          snapshot.source
+        ]
+      );
+    }
+
+    for (const transaction of input.transactions) {
+      const overlay = existingOverlays.get(transaction.id);
+      await upsertTransaction(db, mergeTransactionOverlay(transaction, overlay));
+    }
+
+    await clearDanglingTransactionPairs(db);
+    await applyTransactionRulesNow(db);
+    await replaceTransactionSemanticDocuments(db, {
+      source: "teller",
+      version: 1,
+      lastSyncedAt: input.finishedAt,
+      syncStartDate: new Date(input.requestStartUnix * 1000).toISOString().slice(0, 10),
+      enrollmentCount: input.providerConnections.length,
+      accounts: input.accounts,
+      transactions: input.transactions,
+      providerConnections: input.providerConnections,
+      syncSummary: {
+        accountCount: input.accounts.length,
+        transactionCount: input.transactions.length,
+        errors: []
+      }
+    });
+
+    const state: Record<string, string> = {
+      simplefin_last_synced_at: input.finishedAt,
+      simplefin_request_start_unix: String(input.requestStartUnix),
+      simplefin_request_end_unix: String(input.requestEndUnix),
+      simplefin_connection_count: String(input.providerConnections.length),
+      simplefin_account_count: String(input.accounts.length),
+      simplefin_transaction_count: String(input.transactions.length),
+      simplefin_error_count: String(input.errors.length),
+      simplefin_last_errors: JSON.stringify(input.errors)
+    };
+
+    if (input.successful && input.newestPostedAt !== undefined) {
+      state.simplefin_newest_posted_at = String(input.newestPostedAt);
+      state.simplefin_last_successful_synced_at = input.finishedAt;
+    }
+
+    await writeSyncState(db, state);
+    await db.exec("COMMIT");
+  } catch (error) {
+    await db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return {
+    accountCount: input.accounts.length,
+    connectionCount: input.providerConnections.length,
+    errorCount: input.errors.length,
+    lastSyncedAt: input.finishedAt,
+    newestPostedAt: input.newestPostedAt,
+    transactionCount: input.transactions.length
+  };
+}
+
+async function ingestFinanceKitLedgerSnapshotNow(
+  input: FinanceKitLedgerSnapshotInput
+): Promise<FinanceKitLedgerSnapshotRecord> {
+  const db = await getFinanceDb();
+  const existingOverlays = await readTransactionOverlays(db);
+  const existingTransactions = await readTransactionsByIds(db, input.transactions.map((transaction) => transaction.id));
+  let transactionsAdded = 0;
+  let transactionsUpdated = 0;
+  let transactionsUnchanged = 0;
+
+  await db.exec("BEGIN");
+  try {
+    await db.query(
+      `INSERT INTO sync_runs (
+        id,
+        provider,
+        status,
+        started_at,
+        finished_at,
+        accounts_seen,
+        transactions_seen,
+        error_count,
+        error_message
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NULL)
+      ON CONFLICT (id) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        status = EXCLUDED.status,
+        started_at = EXCLUDED.started_at,
+        finished_at = EXCLUDED.finished_at,
+        accounts_seen = EXCLUDED.accounts_seen,
+        transactions_seen = EXCLUDED.transactions_seen,
+        error_count = EXCLUDED.error_count,
+        error_message = EXCLUDED.error_message`,
+      [
+        `sync_financekit_${input.finishedAt.replace(/[^0-9a-z]/gi, "")}`,
+        "financekit",
+        "succeeded",
+        input.startedAt,
+        input.finishedAt,
+        input.accounts.length,
+        input.transactions.length
+      ]
+    );
+
+    await upsertProviderConnection(db, input.providerConnection);
+
+    for (const account of input.accounts) {
+      await upsertAccount(db, account);
+    }
+
+    for (const snapshot of input.balanceSnapshots) {
+      await db.query(
+        `INSERT INTO account_balance_snapshots (
+          id,
+          account_id,
+          as_of_date,
+          captured_at,
+          ledger_balance_minor,
+          available_balance_minor,
+          currency,
+          source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id) DO UPDATE SET
+          ledger_balance_minor = EXCLUDED.ledger_balance_minor,
+          available_balance_minor = EXCLUDED.available_balance_minor,
+          captured_at = EXCLUDED.captured_at`,
+        [
+          snapshot.id,
+          snapshot.accountId,
+          snapshot.asOfDate,
+          snapshot.capturedAt,
+          moneyToMinor(snapshot.ledgerBalance),
+          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+          snapshot.currency,
+          snapshot.source
+        ]
+      );
+    }
+
+    for (const transaction of input.transactions) {
+      const nextTransaction = mergeTransactionOverlay(transaction, existingOverlays.get(transaction.id));
+      const existingTransaction = existingTransactions.get(transaction.id);
+
+      if (!existingTransaction) {
+        transactionsAdded += 1;
+      } else if (transactionsEqual(existingTransaction, nextTransaction)) {
+        transactionsUnchanged += 1;
+      } else {
+        transactionsUpdated += 1;
+      }
+
+      await upsertTransaction(db, nextTransaction);
+    }
+
+    await clearDanglingTransactionPairs(db);
+    await applyTransactionRulesNow(db);
+    await replaceTransactionSemanticDocuments(db, {
+      source: "teller",
+      version: 1,
+      lastSyncedAt: input.finishedAt,
+      syncStartDate: input.startedAt.slice(0, 10),
+      enrollmentCount: 1,
+      accounts: input.accounts,
+      transactions: input.transactions,
+      providerConnections: [input.providerConnection],
+      syncSummary: {
+        accountCount: input.accounts.length,
+        transactionCount: input.transactions.length,
+        errors: []
+      }
+    });
+
+    await writeSyncState(db, {
+      financekit_account_count: String(input.accounts.length),
+      financekit_device_name: input.deviceName ?? "",
+      financekit_last_ingested_at: input.finishedAt,
+      financekit_transaction_count: String(input.transactions.length),
+      financekit_transactions_added: String(transactionsAdded),
+      financekit_transactions_unchanged: String(transactionsUnchanged),
+      financekit_transactions_updated: String(transactionsUpdated)
+    });
+
+    await db.exec("COMMIT");
+  } catch (error) {
+    await db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return {
+    accountsUpserted: input.accounts.length,
+    lastIngestedAt: input.finishedAt,
+    transactionsAdded,
+    transactionsUnchanged,
+    transactionsUpdated
+  };
 }
 
 export async function readFinanceDbSnapshot(): Promise<TellerLedger | null> {
@@ -793,6 +2080,7 @@ export async function readFinanceDbSnapshot(): Promise<TellerLedger | null> {
 export async function readShellSnapshot(): Promise<{
   accounts: Account[];
   lastSyncedAt: string;
+  reviewActionableCount: number;
   transactionCount: number;
 } | null> {
   if (!financeDbExists()) {
@@ -800,9 +2088,22 @@ export async function readShellSnapshot(): Promise<{
   }
 
   const db = await getFinanceDb();
-  const [accounts, transactionCount, syncState] = await Promise.all([
+  const [accounts, transactionCount, reviewActionableCount, syncState] = await Promise.all([
     db.query<AccountRow>("SELECT * FROM accounts ORDER BY institution_name, name, id"),
     countRows(db, "transactions"),
+    db
+      .query<{ count: number }>(`
+        SELECT COUNT(*)::int AS count
+        FROM transactions
+        WHERE reviewed = FALSE
+          AND category_id <> 'cat_transfer'
+          AND (
+            category_id = 'cat_other'
+            OR amount_minor < 0
+            OR (amount_minor > 0 AND category_id <> 'cat_income')
+          )
+      `)
+      .then((result) => result.rows[0]?.count ?? 0),
     db.query<SyncStateRow>("SELECT key, value FROM sync_state WHERE key = 'last_synced_at'")
   ]);
 
@@ -813,6 +2114,7 @@ export async function readShellSnapshot(): Promise<{
   return {
     accounts: accounts.rows.map(accountFromRow),
     lastSyncedAt: syncState.rows[0]?.value ?? new Date(0).toISOString(),
+    reviewActionableCount,
     transactionCount
   };
 }
@@ -881,6 +2183,7 @@ async function updateDbTransactionNow(
   const account = accountResult.rows[0] ? accountFromRow(accountResult.rows[0]) : undefined;
   const evidenceSummaries = await readTransactionEvidenceSummaries(db, transactionId);
   await upsertSemanticDocument(db, createTransactionSemanticDocument(result, account, evidenceSummaries));
+  invalidateShellDataCache();
 
   return result;
 }
@@ -950,10 +2253,6 @@ export async function ensureSemanticIndex(): Promise<SemanticIndexRefreshResult>
       documentsEmbedded: documents.rows.length
     };
   });
-}
-
-export async function ensureLocalSemanticIndex(): Promise<SemanticIndexRefreshResult> {
-  return ensureSemanticIndex();
 }
 
 export async function semanticSearchTransactions(query: string, limit = 12): Promise<SemanticSearchResult[]> {
@@ -1072,6 +2371,7 @@ async function readLocalAppDataResetSummary(db: FinanceDb): Promise<LocalAppData
     accounts,
     appSyncRuns,
     evidenceLinks,
+    investmentPositions,
     providerConnections,
     rules,
     schedules,
@@ -1087,6 +2387,7 @@ async function readLocalAppDataResetSummary(db: FinanceDb): Promise<LocalAppData
     countRows(db, "accounts"),
     countRows(db, "app_sync_runs"),
     countRows(db, "transaction_evidence_links"),
+    countRows(db, "investment_positions"),
     countRows(db, "provider_connections"),
     countRows(db, "transaction_rules"),
     countRows(db, "sync_schedules"),
@@ -1104,6 +2405,7 @@ async function readLocalAppDataResetSummary(db: FinanceDb): Promise<LocalAppData
     accountCount: accounts,
     appSyncRunCount: appSyncRuns,
     evidenceLinkCount: evidenceLinks,
+    investmentPositionCount: investmentPositions,
     providerConnectionCount: providerConnections,
     ruleCount: rules,
     scheduleCount: schedules,
@@ -1192,20 +2494,36 @@ export async function recordAppSyncRun(input: AppSyncRunInput): Promise<AppSyncR
         started_at,
         finished_at,
         teller_status,
+        financekit_status,
+        plaid_status,
+        snaptrade_status,
+        simplefin_status,
         sources_status,
         enrichment_status,
         teller_summary,
+        financekit_summary,
+        plaid_summary,
+        snaptrade_summary,
+        simplefin_summary,
         sources_summary,
         enrichment_summary,
         error_message
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17::jsonb, $18::jsonb, $19)
       ON CONFLICT (id) DO UPDATE SET
         status = EXCLUDED.status,
         finished_at = EXCLUDED.finished_at,
         teller_status = EXCLUDED.teller_status,
+        financekit_status = EXCLUDED.financekit_status,
+        plaid_status = EXCLUDED.plaid_status,
+        snaptrade_status = EXCLUDED.snaptrade_status,
+        simplefin_status = EXCLUDED.simplefin_status,
         sources_status = EXCLUDED.sources_status,
         enrichment_status = EXCLUDED.enrichment_status,
         teller_summary = EXCLUDED.teller_summary,
+        financekit_summary = EXCLUDED.financekit_summary,
+        plaid_summary = EXCLUDED.plaid_summary,
+        snaptrade_summary = EXCLUDED.snaptrade_summary,
+        simplefin_summary = EXCLUDED.simplefin_summary,
         sources_summary = EXCLUDED.sources_summary,
         enrichment_summary = EXCLUDED.enrichment_summary,
         error_message = EXCLUDED.error_message`,
@@ -1215,9 +2533,17 @@ export async function recordAppSyncRun(input: AppSyncRunInput): Promise<AppSyncR
         input.startedAt,
         input.finishedAt,
         input.tellerStatus,
+        input.financekitStatus ?? "succeeded",
+        input.plaidStatus ?? "succeeded",
+        input.snaptradeStatus ?? "succeeded",
+        input.simplefinStatus ?? "succeeded",
         input.sourcesStatus,
         input.enrichmentStatus,
         JSON.stringify(input.tellerSummary),
+        JSON.stringify(input.financekitSummary ?? { configured: false, skipped: true }),
+        JSON.stringify(input.plaidSummary ?? { configured: false, skipped: true }),
+        JSON.stringify(input.snaptradeSummary ?? { configured: false, skipped: true }),
+        JSON.stringify(input.simplefinSummary ?? { configured: false, skipped: true }),
         JSON.stringify(input.sourcesSummary),
         JSON.stringify(input.enrichmentSummary),
         input.errorMessage ?? null
@@ -1914,6 +3240,7 @@ export async function createTransactionRule(input: TransactionRuleInput): Promis
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const now = new Date().toISOString();
+    const categoryIds = new Set((await listCategoriesInDb(db, { includeArchived: false })).map((category) => category.id));
     const validation = validateTransactionRuleCreateBody(
       {
         category_id: input.categoryId,
@@ -1925,7 +3252,7 @@ export async function createTransactionRule(input: TransactionRuleInput): Promis
         pattern: input.pattern,
         tags: input.tags ?? []
       },
-      appCategoryIdSet
+      categoryIds
     );
 
     if (!validation.ok) {
@@ -2020,7 +3347,8 @@ export async function updateTransactionRule(
       updateBody.tags = update.tags;
     }
 
-    const validation = validateTransactionRuleUpdateBody(updateBody, appCategoryIdSet, {
+    const categoryIds = new Set((await listCategoriesInDb(db, { includeArchived: false })).map((category) => category.id));
+    const validation = validateTransactionRuleUpdateBody(updateBody, categoryIds, {
       matchOperator: existing.matchOperator,
       pattern: existing.pattern
     });
@@ -2078,6 +3406,104 @@ export async function deleteTransactionRule(ruleId: string): Promise<boolean> {
   });
 }
 
+export interface ProviderConnectionDeletion {
+  accountCount: number;
+  removed: boolean;
+  transactionCount: number;
+}
+
+/* Removing a bank connection drops its provider_connections row; accounts,
+   balance snapshots, transactions, and their evidence/suggestion links all
+   cascade (ON DELETE CASCADE). The caller is responsible for removing the
+   matching Teller enrollment from the credential bundle. */
+export async function deleteProviderConnection(providerConnectionId: string): Promise<ProviderConnectionDeletion> {
+  if (!financeDbExists()) {
+    return { accountCount: 0, removed: false, transactionCount: 0 };
+  }
+
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const accountCount = await db.query<{ count: number }>(
+      "SELECT COUNT(*)::int AS count FROM accounts WHERE provider_connection_id = $1",
+      [providerConnectionId]
+    );
+    const transactionCount = await db.query<{ count: number }>(
+      "SELECT COUNT(*)::int AS count FROM transactions WHERE provider_connection_id = $1",
+      [providerConnectionId]
+    );
+    const result = await db.query<{ id: string }>(
+      "DELETE FROM provider_connections WHERE id = $1 RETURNING id",
+      [providerConnectionId]
+    );
+
+    return {
+      accountCount: accountCount.rows[0]?.count ?? 0,
+      removed: result.rows.length > 0,
+      transactionCount: transactionCount.rows[0]?.count ?? 0
+    };
+  });
+}
+
+export interface ConnectionInventory {
+  accounts: Account[];
+  providerByConnection: Record<string, ProviderConnection["provider"]>;
+  transactionCountByConnection: Record<string, number>;
+}
+
+/* Accounts + per-connection transaction counts for the Settings connections
+   list. Lighter than readFinanceDbSnapshot — never loads transaction rows. */
+export async function listConnectionInventory(): Promise<ConnectionInventory> {
+  if (!financeDbExists()) {
+    return { accounts: [], providerByConnection: {}, transactionCountByConnection: {} };
+  }
+
+  const db = await getFinanceDb();
+  const [accounts, providerConnections, transactionCounts] = await Promise.all([
+    db.query<AccountRow>("SELECT * FROM accounts ORDER BY institution_name, name, id"),
+    db.query<Pick<ProviderConnectionRow, "id" | "provider">>("SELECT id, provider FROM provider_connections"),
+    db.query<{ provider_connection_id: string; count: number }>(
+      "SELECT provider_connection_id, COUNT(*)::int AS count FROM transactions GROUP BY provider_connection_id"
+    )
+  ]);
+
+  const providerByConnection: Record<string, ProviderConnection["provider"]> = {};
+  for (const row of providerConnections.rows) {
+    providerByConnection[row.id] = row.provider;
+  }
+
+  const transactionCountByConnection: Record<string, number> = {};
+  for (const row of transactionCounts.rows) {
+    transactionCountByConnection[row.provider_connection_id] = row.count;
+  }
+
+  return {
+    accounts: accounts.rows.map(accountFromRow),
+    providerByConnection,
+    transactionCountByConnection
+  };
+}
+
+export async function listInvestmentPositions(accountIds?: string[]): Promise<InvestmentPosition[]> {
+  if (!financeDbExists()) {
+    return [];
+  }
+
+  const db = await getFinanceDb();
+  const normalizedAccountIds = [...new Set((accountIds ?? []).filter((id) => id.trim().length > 0))];
+  const result =
+    normalizedAccountIds.length > 0
+      ? await db.query<InvestmentPositionRow>(
+          `SELECT *
+          FROM investment_positions
+          WHERE account_id = ANY($1)
+          ORDER BY symbol, id`,
+          [normalizedAccountIds]
+        )
+      : await db.query<InvestmentPositionRow>("SELECT * FROM investment_positions ORDER BY symbol, id");
+
+  return result.rows.map(investmentPositionFromRow);
+}
+
 export async function applyTransactionRules(ruleIds?: string[]): Promise<RuleApplyResult> {
   if (!financeDbExists()) {
     return {
@@ -2089,6 +3515,92 @@ export async function applyTransactionRules(ruleIds?: string[]): Promise<RuleApp
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     return applyTransactionRulesNow(db, ruleIds);
+  });
+}
+
+export interface RuleMatchPatternSpec {
+  matchField: TransactionRuleMatchField;
+  matchOperator: TransactionRuleMatchOperator;
+  pattern: string;
+}
+
+export interface BulkCategorizeByMatchInput extends RuleMatchPatternSpec {
+  categoryId: string;
+}
+
+export interface BulkCategorizeByMatchResult {
+  transactionsUpdated: number;
+  updatedTransactionIds: string[];
+}
+
+function ephemeralRuleFromSpec(spec: RuleMatchPatternSpec, categoryId?: string): TransactionRule {
+  return {
+    id: "__ephemeral__",
+    name: "__ephemeral__",
+    enabled: true,
+    matchField: spec.matchField,
+    matchOperator: spec.matchOperator,
+    pattern: spec.pattern,
+    categoryId,
+    tags: [],
+    markReviewed: false,
+    createdAt: "",
+    updatedAt: "",
+    lastAppliedCount: 0
+  };
+}
+
+/**
+ * Read-only parity matcher shared by the rules preview endpoint. Runs a
+ * transaction through the exact same matcher the rules engine uses when it
+ * applies a rule, so preview/bulk results can never drift from what a real
+ * rule would touch.
+ */
+export function transactionMatchesRulePattern(transaction: Transaction, spec: RuleMatchPatternSpec): boolean {
+  return transactionMatchesRule(transaction, ephemeralRuleFromSpec(spec));
+}
+
+/**
+ * Recategorizes every transaction that matches the given {field, operator,
+ * pattern} spec WITHOUT persisting a rule. Uses the same engine matcher as
+ * applyTransactionRulesNow so behavior is identical to a `contains` rule.
+ */
+export async function bulkCategorizeTransactionsByMatch(
+  input: BulkCategorizeByMatchInput
+): Promise<BulkCategorizeByMatchResult> {
+  if (!financeDbExists()) {
+    return { transactionsUpdated: 0, updatedTransactionIds: [] };
+  }
+
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const rule = ephemeralRuleFromSpec(input, input.categoryId);
+    const transactionResult = await db.query<TransactionRow>("SELECT * FROM transactions ORDER BY date DESC, id DESC");
+    const transactions = transactionResult.rows.map(transactionFromRow);
+    const updatedTransactionIds: string[] = [];
+
+    for (const transaction of transactions) {
+      if (transaction.categoryId === input.categoryId) {
+        continue;
+      }
+
+      if (!transactionMatchesRule(transaction, rule)) {
+        continue;
+      }
+
+      await upsertTransaction(db, { ...transaction, categoryId: input.categoryId });
+      updatedTransactionIds.push(transaction.id);
+    }
+
+    for (const transactionId of updatedTransactionIds) {
+      await refreshTransactionSemanticDocument(db, transactionId);
+    }
+
+    if (updatedTransactionIds.length > 0) {
+      invalidateShellDataCache();
+    }
+
+    return { transactionsUpdated: updatedTransactionIds.length, updatedTransactionIds };
   });
 }
 
@@ -2158,14 +3670,29 @@ export async function listEnrichmentSuggestionItems({
   }));
 }
 
-export async function generateEnrichmentSuggestions(limit = 100): Promise<EnrichmentRunResult> {
+export async function runInternalTransferPairMatching(): Promise<InternalTransferPairMatchRunSummary> {
+  if (!financeDbExists()) {
+    return emptyInternalTransferPairMatchRunSummary;
+  }
+
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    return runInternalTransferPairMatchingNow(db);
+  });
+}
+
+export async function generateEnrichmentSuggestionsWithLlm(
+  limit = 100,
+  dependencies: FinanceDbLlmEnrichmentDependencies
+): Promise<EnrichmentRunResult> {
   if (!financeDbExists()) {
     return {
       generatedAt: new Date().toISOString(),
+      pairMatcher: emptyInternalTransferPairMatchRunSummary,
       pendingSuggestions: 0,
       provider: {
         completed: false,
-        provider: getLlmEnrichmentStatus(),
+        provider: await dependencies.getProviderStatus(),
         suggestionsAccepted: 0,
         suggestionsRejected: 0,
         suggestionsSeen: 0
@@ -2178,6 +3705,7 @@ export async function generateEnrichmentSuggestions(limit = 100): Promise<Enrich
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const cappedLimit = boundedInteger(limit, 100, 100);
+    const pairMatcher = await runInternalTransferPairMatchingNow(db);
     const transactionRows = await db.query<TransactionRow>("SELECT * FROM transactions ORDER BY date DESC, id DESC");
     const transactions = transactionRows.rows.map(transactionFromRow);
     const ruleRows = await db.query<TransactionRuleRow>(
@@ -2237,7 +3765,7 @@ export async function generateEnrichmentSuggestions(limit = 100): Promise<Enrich
         l.created_at DESC`
     );
     const llmEvidenceByTransactionId = groupLlmEvidenceByTransactionId(llmEvidenceRows.rows);
-    const llmRun = await generateLlmEnrichmentSuggestions({
+    const llmRun = await dependencies.generateLlmEnrichmentSuggestions({
       evidenceByTransactionId: llmEvidenceByTransactionId,
       existingRules,
       limit: Math.min(cappedLimit, 50),
@@ -2298,6 +3826,7 @@ export async function generateEnrichmentSuggestions(limit = 100): Promise<Enrich
 
       return {
         generatedAt: now,
+        pairMatcher,
         pendingSuggestions: pendingResult.rows[0]?.count ?? 0,
         provider: {
           completed: llmRun.completed,
@@ -2316,6 +3845,140 @@ export async function generateEnrichmentSuggestions(limit = 100): Promise<Enrich
       throw error;
     }
   });
+}
+
+async function runInternalTransferPairMatchingNow(db: FinanceDb): Promise<InternalTransferPairMatchRunSummary> {
+  const transactionRows = await db.query<TransactionRow>("SELECT * FROM transactions ORDER BY date DESC, id DESC");
+  const accountRows = await db.query<AccountRow>("SELECT * FROM accounts");
+  const accounts = accountRows.rows.map(accountFromRow);
+  const transactions = transactionRows.rows.map(transactionFromRow);
+  const plan = buildInternalTransferPairMatchPlan({ accounts, transactions });
+
+  // The pair matcher owns any transaction that has an opposite-side candidate
+  // (auto or pending). One-sided marking only handles transactions with no
+  // connected counterpart at all, so the two never fight over the same row.
+  const pairedTransactionIds = new Set(plan.candidatePairs.flatMap((pair) => pair.transactionIds));
+  const oneSidedPlan = buildOneSidedInternalTransferPlan({
+    accounts,
+    transactions,
+    excludeTransactionIds: pairedTransactionIds
+  });
+
+  const suggestions = [...plan.autoApplySuggestions, ...plan.pendingSuggestions];
+  const suggestionIds = suggestions.map((suggestion) => suggestion.id);
+  const oneSidedSuggestionIds = oneSidedPlan.autoApplySuggestions.map((suggestion) => suggestion.id);
+  const now = new Date().toISOString();
+
+  await db.exec("BEGIN");
+  try {
+    for (const suggestion of suggestions) {
+      await upsertEnrichmentSuggestion(db, suggestion, now);
+    }
+    for (const suggestion of oneSidedPlan.autoApplySuggestions) {
+      await upsertEnrichmentSuggestion(db, suggestion, now);
+    }
+
+    await prunePendingSuggestionsForSource(db, internalTransferPairMatcherSource, suggestionIds);
+    await prunePendingSuggestionsForSource(db, internalTransferHeuristicSource, oneSidedSuggestionIds);
+
+    await db.exec("COMMIT");
+  } catch (error) {
+    await db.exec("ROLLBACK");
+    throw error;
+  }
+
+  let autoAppliedPairs = 0;
+  let autoAppliedSuggestions = 0;
+  let linkedPairs = 0;
+
+  for (const pair of plan.autoApplyPairs) {
+    const pairSuggestions = plan.autoApplySuggestions.filter((suggestion) =>
+      pair.transactionIds.includes(suggestion.transactionId)
+    );
+    let appliedForPair = 0;
+
+    for (const suggestion of pairSuggestions) {
+      const result = await applyEnrichmentSuggestionNow(db, suggestion.id);
+
+      if (result) {
+        appliedForPair += 1;
+        autoAppliedSuggestions += 1;
+      }
+    }
+
+    if (appliedForPair > 0) {
+      autoAppliedPairs += 1;
+      // Hard-link the two counterparts (Copilot's `internal_tx_match`) so each
+      // side knows its match after both were marked `cat_transfer`.
+      const linked = await linkInternalTransferCounterparts(
+        db,
+        pair.positiveTransactionId,
+        pair.negativeTransactionId
+      );
+      if (linked) {
+        linkedPairs += 1;
+      }
+    }
+  }
+
+  let autoAppliedOneSided = 0;
+  for (const suggestion of oneSidedPlan.autoApplySuggestions) {
+    const result = await applyEnrichmentSuggestionNow(db, suggestion.id);
+    if (result) {
+      autoAppliedOneSided += 1;
+    }
+  }
+
+  return {
+    autoAppliedPairs,
+    autoAppliedSuggestions,
+    candidatePairs: plan.candidatePairs.length,
+    queuedPairs: plan.pendingPairs.length,
+    queuedSuggestions: plan.pendingSuggestions.length,
+    linkedPairs,
+    autoAppliedOneSided
+  };
+}
+
+/** Delete stale pending suggestions for a source, keeping only the current run's ids. */
+async function prunePendingSuggestionsForSource(db: FinanceDb, source: string, keepIds: string[]): Promise<void> {
+  if (keepIds.length > 0) {
+    await db.query(
+      `DELETE FROM enrichment_suggestions
+      WHERE source = $1
+        AND status = 'pending'
+        AND NOT (id = ANY($2))`,
+      [source, keepIds]
+    );
+  } else {
+    await db.query(
+      `DELETE FROM enrichment_suggestions
+      WHERE source = $1
+        AND status = 'pending'`,
+      [source]
+    );
+  }
+}
+
+/**
+ * Write the hard `paired_transaction_id` link on both counterparts. Only fills a
+ * link that is empty or already points at the same counterpart, so an existing
+ * (possibly user-confirmed) link is never silently repointed. Returns whether a
+ * fresh link was written.
+ */
+async function linkInternalTransferCounterparts(db: FinanceDb, left: string, right: string): Promise<boolean> {
+  const result = await db.query<{ id: string }>(
+    `UPDATE transactions AS t
+    SET paired_transaction_id = c.counterpart
+    FROM (VALUES ($1::text, $2::text), ($2::text, $1::text)) AS c(id, counterpart)
+    WHERE t.id = c.id
+      AND (t.paired_transaction_id IS NULL OR t.paired_transaction_id = c.counterpart)
+      AND t.paired_transaction_id IS DISTINCT FROM c.counterpart
+    RETURNING t.id`,
+    [left, right]
+  );
+
+  return result.rows.length > 0;
 }
 
 export async function applyEnrichmentSuggestion(suggestionId: string): Promise<SuggestionApplyResult | null> {
@@ -2653,6 +4316,28 @@ export async function getSemanticDocumentSummary() {
   };
 }
 
+export async function listTransactionSemanticDocumentsForTests(): Promise<
+  Array<{ bodyHash: string; resourceId: string; updatedAt: string }>
+> {
+  if (!financeDbExists()) {
+    return [];
+  }
+
+  const db = await getFinanceDb();
+  const result = await db.query<{ body_hash: string; resource_id: string; updated_at: string }>(
+    `SELECT resource_id, body_hash, updated_at
+    FROM semantic_documents
+    WHERE resource_type = 'transaction'
+    ORDER BY resource_id ASC`
+  );
+
+  return result.rows.map((row) => ({
+    bodyHash: row.body_hash,
+    resourceId: row.resource_id,
+    updatedAt: row.updated_at
+  }));
+}
+
 async function getSemanticEmbeddingSummary() {
   if (!financeDbExists()) {
     return {
@@ -2698,9 +4383,34 @@ export function getFinanceDbWriteQueueForTests(): Promise<void> {
   return getFinanceDbState().writeQueue;
 }
 
+export async function readSyncStateValue(key: string): Promise<string | undefined> {
+  if (!financeDbExists()) {
+    return undefined;
+  }
+
+  const db = await getFinanceDb();
+  const result = await db.query<SyncStateRow>("SELECT value FROM sync_state WHERE key = $1", [key]);
+  return result.rows[0]?.value;
+}
+
+export async function writeSyncStateValue(key: string, value: string): Promise<void> {
+  await enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await writeSyncState(db, { [key]: value });
+  });
+}
+
+export async function deleteSyncStateValue(key: string): Promise<void> {
+  await enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await db.query("DELETE FROM sync_state WHERE key = $1", [key]);
+  });
+}
+
 function enqueueDbWrite<T>(operation: () => Promise<T>): Promise<T> {
   const state = getFinanceDbState();
-  const nextOperation = state.writeQueue.then(operation, operation);
+  const runOperation = () => dbWriteContext.run({ inWrite: true }, operation);
+  const nextOperation = state.writeQueue.then(runOperation, runOperation);
   state.writeQueue = nextOperation.then(
     () => undefined,
     () => undefined
@@ -2825,6 +4535,19 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       source TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS investment_positions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL,
+      description TEXT NOT NULL,
+      units REAL NOT NULL,
+      price REAL,
+      currency TEXT NOT NULL,
+      market_value_minor INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS investment_positions_account_idx ON investment_positions(account_id);
+
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -2848,6 +4571,37 @@ async function runMigrations(db: FinanceDb): Promise<void> {
     CREATE INDEX IF NOT EXISTS transactions_date_idx ON transactions(date DESC);
     CREATE INDEX IF NOT EXISTS transactions_account_date_idx ON transactions(account_id, date DESC);
     CREATE INDEX IF NOT EXISTS transactions_category_idx ON transactions(category_id);
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      color TEXT NOT NULL,
+      archived BOOLEAN NOT NULL DEFAULT FALSE,
+      sort_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS categories_archived_sort_idx ON categories(archived, sort_order);
+
+    CREATE TABLE IF NOT EXISTS tag_registry (
+      name TEXT PRIMARY KEY,
+      color TEXT,
+      kind TEXT NOT NULL DEFAULT 'user',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS financial_goals (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      emoji TEXT,
+      target_amount_minor INTEGER,
+      state TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS transaction_rules (
       id TEXT PRIMARY KEY,
@@ -2921,9 +4675,17 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       started_at TEXT NOT NULL,
       finished_at TEXT NOT NULL,
       teller_status TEXT NOT NULL,
+      financekit_status TEXT NOT NULL DEFAULT 'succeeded',
+      plaid_status TEXT NOT NULL DEFAULT 'succeeded',
+      snaptrade_status TEXT NOT NULL DEFAULT 'succeeded',
+      simplefin_status TEXT NOT NULL DEFAULT 'succeeded',
       sources_status TEXT NOT NULL,
       enrichment_status TEXT NOT NULL,
       teller_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+      financekit_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+      plaid_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+      snaptrade_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+      simplefin_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       sources_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       enrichment_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       error_message TEXT
@@ -3015,6 +4777,68 @@ async function runMigrations(db: FinanceDb): Promise<void> {
     CREATE INDEX IF NOT EXISTS semantic_documents_resource_idx ON semantic_documents(resource_type, resource_id);
   `);
 
+  await db.exec(`
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS financekit_status TEXT NOT NULL DEFAULT 'succeeded';
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS financekit_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS plaid_status TEXT NOT NULL DEFAULT 'succeeded';
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS plaid_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS snaptrade_status TEXT NOT NULL DEFAULT 'succeeded';
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS snaptrade_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS simplefin_status TEXT NOT NULL DEFAULT 'succeeded';
+    ALTER TABLE app_sync_runs
+      ADD COLUMN IF NOT EXISTS simplefin_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE transactions
+      ADD COLUMN IF NOT EXISTS financial_goal_id TEXT;
+    CREATE INDEX IF NOT EXISTS transactions_financial_goal_idx ON transactions(financial_goal_id);
+    ALTER TABLE transactions
+      ADD COLUMN IF NOT EXISTS paired_transaction_id TEXT;
+    CREATE INDEX IF NOT EXISTS transactions_paired_idx ON transactions(paired_transaction_id);
+    ALTER TABLE tag_registry
+      ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'user';
+  `);
+
+  await db.exec(`
+    UPDATE transactions
+    SET financial_goal_id = NULL
+    WHERE financial_goal_id IS NOT NULL
+      AND financial_goal_id NOT IN (SELECT id FROM financial_goals);
+  `);
+  await clearDanglingTransactionPairs(db);
+
+  if (db.dialect === "postgres") {
+    await db.exec(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'transactions_financial_goal_fk'
+        ) THEN
+          ALTER TABLE transactions
+          ADD CONSTRAINT transactions_financial_goal_fk
+          FOREIGN KEY (financial_goal_id)
+          REFERENCES financial_goals(id)
+          ON DELETE SET NULL;
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'transactions_paired_transaction_fk'
+        ) THEN
+          ALTER TABLE transactions
+          ADD CONSTRAINT transactions_paired_transaction_fk
+          FOREIGN KEY (paired_transaction_id)
+          REFERENCES transactions(id)
+          ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+  }
+
   if (db.dialect === "postgres") {
     await db.exec(`
       CREATE INDEX IF NOT EXISTS semantic_embeddings_embedding_hnsw_idx
@@ -3022,7 +4846,18 @@ async function runMigrations(db: FinanceDb): Promise<void> {
     `);
   }
 
+  await ensureCategoryRegistrySeeded(db);
   await sanitizeStoredSourceItemCurrencies(db);
+  await backfillTagRegistryKinds(db);
+}
+
+async function clearDanglingTransactionPairs(db: FinanceDb): Promise<void> {
+  await db.query(
+    `UPDATE transactions
+    SET paired_transaction_id = NULL
+    WHERE paired_transaction_id IS NOT NULL
+      AND paired_transaction_id NOT IN (SELECT id FROM transactions)`
+  );
 }
 
 async function sanitizeStoredSourceItemCurrencies(db: FinanceDb): Promise<void> {
@@ -3055,6 +4890,217 @@ async function sanitizeStoredSourceItemCurrencies(db: FinanceDb): Promise<void> 
   );
 }
 
+/**
+ * Exact adapter names sync writers use as a bare tag (`simplefin`, `plaid`,
+ * `financekit`, `snaptrade`) or as a namespace prefix (`teller:card_payment`).
+ * Any tag name containing `:` is also treated as a machine/namespaced tag —
+ * real user-typed tags don't use that syntax. Everything else is a `user`
+ * tag: something a person typed (manual tag, rule action, tag popover
+ * "Create ..."). This is the single source of truth for tag `kind` — it's
+ * applied uniformly at every write site (registry backfill, tag-registry
+ * auto-registration on transaction upsert, and explicit tag-color upserts)
+ * rather than trusting each call site to say which "kind" it meant.
+ */
+const SOURCE_ADAPTER_TAG_NAMES = new Set(["simplefin", "plaid", "teller", "snaptrade", "financekit"]);
+
+function classifyTagKind(name: string): "source" | "user" {
+  const normalized = name.trim().toLowerCase();
+
+  if (!normalized) {
+    return "user";
+  }
+
+  if (normalized.includes(":")) {
+    return "source";
+  }
+
+  return SOURCE_ADAPTER_TAG_NAMES.has(normalized) ? "source" : "user";
+}
+
+/**
+ * One-time-effective migration step, safe to re-run on every boot:
+ * 1. Reclassifies any existing `tag_registry` row whose stored `kind` no
+ *    longer matches the deterministic name-based rule (covers rows created
+ *    before the `kind` column existed, which all default to `'user'`).
+ * 2. Discovers tag names that only ever appeared inside `transactions.tags`
+ *    and never got an explicit registry row (provider tags written by sync
+ *    before this migration landed never called `upsertTagStyle`), and
+ *    registers them now so the user-facing tag popover filters them out
+ *    immediately instead of waiting for the next sync to re-touch them.
+ */
+async function backfillTagRegistryKinds(db: FinanceDb): Promise<{ discovered: number; reclassified: number }> {
+  const existingRows = await db.query<{ kind: string; name: string }>("SELECT name, kind FROM tag_registry");
+  const mismatched = existingRows.rows.filter((row) => row.kind !== classifyTagKind(row.name));
+
+  for (const row of mismatched) {
+    await db.query("UPDATE tag_registry SET kind = $1 WHERE name = $2", [classifyTagKind(row.name), row.name]);
+  }
+
+  const usedNames = await db.query<{ name: string }>(
+    "SELECT DISTINCT jsonb_array_elements_text(tags) AS name FROM transactions"
+  );
+  const timestamp = new Date().toISOString();
+  let discovered = 0;
+
+  for (const usedName of usedNames.rows) {
+    const tagName = normalizeTagName(usedName.name);
+
+    if (!tagName) {
+      continue;
+    }
+
+    const inserted = await db.query(
+      `INSERT INTO tag_registry (name, color, kind, created_at, updated_at)
+      VALUES ($1, NULL, $2, $3, $3)
+      ON CONFLICT (name) DO NOTHING
+      RETURNING name`,
+      [tagName, classifyTagKind(tagName), timestamp]
+    );
+
+    if (inserted.rows.length > 0) {
+      discovered += 1;
+    }
+  }
+
+  return { discovered, reclassified: mismatched.length };
+}
+
+/**
+ * Auto-registers every tag name on a transaction into `tag_registry` (kind
+ * classified from the name, color left unset) so sync-written provider tags
+ * and user-written tags alike always have a registry row by the time the
+ * write that touched them returns — the UI never has to fall back to
+ * guessing a tag's kind. Uses `DO NOTHING` so it never clobbers a
+ * previously-assigned color or (deterministically identical) kind.
+ */
+async function registerTagRegistryEntries(db: FinanceDb, tags: string[]): Promise<void> {
+  if (tags.length === 0) {
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+
+  for (const tag of tags) {
+    const tagName = normalizeTagName(tag);
+
+    if (!tagName) {
+      continue;
+    }
+
+    await db.query(
+      `INSERT INTO tag_registry (name, color, kind, created_at, updated_at)
+      VALUES ($1, NULL, $2, $3, $3)
+      ON CONFLICT (name) DO NOTHING`,
+      [tagName, classifyTagKind(tagName), timestamp]
+    );
+  }
+}
+
+async function ensureCategoryRegistrySeeded(db: FinanceDb): Promise<void> {
+  const timestamp = new Date().toISOString();
+
+  for (const category of appCategories) {
+    await db.query(
+      `INSERT INTO categories (
+        id,
+        name,
+        emoji,
+        color,
+        archived,
+        sort_order,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, FALSE, $5, $6, $6)
+      ON CONFLICT (id) DO NOTHING`,
+      [category.id, category.name, category.emoji, category.color, category.sortOrder, timestamp]
+    );
+  }
+}
+
+async function listCategoriesInDb(
+  db: FinanceDb,
+  {
+    includeArchived
+  }: {
+    includeArchived: boolean;
+  }
+): Promise<Category[]> {
+  await ensureCategoryRegistrySeeded(db);
+  const result = includeArchived
+    ? await db.query<CategoryRegistryRow>("SELECT * FROM categories ORDER BY sort_order, lower(name), id")
+    : await db.query<CategoryRegistryRow>(
+        "SELECT * FROM categories WHERE archived = FALSE ORDER BY sort_order, lower(name), id"
+      );
+
+  return result.rows.map(categoryFromRow);
+}
+
+async function getCategoryInDb(db: FinanceDb, categoryId: string): Promise<Category | null> {
+  await ensureCategoryRegistrySeeded(db);
+  const result = await db.query<CategoryRegistryRow>("SELECT * FROM categories WHERE id = $1", [categoryId]);
+  return result.rows[0] ? categoryFromRow(result.rows[0]) : null;
+}
+
+async function upsertCategoryRegistryRow(db: FinanceDb, category: Category): Promise<void> {
+  await db.query(
+    `INSERT INTO categories (
+      id,
+      name,
+      emoji,
+      color,
+      archived,
+      sort_order,
+      created_at,
+      updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      emoji = EXCLUDED.emoji,
+      color = EXCLUDED.color,
+      archived = EXCLUDED.archived,
+      sort_order = EXCLUDED.sort_order,
+      updated_at = EXCLUDED.updated_at`,
+    [
+      category.id,
+      category.name,
+      category.emoji,
+      category.color,
+      category.archived,
+      category.sortOrder,
+      category.createdAt ?? new Date().toISOString(),
+      category.updatedAt ?? new Date().toISOString()
+    ]
+  );
+}
+
+function categoryFromRow(row: CategoryRegistryRow): Category {
+  const builtIn = appCategories.find((category) => category.id === row.id);
+
+  return {
+    archived: row.archived,
+    budgetAmount: builtIn?.budgetAmount,
+    color: normalizeRegistryColor(row.color) ?? neutralCategoryColor,
+    createdAt: row.created_at,
+    emoji: normalizeEmoji(row.emoji) ?? inferCategoryEmoji(row.name, neutralCategoryEmoji),
+    icon: builtIn?.icon ?? "circle",
+    id: row.id,
+    name: row.name,
+    parentId: builtIn?.parentId,
+    sortOrder: row.sort_order,
+    updatedAt: row.updated_at
+  };
+}
+
+function tagStyleFromRow(row: TagRegistryRow): TagStyle {
+  return {
+    color: row.color ?? undefined,
+    createdAt: row.created_at,
+    kind: row.kind === "source" ? "source" : "user",
+    name: row.name,
+    updatedAt: row.updated_at
+  };
+}
+
 async function readTransactionOverlays(db: FinanceDb): Promise<Map<string, TransactionOverlayRow>> {
   const hasTransactions = await db.query<{ exists: boolean }>(
     "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'transactions') AS exists"
@@ -3064,8 +5110,24 @@ async function readTransactionOverlays(db: FinanceDb): Promise<Map<string, Trans
     return new Map();
   }
 
-  const rows = await db.query<TransactionOverlayRow>("SELECT id, category_id, reviewed, tags, notes FROM transactions");
+  const rows = await db.query<TransactionOverlayRow>(
+    "SELECT id, category_id, reviewed, tags, notes, financial_goal_id, paired_transaction_id FROM transactions"
+  );
   return new Map(rows.rows.map((row) => [row.id, row]));
+}
+
+async function readTransactionsByIds(db: FinanceDb, ids: string[]): Promise<Map<string, Transaction>> {
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db.query<TransactionRow>("SELECT * FROM transactions WHERE id = ANY($1)", [uniqueIds]);
+  return new Map(rows.rows.map((row) => {
+    const transaction = transactionFromRow(row);
+    return [transaction.id, transaction];
+  }));
 }
 
 async function upsertProviderConnection(db: FinanceDb, connection: ProviderConnection): Promise<void> {
@@ -3146,7 +5208,43 @@ async function upsertAccount(db: FinanceDb, account: Account): Promise<void> {
   );
 }
 
+async function upsertInvestmentPosition(db: FinanceDb, position: InvestmentPosition): Promise<void> {
+  await db.query(
+    `INSERT INTO investment_positions (
+      id,
+      account_id,
+      symbol,
+      description,
+      units,
+      price,
+      currency,
+      market_value_minor
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    ON CONFLICT (id) DO UPDATE SET
+      account_id = EXCLUDED.account_id,
+      symbol = EXCLUDED.symbol,
+      description = EXCLUDED.description,
+      units = EXCLUDED.units,
+      price = EXCLUDED.price,
+      currency = EXCLUDED.currency,
+      market_value_minor = EXCLUDED.market_value_minor`,
+    [
+      position.id,
+      position.accountId,
+      position.symbol,
+      position.description,
+      position.units,
+      position.price ?? null,
+      position.currency,
+      moneyToMinor(position.marketValue)
+    ]
+  );
+}
+
 async function upsertTransaction(db: FinanceDb, transaction: Transaction): Promise<Transaction> {
+  const tags = normalizeTags(transaction.tags);
+  await registerTagRegistryEntries(db, tags);
+
   const result = await db.query<TransactionRow>(
     `INSERT INTO transactions (
       id,
@@ -3164,8 +5262,10 @@ async function upsertTransaction(db: FinanceDb, transaction: Transaction): Promi
       reviewed,
       tags,
       notes,
-      pending_transaction_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16)
+      pending_transaction_id,
+      financial_goal_id,
+      paired_transaction_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18)
     ON CONFLICT (id) DO UPDATE SET
       account_id = EXCLUDED.account_id,
       provider_connection_id = EXCLUDED.provider_connection_id,
@@ -3181,7 +5281,9 @@ async function upsertTransaction(db: FinanceDb, transaction: Transaction): Promi
       reviewed = EXCLUDED.reviewed,
       tags = EXCLUDED.tags,
       notes = EXCLUDED.notes,
-      pending_transaction_id = EXCLUDED.pending_transaction_id
+      pending_transaction_id = EXCLUDED.pending_transaction_id,
+      financial_goal_id = EXCLUDED.financial_goal_id,
+      paired_transaction_id = EXCLUDED.paired_transaction_id
     RETURNING *`,
     [
       transaction.id,
@@ -3197,9 +5299,11 @@ async function upsertTransaction(db: FinanceDb, transaction: Transaction): Promi
       transaction.categoryId,
       transaction.status,
       transaction.reviewed,
-      JSON.stringify(normalizeTags(transaction.tags)),
+      JSON.stringify(tags),
       transaction.notes ?? null,
-      transaction.pendingTransactionId ?? null
+      transaction.pendingTransactionId ?? null,
+      transaction.financialGoalId ?? null,
+      transaction.pairedTransactionId ?? null
     ]
   );
 
@@ -3978,8 +6082,8 @@ function groupLlmEvidenceByTransactionId(
     title: string;
     transaction_id: string;
   }>
-): Map<string, LlmEvidenceSummary[]> {
-  const result = new Map<string, LlmEvidenceSummary[]>();
+): Map<string, FinanceDbLlmEvidenceSummary[]> {
+  const result = new Map<string, FinanceDbLlmEvidenceSummary[]>();
 
   for (const row of rows) {
     result.set(row.transaction_id, [
@@ -4010,7 +6114,7 @@ async function writeSyncState(db: FinanceDb, state: Record<string, string>): Pro
 
 async function writeLlmProviderHealthSnapshot(
   db: FinanceDb,
-  provider: LlmProviderStatus,
+  provider: FinanceDbLlmProviderStatus,
   checkedAt: string
 ): Promise<void> {
   await writeSyncState(db, {
@@ -4100,36 +6204,60 @@ function parseExternalSourceStatus(value: unknown): ExternalSourceStatus | null 
     : null;
 }
 
-function sameConfiguredLlmProvider(left: LlmProviderStatus, right: LlmProviderStatus): boolean {
+function sameConfiguredLlmProvider(left: FinanceDbLlmProviderStatus, right: FinanceDbLlmProviderStatus): boolean {
   return left.provider === right.provider &&
     left.model === right.model &&
     (left.baseUrl ?? "") === (right.baseUrl ?? "");
 }
 
 async function replaceTransactionSemanticDocuments(db: FinanceDb, ledger: TellerLedger): Promise<void> {
-  const accountById = new Map(ledger.accounts.map((account) => [account.id, account]));
+  const currentAccounts = await db.query<AccountRow>("SELECT * FROM accounts");
+  const accountById = new Map([
+    ...ledger.accounts.map((account) => [account.id, account] as const),
+    ...currentAccounts.rows.map((row) => {
+      const account = accountFromRow(row);
+      return [account.id, account] as const;
+    })
+  ]);
   const currentTransactions = await db.query<TransactionRow>("SELECT * FROM transactions ORDER BY date DESC, id DESC");
-  const transactionIds = new Set<string>();
+  const transactions = currentTransactions.rows.map(transactionFromRow);
+  const transactionIds = new Set(transactions.map((transaction) => transaction.id));
 
-  for (const transaction of currentTransactions.rows.map(transactionFromRow)) {
-    transactionIds.add(transaction.id);
-    const evidenceSummaries = await readTransactionEvidenceSummaries(db, transaction.id);
-    await upsertSemanticDocument(
-      db,
-      createTransactionSemanticDocument(transaction, accountById.get(transaction.accountId), evidenceSummaries)
-    );
-  }
-
-  if (transactionIds.size === 0) {
+  if (transactions.length === 0) {
     await db.query("DELETE FROM semantic_documents WHERE resource_type = 'transaction'");
     return;
+  }
+
+  const transactionIdList = [...transactionIds];
+  const evidenceSummariesByTransactionId = await readTransactionEvidenceSummariesForIds(db, transactionIdList);
+  const existingDocuments = await db.query<{ body_hash: string; resource_id: string }>(
+    `SELECT resource_id, body_hash
+    FROM semantic_documents
+    WHERE resource_type = 'transaction'
+      AND resource_id = ANY($1)`,
+    [transactionIdList]
+  );
+  const existingHashByTransactionId = new Map(
+    existingDocuments.rows.map((row) => [row.resource_id, row.body_hash] as const)
+  );
+
+  for (const transaction of transactions) {
+    const document = createTransactionSemanticDocument(
+      transaction,
+      accountById.get(transaction.accountId),
+      evidenceSummariesByTransactionId.get(transaction.id) ?? []
+    );
+
+    if (existingHashByTransactionId.get(transaction.id) !== document.bodyHash) {
+      await upsertSemanticDocument(db, document);
+    }
   }
 
   await db.query(
     `DELETE FROM semantic_documents
     WHERE resource_type = 'transaction'
       AND NOT (resource_id = ANY($1))`,
-    [[...transactionIds]]
+    [transactionIdList]
   );
 }
 
@@ -4208,6 +6336,60 @@ async function readTransactionEvidenceSummaries(db: FinanceDb, transactionId: st
   );
 
   return result.rows;
+}
+
+async function readTransactionEvidenceSummariesForIds(
+  db: FinanceDb,
+  transactionIds: string[]
+): Promise<Map<string, EvidenceSummaryRow[]>> {
+  if (transactionIds.length === 0) {
+    return new Map();
+  }
+
+  const result = await db.query<EvidenceSummaryBatchRow>(
+    `SELECT transaction_id, confidence, relationship, status, title, summary
+    FROM (
+      SELECT
+        l.transaction_id,
+        l.confidence,
+        l.relationship,
+        l.status,
+        s.title,
+        s.summary,
+        ROW_NUMBER() OVER (
+          PARTITION BY l.transaction_id
+          ORDER BY
+            CASE l.status WHEN 'accepted' THEN 0 ELSE 1 END,
+            l.confidence DESC,
+            l.created_at DESC
+        ) AS evidence_rank
+      FROM transaction_evidence_links l
+      JOIN source_items s ON s.id = l.source_item_id
+      WHERE l.transaction_id = ANY($1)
+        AND (
+          l.status = 'accepted'
+          OR (l.status = 'suggested' AND l.confidence >= 0.74)
+        )
+    ) ranked
+    WHERE evidence_rank <= 8
+    ORDER BY transaction_id ASC, evidence_rank ASC`,
+    [transactionIds]
+  );
+  const summariesByTransactionId = new Map<string, EvidenceSummaryRow[]>();
+
+  for (const row of result.rows) {
+    const summaries = summariesByTransactionId.get(row.transaction_id) ?? [];
+    summaries.push({
+      confidence: row.confidence,
+      relationship: row.relationship,
+      status: row.status,
+      summary: row.summary,
+      title: row.title
+    });
+    summariesByTransactionId.set(row.transaction_id, summaries);
+  }
+
+  return summariesByTransactionId;
 }
 
 async function upsertSemanticDocument(db: FinanceDb, document: SemanticDocumentRecord): Promise<void> {
@@ -4488,6 +6670,19 @@ function accountFromRow(row: AccountRow): Account {
   };
 }
 
+function investmentPositionFromRow(row: InvestmentPositionRow): InvestmentPosition {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    symbol: row.symbol,
+    description: row.description,
+    units: Number(row.units),
+    price: row.price === null ? undefined : Number(row.price),
+    currency: row.currency,
+    marketValue: minorToMoney(row.market_value_minor)
+  };
+}
+
 function createLedgerBalanceSnapshots(ledger: TellerLedger): AccountBalanceSnapshot[] {
   const providedSnapshots = ledger.balanceSnapshots ?? [];
   const accountIdsWithSnapshots = new Set(providedSnapshots.map((snapshot) => snapshot.accountId));
@@ -4524,7 +6719,9 @@ function transactionFromRow(row: TransactionRow): Transaction {
     reviewed: row.reviewed,
     tags: normalizeTags(parseTags(row.tags)),
     notes: row.notes ?? undefined,
-    pendingTransactionId: row.pending_transaction_id ?? undefined
+    pendingTransactionId: row.pending_transaction_id ?? undefined,
+    financialGoalId: row.financial_goal_id ?? undefined,
+    pairedTransactionId: row.paired_transaction_id ?? undefined
   };
 }
 
@@ -4560,7 +6757,9 @@ function transactionFromPrefixedRow(row: PrefixedTransactionRow): Transaction {
     provider_connection_id: row.transaction_provider_connection_id,
     reviewed: row.transaction_reviewed,
     status: row.transaction_status,
-    tags: row.transaction_tags
+    tags: row.transaction_tags,
+    financial_goal_id: null,
+    paired_transaction_id: null
   });
 }
 
@@ -4625,9 +6824,17 @@ function appSyncRunFromRow(row: AppSyncRunRow): AppSyncRunRecord {
     enrichmentSummary: parseJsonRecord(row.enrichment_summary),
     errorMessage: row.error_message ?? undefined,
     finishedAt: row.finished_at,
+    financekitStatus: row.financekit_status ?? "succeeded",
+    financekitSummary: parseJsonRecord(row.financekit_summary ?? { configured: false, skipped: true }),
     id: row.id,
+    plaidStatus: row.plaid_status ?? "succeeded",
+    plaidSummary: parseJsonRecord(row.plaid_summary ?? { configured: false, skipped: true }),
     sourcesStatus: row.sources_status,
     sourcesSummary: parseJsonRecord(row.sources_summary),
+    simplefinStatus: row.simplefin_status ?? "succeeded",
+    simplefinSummary: parseJsonRecord(row.simplefin_summary ?? { configured: false, skipped: true }),
+    snaptradeStatus: row.snaptrade_status ?? "succeeded",
+    snaptradeSummary: parseJsonRecord(row.snaptrade_summary ?? { configured: false, skipped: true }),
     startedAt: row.started_at,
     status: row.status,
     tellerStatus: row.teller_status,
@@ -4707,8 +6914,63 @@ function mergeTransactionOverlay(transaction: Transaction, overlay: TransactionO
     categoryId: shouldUseProviderInferredCategory ? transaction.categoryId : overlay.category_id,
     reviewed: overlay.reviewed,
     tags: overlayTags,
-    notes: overlay.notes ?? undefined
+    notes: overlay.notes ?? undefined,
+    // Goal assignment is a pure user overlay; providers never set it, so always
+    // carry the existing assignment forward across resync.
+    financialGoalId: overlay.financial_goal_id ?? undefined,
+    // The internal-transfer counterpart link is derived, not provider-owned;
+    // carry it forward so a resync never severs a hard-linked pair.
+    pairedTransactionId: overlay.paired_transaction_id ?? undefined
   };
+}
+
+function transactionsEqual(left: Transaction, right: Transaction): boolean {
+  return (
+    left.id === right.id &&
+    left.accountId === right.accountId &&
+    left.providerConnectionId === right.providerConnectionId &&
+    left.date === right.date &&
+    left.authorizedDate === right.authorizedDate &&
+    left.postedDate === right.postedDate &&
+    left.merchantName === right.merchantName &&
+    left.description === right.description &&
+    moneyToMinor(left.amount) === moneyToMinor(right.amount) &&
+    left.currency === right.currency &&
+    left.categoryId === right.categoryId &&
+    left.status === right.status &&
+    left.reviewed === right.reviewed &&
+    left.notes === right.notes &&
+    left.pendingTransactionId === right.pendingTransactionId &&
+    normalizeTags(left.tags).join("\u0000") === normalizeTags(right.tags).join("\u0000")
+  );
+}
+
+function simpleFinErrorsToMessage(errors: unknown[]): string | null {
+  if (errors.length === 0) {
+    return null;
+  }
+
+  return errors
+    .map((error) => {
+      if (typeof error === "string") {
+        return error;
+      }
+
+      if (error && typeof error === "object") {
+        const record = error as Record<string, unknown>;
+        const code = typeof record.code === "string" ? record.code : undefined;
+        const message =
+          typeof record.message === "string"
+            ? record.message
+            : typeof record.msg === "string"
+              ? record.msg
+              : undefined;
+        return [code, message].filter(Boolean).join(": ") || JSON.stringify(error);
+      }
+
+      return String(error);
+    })
+    .join("\n");
 }
 
 function transactionMatchesRule(transaction: Transaction, rule: TransactionRule): boolean {
@@ -4727,7 +6989,8 @@ function transactionMatchesRule(transaction: Transaction, rule: TransactionRule)
 
     return ruleMatchCandidates(transaction, rule.matchField)
       .map(normalizeRuleRegexText)
-      .some((candidate) => regex.test(candidate));
+      // ponytail: static rejector + input cap; worker-timebox if a linear-time engine is ever needed.
+      .some((candidate) => regex.test(candidate.slice(0, maxRegexRuleCandidateLength)));
   }
 
   const pattern = normalizeRuleText(rawPattern);
@@ -4740,7 +7003,11 @@ function transactionMatchesRule(transaction: Transaction, rule: TransactionRule)
   return candidates.some((candidate) => candidate.includes(pattern));
 }
 
-function compileTransactionRuleRegex(pattern: string): RegExp | undefined {
+export function compileTransactionRuleRegex(pattern: string): RegExp | undefined {
+  if (isLikelyCatastrophicRegex(pattern)) {
+    return undefined;
+  }
+
   try {
     // Regex rules are run against normalized merchant/description fields only, keeping match input bounded.
     return new RegExp(pattern, "iu");
@@ -5081,6 +7348,74 @@ function absoluteDayDistance(sourceDate: string | undefined, transactionDate: st
   }
 
   return Math.abs(Math.round((transactionTime - sourceTime) / 86_400_000));
+}
+
+function normalizeCategoryName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function normalizeEmoji(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.slice(0, 16);
+}
+
+/**
+ * Lenient read-path hydration: accepts palette tokens or any structurally
+ * valid CSS color (see `isValidCssColor`), silently drops anything else. Used
+ * when reading rows back out of the DB, where the value was already
+ * validated at write time (via `assertValidRegistryColorInput` below) — this
+ * stays non-throwing so a legacy/corrupted row can never take down
+ * `listCategories`, it just falls back to the caller's default color.
+ */
+function normalizeRegistryColor(value: string | undefined | null): string | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return isCategoryColor(trimmed) || isValidCssColor(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * Write-path validation for user-supplied category/tag colors. Empty/absent
+ * input is not an error — callers treat `undefined` as "keep the existing
+ * color" (update) or "auto-assign one" (create). A non-empty value that
+ * fails the `isValidCssColor` trust-boundary check IS an error: it throws so
+ * the API route's existing try/catch surfaces a 400, instead of the old
+ * behavior of silently discarding the picked color and keeping the previous
+ * one — which is what made the palette-only picker restriction look like a
+ * persistence bug in the first place.
+ */
+function assertValidRegistryColorInput(value: string | undefined | null): string | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (isCategoryColor(trimmed) || isValidCssColor(trimmed)) {
+    return trimmed;
+  }
+
+  throw new Error(`Invalid category color value: "${trimmed}".`);
+}
+
+function normalizeSortOrder(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(100_000, Math.round(value)));
+}
+
+function normalizeTagName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").slice(0, 64);
 }
 
 function parseTags(value: unknown): string[] {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { compileTransactionRuleRegex } from "@/lib/db/finance-db";
 import {
   validateTransactionRuleCreateBody,
   validateTransactionRuleUpdateBody
@@ -93,9 +94,49 @@ describe("transaction rule input validation", () => {
         tags: []
       }
     });
+
+    expect(
+      validateTransactionRuleCreateBody(
+        {
+          category_id: "cat_food",
+          match_field: "merchant_or_description",
+          match_operator: "regex",
+          name: "Expense systems",
+          pattern: "ABACUS|EXPENSIFY"
+        },
+        categoryIds
+      )
+    ).toEqual({
+      ok: true,
+      value: {
+        categoryId: "cat_food",
+        enabled: true,
+        markReviewed: false,
+        matchField: "merchant_or_description",
+        matchOperator: "regex",
+        name: "Expense systems",
+        pattern: "ABACUS|EXPENSIFY",
+        tags: []
+      }
+    });
   });
 
   it("rejects unsafe regex rule patterns", () => {
+    expect(
+      validateTransactionRuleCreateBody(
+        {
+          match_field: "merchant_or_description",
+          match_operator: "regex",
+          name: "Catastrophic regex",
+          pattern: "(a+)+$"
+        },
+        categoryIds
+      )
+    ).toEqual({
+      error: "Regex rule pattern is too complex (possible catastrophic backtracking). Simplify it.",
+      ok: false
+    });
+
     expect(
       validateTransactionRuleCreateBody(
         {
@@ -140,6 +181,11 @@ describe("transaction rule input validation", () => {
       error: "Regex rule pattern cannot match empty text.",
       ok: false
     });
+  });
+
+  it("skips unsafe stored regex patterns at compile time", () => {
+    expect(compileTransactionRuleRegex("(a+)+$")).toBeUndefined();
+    expect(compileTransactionRuleRegex("amazon|amzn")).toBeInstanceOf(RegExp);
   });
 
   it("rejects invalid update shapes instead of silently dropping fields", () => {

@@ -1,5 +1,6 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import type { FinanceDbDriver, FinanceDbQueryResult } from "@/lib/db/finance-db-driver";
+import { isInDbWriteContext } from "@/lib/db/write-context";
 
 export class PgFinanceDbDriver implements FinanceDbDriver {
   readonly dialect = "postgres" as const;
@@ -34,8 +35,9 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   }
 
   async query<T>(sql: string, params?: readonly unknown[]): Promise<FinanceDbQueryResult<T>> {
-    const result = this.transactionClient
-      ? await this.transactionClient.query<QueryResultRow>(sql, params ? [...params] : undefined)
+    const transactionClient = this.transactionClient && isInDbWriteContext() ? this.transactionClient : null;
+    const result = transactionClient
+      ? await transactionClient.query<QueryResultRow>(sql, params ? [...params] : undefined)
       : await this.pool.query<QueryResultRow>(sql, params ? [...params] : undefined);
 
     return { rows: result.rows as T[] };
@@ -45,6 +47,10 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
     const transactionCommand = sql.trim().toUpperCase();
 
     if (transactionCommand === "BEGIN") {
+      if (!isInDbWriteContext()) {
+        throw new Error("Postgres BEGIN outside the serialized write queue is not allowed.");
+      }
+
       if (this.transactionClient) {
         throw new Error("A Postgres transaction is already active.");
       }
@@ -77,8 +83,9 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
       return;
     }
 
-    if (this.transactionClient) {
-      await this.transactionClient.query(sql);
+    const transactionClient = this.transactionClient && isInDbWriteContext() ? this.transactionClient : null;
+    if (transactionClient) {
+      await transactionClient.query(sql);
       return;
     }
 

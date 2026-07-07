@@ -1,6 +1,6 @@
 export type CurrencyCode = string;
 
-export type ProviderId = "teller" | "manual";
+export type ProviderId = "teller" | "snaptrade" | "simplefin" | "plaid" | "financekit" | "manual";
 
 export type ProviderStatus =
   | "not_configured"
@@ -43,6 +43,17 @@ export interface Account {
   lastUpdatedAt: string;
 }
 
+export interface InvestmentPosition {
+  id: string;
+  accountId: string;
+  symbol: string;
+  description: string;
+  units: number;
+  price?: number;
+  currency: CurrencyCode;
+  marketValue: number;
+}
+
 export interface AccountGroup {
   id: string;
   name: string;
@@ -59,9 +70,32 @@ export interface Category {
   name: string;
   parentId?: string;
   icon: string;
+  emoji?: string;
   color: string;
+  archived?: boolean;
   budgetAmount?: number;
   sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * `user` — a tag a person created or applied (manual tag, rule action, tag
+ * popover "Create ..."). `source` — a machine tag a sync adapter attaches to
+ * a transaction (`simplefin`, `plaid`, `teller:card_payment`, ...). Source
+ * tags stay on the transaction and remain searchable/filterable; UI surfaces
+ * that list "tags to apply" (row chips, add-tags popover) show `user` tags
+ * only, while the transaction inspector still exposes `source` tags, muted
+ * and clearly secondary.
+ */
+export type TagKind = "user" | "source";
+
+export interface TagStyle {
+  name: string;
+  color?: string;
+  kind: TagKind;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type TransactionStatus = "pending" | "posted";
@@ -83,6 +117,27 @@ export interface Transaction {
   tags: string[];
   notes?: string;
   pendingTransactionId?: string;
+  /** User overlay: the goal this transaction is assigned to (Copilot mirrors `financial_goal_id` on the transaction). Survives provider resync. */
+  financialGoalId?: string;
+  /**
+   * The counterpart transaction this one is hard-linked to as an internal
+   * transfer (Copilot's `internal_tx_match`): the credit-card payment credit ↔
+   * the bank debit. Set by the pair matcher; survives provider resync.
+   */
+  pairedTransactionId?: string;
+}
+
+export type FinancialGoalState = "active" | "archived";
+
+export interface FinancialGoal {
+  id: string;
+  name: string;
+  emoji?: string;
+  /** Optional target in minor units (cents). */
+  targetAmountMinor?: number;
+  state: FinancialGoalState;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type RecurringCadence =

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>BGTaskSchedulerPermittedIdentifiers</key>
+  <array>
+    <string>com.vishhvak.koban.companion.refresh</string>
+  </array>
+  <key>CFBundleDisplayName</key>
+  <string>Koban Companion</string>
+  <key>NSFinancialDataUsageDescription</key>
+  <string>Koban reads Apple Wallet balances and transactions on this iPhone so you can sync them to your Koban instance.</string>
+  <key>NSFinancialDataDescription</key>
+  <string>Koban reads Apple Wallet balances and transactions on this iPhone so you can sync them to your Koban instance.</string>
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>fetch</string>
+  </array>
+</dict>
+</plist>

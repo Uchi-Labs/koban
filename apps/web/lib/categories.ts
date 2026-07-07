@@ -1,74 +1,93 @@
 import type { Category } from "@ai-finances/schema";
+import { categoryPaletteColor, neutralCategoryColor } from "@/lib/category-style";
 
-export const appCategories = [
+export const appCategories: Category[] = [
   {
+    archived: false,
+    color: categoryPaletteColor(0),
+    emoji: "💵",
     id: "cat_income",
-    name: "Income",
     icon: "arrow-down-left",
-    color: "#2fbf71",
+    name: "Income",
     sortOrder: 10
   },
   {
+    archived: false,
+    color: categoryPaletteColor(3),
+    emoji: "🏠",
     id: "cat_housing",
-    name: "Housing",
     icon: "home",
-    color: "#7c3aed",
+    name: "Housing",
     budgetAmount: 3600,
     sortOrder: 20
   },
   {
+    archived: false,
+    color: categoryPaletteColor(7),
+    emoji: "🍽️",
     id: "cat_food",
-    name: "Food & Dining",
     icon: "utensils",
-    color: "#f59e0b",
+    name: "Food & Dining",
     budgetAmount: 1200,
     sortOrder: 30
   },
   {
+    archived: false,
+    color: categoryPaletteColor(1),
+    emoji: "🚗",
     id: "cat_transportation",
-    name: "Transportation",
     icon: "car",
-    color: "#38bdf8",
+    name: "Transportation",
     budgetAmount: 650,
     sortOrder: 40
   },
   {
+    archived: false,
+    color: categoryPaletteColor(9),
+    emoji: "💻",
     id: "cat_software",
-    name: "Software",
     icon: "laptop",
-    color: "#14b8a6",
+    name: "Software",
     budgetAmount: 500,
     sortOrder: 50
   },
   {
+    archived: false,
+    color: categoryPaletteColor(5),
+    emoji: "🛍️",
     id: "cat_shopping",
-    name: "Shopping",
     icon: "shopping-bag",
-    color: "#ec4899",
+    name: "Shopping",
     budgetAmount: 900,
     sortOrder: 60
   },
   {
+    archived: false,
+    color: categoryPaletteColor(2),
+    emoji: "✈️",
     id: "cat_travel",
-    name: "Travel",
     icon: "plane",
-    color: "#6366f1",
+    name: "Travel",
     budgetAmount: 1000,
     sortOrder: 70
   },
   {
+    archived: false,
+    color: categoryPaletteColor(10),
+    emoji: "🔁",
     id: "cat_transfer",
-    name: "Transfer",
     icon: "repeat",
-    color: "#94a3b8",
+    name: "Transfer",
     sortOrder: 80
   },
   {
+    archived: false,
+    color: neutralCategoryColor,
+    emoji: "🏷️",
     id: "cat_other",
-    name: "Other",
     icon: "circle",
-    color: "#94a3b8",
+    name: "Other",
     budgetAmount: 500,
     sortOrder: 900
   }
-] satisfies Category[];
+];

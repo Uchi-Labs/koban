@@ -1,131 +1,232 @@
 import type { Category, Transaction } from "@ai-finances/schema";
-import Link from "next/link";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { CategoryPill } from "@/components/category-pill";
-import { formatCurrency } from "@/lib/format";
-import { getFinanceData } from "@/lib/finance-data";
+import { CategoryWorkbench, type CategoryDetail, type CategorySummary } from "@/components/category-workbench";
+import { applyBudgetOverrides, getCategoryBudgetOverrides } from "@/lib/category-budgets";
+import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { filterTransactionsForIncludedAccounts, getFinanceData } from "@/lib/finance-data";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { getCategory } from "@/lib/view-models";
 
+const TIMELINE_MONTHS = 24;
+
 export default async function CategoriesPage() {
-  const { categories, dashboardSummary, transactions } = await getFinanceData();
-  const latestMonth = getLatestMonth(transactions);
-  const categoryTotals = createCategoryRows(categories, transactions, latestMonth);
-  const activeCategories = categoryTotals.filter((row) => row.transactionCount > 0);
-  const uncategorized = transactions.filter((transaction) => transaction.categoryId === "cat_other").length;
+  const [{ accounts, categories: rawCategories, dashboardSummary, transactions }, aiProvider, budgetOverrides] =
+    await Promise.all([getFinanceData(), getEffectiveLlmEnrichmentStatus(), getCategoryBudgetOverrides()]);
+
+  const categories = applyBudgetOverrides(rawCategories, budgetOverrides);
+  const metricTransactions = filterTransactionsForIncludedAccounts(accounts, transactions);
+  const months = buildMonthAxis(metricTransactions);
+  const latestMonth = months.at(-1) ?? new Date().toISOString().slice(0, 7);
+  const monthLabel = formatMonthLabel(latestMonth);
+
+  const details: CategoryDetail[] = [];
+  for (const category of categories) {
+    if (!category.archived) {
+      details.push(buildCategoryDetail(category, categories, metricTransactions, months, latestMonth));
+    }
+  }
+  details.sort((left, right) => right.spentThisMonth - left.spentThisMonth || right.allTimeSpending - left.allTimeSpending);
+
+  const summaries: CategorySummary[] = details.map((detail) => ({
+    allTimeSpending: detail.allTimeSpending,
+    budgetAmount: detail.budgetAmount,
+    color: detail.color,
+    emoji: detail.emoji,
+    id: detail.id,
+    isBuiltIn: BUILT_IN_IDS.has(detail.id),
+    latestMerchant: detail.latestMerchant,
+    name: detail.name,
+    spentThisMonth: detail.spentThisMonth,
+    transactionCount: detail.transactionCount
+  }));
+
+  const allDetail = buildAllDetail(details, dashboardSummary.monthlySpending, months);
+
+  const uncategorizedMerchantSet = new Set<string>();
+  for (const transaction of metricTransactions) {
+    if (transaction.categoryId === "cat_other" && transaction.merchantName) {
+      uncategorizedMerchantSet.add(transaction.merchantName);
+    }
+    if (uncategorizedMerchantSet.size >= 12) {
+      break;
+    }
+  }
+  const uncategorizedMerchants = Array.from(uncategorizedMerchantSet);
 
   return (
-    <main className="flex min-h-svh flex-col" data-testid="categories-page">
-      <header className="flex items-center border-b border-border px-6 py-3.5">
-        <span className="text-[13px] font-semibold tracking-tight">Categories</span>
-      </header>
-
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <section>
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Local category map</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Category rollups</h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-            Categories combine Teller metadata, local overrides, and accepted enrichment suggestions. Totals never mutate Teller data.
-          </p>
-        </section>
-
-        <section aria-label="Category totals" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <MetricCard label={`${latestMonth} spending`} value={formatCurrency(Math.abs(dashboardSummary.monthlySpending))} />
-          <MetricCard label="Active categories" value={activeCategories.length.toLocaleString()} />
-          <MetricCard label="Transactions to review" value={dashboardSummary.transactionsToReview.toLocaleString()} />
-          <MetricCard label="Other category count" value={uncategorized.toLocaleString()} />
-        </section>
-
-        <Card>
-          <CardHeader>
-            <h2 className="text-base font-medium">Spending by category</h2>
-            <p className="text-sm text-muted-foreground">Sorted by current-month spend, with all-time count and latest merchant for context.</p>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1">
-            {categoryTotals.map((row) => (
-              <Link
-                aria-label={`View ${row.category.name} transactions`}
-                className="grid grid-cols-[1.3fr_1fr] items-center gap-4 rounded-xl px-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
-                href={`/transactions?category_id=${encodeURIComponent(row.category.id)}`}
-                key={row.category.id}
-              >
-                <div className="flex min-w-0 flex-col gap-1">
-                  <CategoryPill category={row.category} />
-                  <span className="text-xs text-muted-foreground">{row.transactionCount.toLocaleString()} transactions</span>
-                  <em className="truncate text-xs text-muted-foreground not-italic">
-                    {row.latestTransaction ? `Latest: ${row.latestTransaction.merchantName}` : "No synced transactions"}
-                  </em>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <b className="font-semibold tabular-nums">{formatCurrency(row.monthlySpending)}</b>
-                    <em className="text-xs text-muted-foreground not-italic">{formatCurrency(row.allTimeSpending)} all time</em>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <span
-                      className="block h-full rounded-full"
-                      style={{ background: row.category.color, width: `${row.budgetPercent}%` }}
-                    />
-                  </div>
-                  <small className="text-xs text-muted-foreground">{row.budgetLabel}</small>
-                </div>
-              </Link>
-            ))}
-            {transactions.length === 0 ? <p className="px-1 text-sm text-muted-foreground">No Teller transactions synced yet.</p> : null}
-          </CardContent>
-        </Card>
-      </div>
-    </main>
+    <CategoryWorkbench
+      aiSuggestionEnabled={aiProvider.configured}
+      aiSuggestionMessage={aiProvider.errorMessage ?? "No AI provider configured."}
+      allDetail={allDetail}
+      details={details}
+      hasTransactions={metricTransactions.length > 0}
+      monthLabel={monthLabel}
+      summaries={summaries}
+      transactionsToReview={dashboardSummary.transactionsToReview}
+      uncategorizedMerchants={uncategorizedMerchants}
+    />
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card size="sm">
-      <CardContent className="flex flex-col gap-1.5">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <strong className="text-lg font-semibold tabular-nums">{value}</strong>
-      </CardContent>
-    </Card>
-  );
+const BUILT_IN_IDS = new Set([
+  "cat_income",
+  "cat_housing",
+  "cat_food",
+  "cat_transportation",
+  "cat_software",
+  "cat_shopping",
+  "cat_travel",
+  "cat_transfer",
+  "cat_other"
+]);
+
+function buildCategoryDetail(
+  category: Category,
+  categories: Category[],
+  transactions: Transaction[],
+  months: string[],
+  latestMonth: string
+): CategoryDetail {
+  const view = getCategory(category.id, categories);
+  const categoryTransactions = transactions
+    .filter((transaction) => transaction.categoryId === category.id)
+    .sort((left, right) => right.date.localeCompare(left.date));
+  const spendingTransactions = categoryTransactions.filter(isSpendingTransaction);
+
+  const monthlySeries = months.map((month) => ({
+    month,
+    spent: roundMoney(
+      spendingTransactions
+        .filter((transaction) => transaction.date.startsWith(month))
+        .reduce((total, transaction) => total + Math.abs(transaction.amount), 0)
+    )
+  }));
+
+  const spentThisMonth = monthlySeries.find((point) => point.month === latestMonth)?.spent ?? 0;
+  const allTimeSpending = roundMoney(spendingTransactions.reduce((total, transaction) => total + Math.abs(transaction.amount), 0));
+
+  return {
+    allTimeSpending,
+    budgetAmount: category.budgetAmount,
+    color: view.color,
+    emoji: view.emoji ?? "🏷️",
+    id: category.id,
+    isBuiltIn: BUILT_IN_IDS.has(category.id),
+    latestMerchant: categoryTransactions[0]?.merchantName,
+    monthly: monthlySeries,
+    name: view.name,
+    spentThisMonth,
+    transactionCount: categoryTransactions.length,
+    yearly: buildYearlyMetrics(spendingTransactions)
+  };
 }
 
-function createCategoryRows(categories: Category[], transactions: Transaction[], latestMonth: string) {
-  return categories
-    .map((category) => {
-      const categoryTransactions = transactions
-        .filter((transaction) => transaction.categoryId === category.id)
-        .sort((left, right) => right.date.localeCompare(left.date));
-      const monthlySpending = sumSpending(categoryTransactions.filter((transaction) => transaction.date.startsWith(latestMonth)));
-      const allTimeSpending = sumSpending(categoryTransactions);
-      const budgetAmount = category.budgetAmount ?? monthlySpending;
-      const budgetRemaining = Math.max(0, budgetAmount - monthlySpending);
+function buildAllDetail(
+  details: CategoryDetail[],
+  monthlySpending: number,
+  months: string[]
+): CategoryDetail {
+  const spendingDetails = details.filter((detail) => detail.id !== "cat_income" && detail.id !== "cat_transfer");
 
+  const monthly = months.map((month, index) => ({
+    month,
+    spent: roundMoney(spendingDetails.reduce((total, detail) => total + (detail.monthly[index]?.spent ?? 0), 0))
+  }));
+
+  const yearlyTotals = new Map<string, number>();
+  const yearlyMonths = new Map<string, Set<string>>();
+  for (const point of monthly) {
+    const year = point.month.slice(0, 4);
+    yearlyTotals.set(year, (yearlyTotals.get(year) ?? 0) + point.spent);
+    if (point.spent > 0) {
+      const set = yearlyMonths.get(year) ?? new Set<string>();
+      set.add(point.month);
+      yearlyMonths.set(year, set);
+    }
+  }
+
+  const yearly: CategoryDetail["yearly"] = [];
+  for (const [year, spent] of yearlyTotals.entries()) {
+    const roundedSpent = roundMoney(spent);
+    if (roundedSpent <= 0) {
+      continue;
+    }
+    const activeMonths = yearlyMonths.get(year)?.size ?? 0;
+    yearly.push({
+      avgMonthly: activeMonths > 0 ? roundMoney(spent / activeMonths) : 0,
+      spent: roundedSpent,
+      year
+    });
+  }
+  yearly.sort((left, right) => right.year.localeCompare(left.year));
+
+  const totalBudget = roundMoney(spendingDetails.reduce((total, detail) => total + (detail.budgetAmount ?? 0), 0));
+  const spentThisMonth = roundMoney(Math.abs(monthlySpending));
+
+  return {
+    allTimeSpending: roundMoney(spendingDetails.reduce((total, detail) => total + detail.allTimeSpending, 0)),
+    budgetAmount: totalBudget > 0 ? totalBudget : undefined,
+    color: "var(--positive)",
+    emoji: "🗂️",
+    id: "__all__",
+    isBuiltIn: true,
+    latestMerchant: undefined,
+    monthly,
+    name: "All Regular Categories",
+    spentThisMonth,
+    transactionCount: spendingDetails.reduce((total, detail) => total + detail.transactionCount, 0),
+    yearly
+  };
+}
+
+function buildYearlyMetrics(transactions: Transaction[]) {
+  const totals = new Map<string, number>();
+  const monthsByYear = new Map<string, Set<string>>();
+
+  for (const transaction of transactions) {
+    const year = transaction.date.slice(0, 4);
+    const month = transaction.date.slice(0, 7);
+    totals.set(year, (totals.get(year) ?? 0) + Math.abs(transaction.amount));
+    const set = monthsByYear.get(year) ?? new Set<string>();
+    set.add(month);
+    monthsByYear.set(year, set);
+  }
+
+  return Array.from(totals.entries())
+    .map(([year, spent]) => {
+      const activeMonths = monthsByYear.get(year)?.size ?? 1;
       return {
-        allTimeSpending,
-        budgetLabel: category.budgetAmount ? `${formatCurrency(budgetRemaining)} left` : "No budget",
-        budgetPercent: budgetAmount > 0 ? Math.min(100, Math.round((monthlySpending / budgetAmount) * 100)) : 0,
-        category: getCategory(category.id, categories),
-        latestTransaction: categoryTransactions[0],
-        monthlySpending,
-        transactionCount: categoryTransactions.length
+        avgMonthly: roundMoney(spent / Math.max(1, activeMonths)),
+        spent: roundMoney(spent),
+        year
       };
     })
-    .sort((left, right) => right.monthlySpending - left.monthlySpending || right.allTimeSpending - left.allTimeSpending);
+    .sort((left, right) => right.year.localeCompare(left.year));
 }
 
-function getLatestMonth(transactions: Transaction[]) {
-  return transactions.map((transaction) => transaction.date.slice(0, 7)).sort().at(-1) ?? new Date().toISOString().slice(0, 7);
+function buildMonthAxis(transactions: Transaction[]): string[] {
+  const present = new Set(transactions.map((transaction) => transaction.date.slice(0, 7)));
+  const latest = Array.from(present).sort().at(-1) ?? new Date().toISOString().slice(0, 7);
+  const [year, month] = latest.split("-").map(Number);
+  const axis: string[] = [];
+  const cursor = new Date(Date.UTC(year, month - 1, 1));
+
+  for (let index = 0; index < TIMELINE_MONTHS; index += 1) {
+    axis.unshift(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`);
+    cursor.setUTCMonth(cursor.getUTCMonth() - 1);
+  }
+
+  return axis;
 }
 
-function sumSpending(transactions: Transaction[]) {
-  return roundMoney(
-    transactions
-      .filter(isSpendingTransaction)
-      .reduce((total, transaction) => total + Math.abs(transaction.amount), 0)
-  );
+function formatMonthLabel(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString("en-US", {
+    month: "long",
+    timeZone: "UTC",
+    year: "numeric"
+  });
 }
 
-function roundMoney(value: number) {
+function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }

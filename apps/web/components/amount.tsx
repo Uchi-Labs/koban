@@ -4,10 +4,12 @@ import { cn } from "@/lib/utils";
 
 export function Amount({
   amount,
+  className,
   compact = false,
   currency = "USD"
 }: {
   amount: number;
+  className?: string;
   compact?: boolean;
   currency?: string;
 }) {
@@ -18,7 +20,8 @@ export function Amount({
       className={cn(
         "whitespace-nowrap font-medium tabular-nums",
         compact ? "text-lg" : "text-sm",
-        positive ? "text-(--positive)" : "text-foreground"
+        positive ? "text-(--positive)" : "text-foreground",
+        className
       )}
       data-compact={compact}
     >

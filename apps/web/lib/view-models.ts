@@ -1,5 +1,6 @@
 import type { Account, Category, RecurringItem, Transaction } from "@ai-finances/schema";
 import { appCategories } from "@/lib/categories";
+import { categoryFallback } from "@/lib/category-style";
 
 export type TransactionView = Transaction & {
   accountName: string;
@@ -29,13 +30,7 @@ export function getCategory(categoryId: string, sourceCategories: Category[] = a
   const categoryById = new Map(sourceCategories.map((category) => [category.id, category]));
 
   return (
-    categoryById.get(categoryId) ?? {
-      color: "#94a3b8",
-      icon: "circle",
-      id: "unknown",
-      name: "Other",
-      sortOrder: 999
-    }
+    categoryById.get(categoryId) ?? categoryFallback()
   );
 }
 

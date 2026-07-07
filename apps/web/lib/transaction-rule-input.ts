@@ -7,6 +7,14 @@ const transactionRuleMatchFields = new Set<TransactionRuleMatchField>([
 ]);
 const transactionRuleMatchOperators = new Set<TransactionRuleMatchOperator>(["contains", "equals", "regex"]);
 
+export function isTransactionRuleMatchField(value: unknown): value is TransactionRuleMatchField {
+  return typeof value === "string" && transactionRuleMatchFields.has(value as TransactionRuleMatchField);
+}
+
+export function isTransactionRuleMatchOperator(value: unknown): value is TransactionRuleMatchOperator {
+  return typeof value === "string" && transactionRuleMatchOperators.has(value as TransactionRuleMatchOperator);
+}
+
 const maxRuleNameLength = 80;
 const maxRulePatternLength = 200;
 const maxRuleTags = 20;
@@ -241,6 +249,10 @@ function validateRulePattern(pattern: string, operator: TransactionRuleMatchOper
       return "Regex rule pattern cannot match empty text.";
     }
 
+    if (isLikelyCatastrophicRegex(pattern)) {
+      return "Regex rule pattern is too complex (possible catastrophic backtracking). Simplify it.";
+    }
+
     return undefined;
   }
 
@@ -327,6 +339,158 @@ function validateRuleTags(value: unknown, requiredArray: boolean): RuleValidatio
   }
 
   return { ok: true, value: tags };
+}
+
+interface RegexGroupScan {
+  hasBackreference: boolean;
+  hasUnboundedQuantifier: boolean;
+}
+
+interface RegexQuantifierScan {
+  length: number;
+  unbounded: boolean;
+}
+
+export function isLikelyCatastrophicRegex(pattern: string): boolean {
+  const groups: RegexGroupScan[] = [];
+  let escaped = false;
+  let hasBackreference = false;
+  let hasUnboundedQuantifier = false;
+  let inCharacterClass = false;
+  let previousWasUnboundedQuantifier = false;
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+
+    if (escaped) {
+      if (/^[1-9]$/.test(char)) {
+        hasBackreference = true;
+        if (groups.length > 0) {
+          groups[groups.length - 1].hasBackreference = true;
+        }
+      }
+      escaped = false;
+      previousWasUnboundedQuantifier = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      previousWasUnboundedQuantifier = false;
+      continue;
+    }
+
+    if (inCharacterClass) {
+      if (char === "]") {
+        inCharacterClass = false;
+      }
+      previousWasUnboundedQuantifier = false;
+      continue;
+    }
+
+    if (char === "[") {
+      inCharacterClass = true;
+      previousWasUnboundedQuantifier = false;
+      continue;
+    }
+
+    if (char === "(") {
+      groups.push({ hasBackreference: false, hasUnboundedQuantifier: false });
+      previousWasUnboundedQuantifier = false;
+      continue;
+    }
+
+    if (char === ")") {
+      const group = groups.pop();
+      const quantifier = readRegexQuantifier(pattern, index + 1);
+
+      if (group && groups.length > 0) {
+        const parent = groups[groups.length - 1];
+        parent.hasBackreference ||= group.hasBackreference;
+        parent.hasUnboundedQuantifier ||= group.hasUnboundedQuantifier;
+      }
+
+      if (quantifier) {
+        if (quantifier.unbounded) {
+          if (group?.hasBackreference || group?.hasUnboundedQuantifier) {
+            return true;
+          }
+
+          markCurrentRegexGroupUnbounded(groups);
+          hasUnboundedQuantifier = true;
+          previousWasUnboundedQuantifier = true;
+        } else {
+          previousWasUnboundedQuantifier = false;
+        }
+
+        index += quantifier.length;
+        continue;
+      }
+
+      previousWasUnboundedQuantifier = false;
+      continue;
+    }
+
+    const quantifier = readRegexQuantifier(pattern, index);
+    if (quantifier) {
+      if (quantifier.unbounded) {
+        if (previousWasUnboundedQuantifier) {
+          return true;
+        }
+
+        markCurrentRegexGroupUnbounded(groups);
+        hasUnboundedQuantifier = true;
+        previousWasUnboundedQuantifier = true;
+      } else {
+        previousWasUnboundedQuantifier = false;
+      }
+
+      index += quantifier.length - 1;
+      continue;
+    }
+
+    previousWasUnboundedQuantifier = false;
+  }
+
+  return hasBackreference && hasUnboundedQuantifier;
+}
+
+function markCurrentRegexGroupUnbounded(groups: RegexGroupScan[]): void {
+  if (groups.length > 0) {
+    groups[groups.length - 1].hasUnboundedQuantifier = true;
+  }
+}
+
+function readRegexQuantifier(pattern: string, index: number): RegexQuantifierScan | undefined {
+  const char = pattern[index];
+
+  if (char === "*" || char === "+") {
+    return { length: 1, unbounded: true };
+  }
+
+  if (char === "?") {
+    return { length: 1, unbounded: false };
+  }
+
+  if (char !== "{") {
+    return undefined;
+  }
+
+  const endIndex = pattern.indexOf("}", index + 1);
+  if (endIndex === -1) {
+    return undefined;
+  }
+
+  const body = pattern.slice(index + 1, endIndex);
+  if (!/^\d+(?:,\d*)?$/.test(body)) {
+    return undefined;
+  }
+
+  const [, max] = body.split(",");
+  return {
+    length: endIndex - index + 1,
+    unbounded: max === ""
+  };
 }
 
 function normalizeRuleText(value: string): string {

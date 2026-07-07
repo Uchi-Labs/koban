@@ -291,10 +291,11 @@ describe("TransactionsView", () => {
   it("updates the inspector when a row is selected", async () => {
     renderTransactions();
 
-    const airbnbRow = screen.getByText("Airbnb").closest("button");
-    expect(airbnbRow).not.toBeNull();
+    // The row is a grid whose content is pointer-events-none over an absolutely
+    // positioned overlay button ("Select <merchant>") that captures the click.
+    const airbnbRow = screen.getByRole("button", { name: "Select Airbnb" });
 
-    await userEvent.click(airbnbRow!);
+    await userEvent.click(airbnbRow);
 
     const inspector = screen.getByLabelText("Selected transaction inspector");
     expect(within(inspector).getByRole("heading", { name: "Airbnb" })).toBeInTheDocument();

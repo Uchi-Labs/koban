@@ -1,13 +1,10 @@
 import type { TransactionRule } from "@ai-finances/schema";
 import { NextResponse } from "next/server";
 import { readJsonObject } from "@/lib/api-request";
-import { appCategories } from "@/lib/categories";
-import { createTransactionRule, listTransactionRules } from "@/lib/db/finance-db";
+import { createTransactionRule, getCategoryIdsForValidation, listTransactionRules } from "@/lib/db/finance-db";
 import { validateTransactionRuleCreateBody } from "@/lib/transaction-rule-input";
 
 export const runtime = "nodejs";
-
-const categoryIds = new Set(appCategories.map((category) => category.id));
 
 export async function GET() {
   const rules = await listTransactionRules();
@@ -26,6 +23,7 @@ export async function POST(request: Request) {
     return parsed.response;
   }
 
+  const categoryIds = await getCategoryIdsForValidation();
   const validation = validateTransactionRuleCreateBody(parsed.body, categoryIds);
 
   if (!validation.ok) {

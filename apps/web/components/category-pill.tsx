@@ -6,15 +6,14 @@ import { cn } from "@/lib/utils";
 export function CategoryPill({ category, className }: { category: Category; className?: string }) {
   return (
     <Badge
-      appearance="dot"
       className={cn("border-transparent font-medium", className)}
-      dotColor="current"
       style={{
         backgroundColor: `color-mix(in oklab, ${category.color} 12%, transparent)`,
         color: `color-mix(in oklab, ${category.color} 72%, var(--foreground))`
       }}
       variant="outline"
     >
+      <span aria-hidden="true">{category.emoji ?? "🏷️"}</span>
       {category.name}
     </Badge>
   );

@@ -1,7 +1,12 @@
-import { LogIn } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { HostedLoginForm, LegacyTokenForm } from "@/components/login-form";
+import { ManekiMoment } from "@/components/maneki-moment";
+import Link from "next/link";
+import {
+  getConfiguredAuthToken,
+  isBetterAuthRegistrationOpen,
+  isGoogleAuthEnabled,
+  isHostedAuthMode
+} from "@/lib/auth";
 
 interface LoginPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -11,30 +16,34 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = searchParams ? await searchParams : {};
   const nextPath = firstParam(params.next) ?? "/";
   const invalid = firstParam(params.error) === "1";
+  const hosted = isHostedAuthMode();
+  const legacyToken = getConfiguredAuthToken();
+  const firstRun = hosted ? await isBetterAuthRegistrationOpen() : false;
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-8 text-foreground">
-      <form
-        action="/api/login"
-        method="post"
-        className="grid w-full max-w-sm gap-5 rounded-lg border border-border bg-card p-6 shadow-sm"
-      >
-        <input type="hidden" name="next" value={nextPath} />
-        <div className="grid gap-2">
-          <div className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <LogIn className="size-4" aria-hidden="true" />
+      <div className="grid w-full max-w-sm gap-4">
+        {hosted ? (
+          <HostedLoginForm
+            googleEnabled={isGoogleAuthEnabled()}
+            mode={firstRun ? "sign-up" : "sign-in"}
+            nextPath={nextPath}
+          />
+        ) : legacyToken ? (
+          <LegacyTokenForm invalid={invalid} nextPath={nextPath} />
+        ) : (
+          <div className="t-stagger is-shown grid w-full justify-items-center gap-3 rounded-lg border border-border bg-card p-6 text-center shadow-sm">
+            <ManekiMoment className="mb-1" priority size={64} />
+            <h1 className="t-stagger-line t-stagger-line--1 text-xl font-semibold tracking-normal">Koban</h1>
+            <p className="t-stagger-line t-stagger-line--2 text-sm text-muted-foreground">Local mode is open.</p>
           </div>
-          <h1 className="text-xl font-semibold tracking-normal">Sign in</h1>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="token">Access token</Label>
-          <Input id="token" name="token" type="password" autoComplete="current-password" required autoFocus />
-          {invalid ? <p className="text-sm text-destructive">Token was not accepted.</p> : null}
-        </div>
-        <Button type="submit" className="w-full">
-          Continue
-        </Button>
-      </form>
+        )}
+        <footer className="text-center text-xs text-muted-foreground">
+          <Link className="underline-offset-4 hover:underline" href="/privacy">
+            Privacy Policy
+          </Link>
+        </footer>
+      </div>
     </main>
   );
 }

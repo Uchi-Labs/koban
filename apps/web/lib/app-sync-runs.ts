@@ -14,6 +14,54 @@ export interface TellerSyncSummaryPayload extends Record<string, unknown> {
   transactionCount?: number;
 }
 
+export interface SnapTradeSyncSummaryPayload extends Record<string, unknown> {
+  accountCount?: number;
+  configured?: boolean;
+  connectionCount?: number;
+  errors?: string[];
+  lastSyncedAt?: string;
+  positionCount?: number;
+  registered?: boolean;
+  skipped?: boolean;
+}
+
+export interface SimpleFinSyncSummaryPayload extends Record<string, unknown> {
+  accountCount?: number;
+  configured?: boolean;
+  connectionCount?: number;
+  errors?: unknown[];
+  lastSyncedAt?: string;
+  newestPostedAt?: number;
+  requestEndUnix?: number;
+  requestStartUnix?: number;
+  skipped?: boolean;
+  transactionCount?: number;
+}
+
+export interface PlaidSyncSummaryPayload extends Record<string, unknown> {
+  accountCount?: number;
+  configured?: boolean;
+  cursorCount?: number;
+  errors?: string[];
+  itemCount?: number;
+  lastSyncedAt?: string;
+  removedTransactionCount?: number;
+  skipped?: boolean;
+  transactionCount?: number;
+}
+
+export interface FinanceKitSyncSummaryPayload extends Record<string, unknown> {
+  accountCount?: number;
+  accountsUpserted?: number;
+  deviceName?: string;
+  lastIngestedAt?: string;
+  skipped?: boolean;
+  transactionCount?: number;
+  transactionsAdded?: number;
+  transactionsUnchanged?: number;
+  transactionsUpdated?: number;
+}
+
 export interface SourceSyncSummaryPayload extends Record<string, unknown> {
   evidenceRefresh?: {
     error?: string;
@@ -64,10 +112,14 @@ export interface EnrichmentSyncSummaryPayload extends Record<string, unknown> {
 export interface AppSyncRunPayload {
   enrichment: AppSyncStepPayload<EnrichmentSyncSummaryPayload>;
   error?: string;
+  financekit: AppSyncStepPayload<FinanceKitSyncSummaryPayload>;
   finished_at: string;
   id: string;
   object: "app_sync_run";
+  plaid: AppSyncStepPayload<PlaidSyncSummaryPayload>;
   sources: AppSyncStepPayload<SourceSyncSummaryPayload>;
+  simplefin: AppSyncStepPayload<SimpleFinSyncSummaryPayload>;
+  snaptrade: AppSyncStepPayload<SnapTradeSyncSummaryPayload>;
   started_at: string;
   status: AppSyncRunStatus;
   teller: AppSyncStepPayload<TellerSyncSummaryPayload>;
@@ -92,10 +144,14 @@ export function appSyncRunRecordToPayload(record: AppSyncRunRecord): AppSyncRunP
   return {
     enrichment: stepPayload(record.enrichmentStatus, record.enrichmentSummary),
     error: record.errorMessage,
+    financekit: stepPayload(record.financekitStatus ?? "succeeded", record.financekitSummary ?? { configured: false, skipped: true }),
     finished_at: record.finishedAt,
     id: record.id,
     object: "app_sync_run",
+    plaid: stepPayload(record.plaidStatus ?? "succeeded", record.plaidSummary ?? { configured: false, skipped: true }),
     sources: stepPayload(record.sourcesStatus, record.sourcesSummary),
+    simplefin: stepPayload(record.simplefinStatus ?? "succeeded", record.simplefinSummary ?? { configured: false, skipped: true }),
+    snaptrade: stepPayload(record.snaptradeStatus ?? "succeeded", record.snaptradeSummary ?? { configured: false, skipped: true }),
     started_at: record.startedAt,
     status: record.status,
     teller: stepPayload(record.tellerStatus, record.tellerSummary)

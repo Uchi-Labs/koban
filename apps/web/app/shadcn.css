@@ -90,16 +90,16 @@
   --foreground: oklch(0.955 0.004 230);
   --card: oklch(0.175 0.008 250);
   --card-foreground: oklch(0.955 0.004 230);
-  --popover: oklch(0.19 0.009 250);
-  --popover-foreground: oklch(0.955 0.004 230);
+  --popover: #111418; /* = oklch(0.19 0.009 250); sRGB dodges Chromium top-layer oklch paint bug */
+  --popover-foreground: #edf1f2; /* = oklch(0.955 0.004 230) */
   --primary: oklch(0.82 0.14 168);
   --primary-foreground: oklch(0.17 0.02 168);
   --secondary: oklch(0.24 0.01 250);
   --secondary-foreground: oklch(0.955 0.004 230);
   --muted: oklch(0.235 0.01 250);
   --muted-foreground: oklch(0.68 0.012 245);
-  --accent: oklch(0.245 0.014 250);
-  --accent-foreground: oklch(0.965 0.004 230);
+  --accent: #1b2127; /* = oklch(0.245 0.014 250) */
+  --accent-foreground: #f1f4f6; /* = oklch(0.965 0.004 230) */
   --destructive: oklch(0.66 0.2 22);
   --border: oklch(0.94 0.01 230 / 9%);
   --input: oklch(0.94 0.01 230 / 13%);
@@ -132,18 +132,584 @@
   --duration-slow: 400ms;
   --duration-very-slow: 500ms;
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: ease-in-out;
+  --ease-out: ease-out;
+  --ease-linear: linear;
   --ease-strong-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-strong-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --ease-bounce-strong: cubic-bezier(0.34, 3.85, 0.64, 1);
   --distance-micro: 4px;
+  --distance-small: 6px;
   --distance-base: 8px;
   --distance-medium: 12px;
+  --distance-large: 30px;
   --scale-large: 0.96;
   --scale-medium: 0.97;
   --scale-small: 0.98;
+  --scale-tiny: 0.99;
   --blur-small: 2px;
   --blur-medium: 3px;
+  --blur-large: 8px;
+
+  /* transitions.dev semantic variables — Wave A installed recipes only. */
+  --digit-dur: 500ms;
+  --digit-distance: var(--distance-base);
+  --digit-stagger: 70ms;
+  --digit-blur: var(--blur-small);
+  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --digit-dir-x: 0;
+  --digit-dir-y: 1;
+  --badge-slide-dur: 260ms;
+  --badge-pop-dur: var(--duration-very-slow);
+  --badge-pop-close-dur: 180ms;
+  --badge-fade-dur: var(--duration-slow);
+  --badge-fade-close-dur: 180ms;
+  --badge-blur: var(--blur-small);
+  --badge-offset-x: -8.2px;
+  --badge-offset-y: 12.4px;
+  --badge-slide-ease: var(--ease-smooth-out);
+  --badge-pop-ease: var(--ease-bounce);
+  --badge-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --text-swap-dur: var(--duration-quick);
+  --text-swap-translate-y: var(--distance-micro);
+  --text-swap-blur: var(--blur-small);
+  --text-swap-ease: var(--ease-in-out);
+  --modal-open-dur: var(--duration-fast);
+  --modal-close-dur: var(--duration-quick);
+  --modal-scale: var(--scale-large);
+  --modal-scale-close: var(--scale-large);
+  --modal-ease: var(--ease-smooth-out);
+  --panel-open-dur: var(--duration-slow);
+  --panel-close-dur: var(--duration-medium);
+  --panel-translate-y: 100px;
+  --panel-blur: var(--blur-small);
+  --panel-ease: var(--ease-smooth-out);
+  --icon-swap-dur: var(--duration-fast);
+  --icon-swap-blur: var(--blur-small);
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: var(--ease-in-out);
+  --check-opacity-dur: 420ms;
+  --check-rotate-dur: 420ms;
+  --check-rotate-from: 80deg;
+  --check-bob-dur: 420ms;
+  --check-y-amount: 30px;
+  --check-path-dur: 420ms;
+  --check-path-delay: 40ms;
+  --check-ease-out: var(--ease-smooth-out);
+  --check-ease-opacity: var(--ease-smooth-out);
+  --check-ease-rotate: var(--ease-smooth-out);
+  --check-ease-bob: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --check-ease-path: var(--ease-smooth-out);
+  --avatar-lift: -4px;
+  --avatar-dur: 320ms;
+  --avatar-scale: 1.05;
+  --avatar-falloff: 0.45;
+  --avatar-ease-in: var(--ease-smooth-out);
+  --avatar-ease-out: var(--ease-bounce-strong);
+  --shake-distance: var(--distance-small);
+  --shake-overshoot: var(--distance-micro);
+  --shake-dur-a: var(--duration-micro);
+  --shake-dur-b: 60ms;
+  --shake-ease: var(--ease-smooth-out);
+  --revert-hold: 3000ms;
+  --revert-dur: 280ms;
+  --clear-dur: 1000ms;
+  --clear-out-dur: var(--duration-slow);
+  --clear-in-dur: var(--duration-slow);
+  --clear-out-fly: var(--distance-medium);
+  --clear-in-fly: var(--distance-medium);
+  --clear-out-ease: var(--ease-smooth-out);
+  --clear-in-ease: var(--ease-smooth-out);
+  --clear-blur: var(--blur-small);
+  --glow-delay: 50ms;
+  --glow-peak-at: 0.15;
+  --glow-opacity: 0.42;
+  --glow-spread: 1.5;
+  --pulse-dur: 1000ms;
+  --pulse-count: 1;
+  --pulse-min: 0.5;
+  --reveal-dur: var(--duration-slow);
+  --reveal-blur: var(--blur-small);
+  --reveal-ease: var(--ease-in-out);
+  --shimmer-dur: 2000ms;
+  --shimmer-base: var(--muted-foreground);
+  --shimmer-highlight: var(--foreground);
+  --shimmer-band: 400%;
+  --shimmer-ease: var(--ease-linear);
+  --stagger-dur: var(--duration-very-slow);
+  --stagger-distance: var(--distance-medium);
+  --stagger-stagger: var(--duration-stagger);
+  --stagger-blur: var(--blur-medium);
+  --stagger-ease: var(--ease-smooth-out);
+  --acc-expand: var(--duration-fast);
+  --acc-collapse: var(--duration-fast);
+  --acc-chevron: var(--duration-fast);
+  --acc-ease: var(--ease-smooth-out);
+}
+
+.dark {
+  --glow-opacity: 0.85;
+  --shimmer-base: var(--muted-foreground);
+  --shimmer-highlight: var(--foreground);
+}
+
+@keyframes t-digit-pop-in {
+  0% {
+    transform: translate(
+      calc(var(--digit-distance) * var(--digit-dir-x)),
+      calc(var(--digit-distance) * var(--digit-dir-y))
+    );
+    opacity: 0;
+    filter: blur(var(--digit-blur));
+  }
+  100% { transform: translate(0, 0); opacity: 1; filter: blur(0); }
+}
+
+.t-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit {
+  display: inline-block;
+  will-change: transform, opacity, filter;
+}
+.t-digit-group.is-animating .t-digit {
+  animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both;
+}
+.t-digit-group.is-animating .t-digit[data-stagger="1"] {
+  animation-delay: var(--digit-stagger);
+}
+.t-digit-group.is-animating .t-digit[data-stagger="2"] {
+  animation-delay: calc(var(--digit-stagger) * 2);
+}
+
+@keyframes t-badge-slide-in {
+  from { transform: translate(var(--badge-offset-x), var(--badge-offset-y)); }
+  to { transform: translate(0, 0); }
+}
+
+.t-badge {
+  /* Inline-right on full-width nav rows (the recipe's corner offsets suit icon
+     buttons). Centered via inset flex so the slide-in transform stays free. */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  will-change: transform;
+}
+.t-badge[data-open="true"] {
+  animation: t-badge-slide-in var(--badge-slide-dur) var(--badge-slide-ease);
+}
+.t-badge-dot {
+  display: block;
+  transform-origin: center;
+  transform: scale(1);
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    transform var(--badge-pop-dur) var(--badge-pop-ease),
+    opacity var(--badge-fade-dur) var(--badge-pop-ease),
+    filter var(--badge-pop-dur) var(--badge-pop-ease);
+  will-change: transform, opacity, filter;
+}
+.t-badge[data-open="false"] .t-badge-dot {
+  transform: scale(0);
+  opacity: 0;
+  filter: blur(var(--badge-blur));
+  transition:
+    transform var(--badge-pop-close-dur) var(--badge-close-ease),
+    opacity var(--badge-fade-close-dur) var(--badge-close-ease),
+    filter var(--badge-pop-close-dur) var(--badge-close-ease);
+}
+
+.t-text-swap {
+  display: inline-block;
+  transform: translateY(0);
+  filter: blur(0);
+  opacity: 1;
+  transition:
+    transform var(--text-swap-dur) var(--text-swap-ease),
+    filter var(--text-swap-dur) var(--text-swap-ease),
+    opacity var(--text-swap-dur) var(--text-swap-ease);
+  will-change: transform, filter, opacity;
+}
+.t-text-swap.is-exit {
+  transform: translateY(calc(var(--text-swap-translate-y) * -1));
+  filter: blur(var(--text-swap-blur));
+  opacity: 0;
+}
+.t-text-swap.is-enter-start {
+  transform: translateY(var(--text-swap-translate-y));
+  filter: blur(var(--text-swap-blur));
+  opacity: 0;
+  transition: none;
+}
+
+.t-modal {
+  transform-origin: center;
+  transform: scale(var(--modal-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-open-dur) var(--modal-ease),
+    opacity var(--modal-open-dur) var(--modal-ease);
+  will-change: transform, opacity;
+}
+.t-modal[data-slot="dialog-content"] {
+  translate: -50% -50%;
+}
+.t-modal.is-open,
+.t-modal[data-open] {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-modal.is-closing,
+.t-modal[data-closed] {
+  transform: scale(var(--modal-scale-close));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-close-dur) var(--modal-ease),
+    opacity var(--modal-close-dur) var(--modal-ease);
+}
+
+.t-panel-slide {
+  transform: translateY(var(--panel-translate-y));
+  opacity: 0;
+  filter: blur(var(--panel-blur));
+  pointer-events: none;
+  transition:
+    transform var(--panel-close-dur) var(--panel-ease),
+    opacity var(--panel-close-dur) var(--panel-ease),
+    filter var(--panel-close-dur) var(--panel-ease);
+  will-change: transform, opacity, filter;
+}
+.t-panel-slide[data-open="true"] {
+  transform: translateY(0);
+  opacity: 1;
+  filter: blur(0);
+  pointer-events: auto;
+  transition:
+    transform var(--panel-open-dur) var(--panel-ease),
+    opacity var(--panel-open-dur) var(--panel-ease),
+    filter var(--panel-open-dur) var(--panel-ease);
+}
+
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--icon-swap-dur) var(--icon-swap-ease),
+    filter var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+.t-success-check {
+  display: inline-block;
+  transform-origin: center;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.t-success-check svg { display: block; overflow: visible; }
+.t-success-check svg path {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+}
+.t-success-check[data-state="in"] {
+  animation:
+    t-check-fade var(--check-opacity-dur) var(--check-ease-opacity) forwards,
+    t-check-rotate var(--check-rotate-dur) var(--check-ease-rotate) forwards,
+    t-check-bob var(--check-bob-dur) var(--check-ease-bob) forwards;
+}
+.t-success-check[data-state="in"] svg path {
+  animation: t-check-draw var(--check-path-dur) var(--check-ease-path) var(--check-path-delay, 0ms) forwards;
+}
+@keyframes t-check-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes t-check-rotate { from { transform: rotate(var(--check-rotate-from)); } to { transform: rotate(0deg); } }
+@keyframes t-check-bob { from { translate: 0 var(--check-y-amount); } to { translate: 0 0; } }
+@keyframes t-check-draw { to { stroke-dashoffset: 0; } }
+
+.t-avatar {
+  transform-origin: center;
+  transform:
+    translateY(var(--shift, 0px))
+    scale(var(--scale-active, 1));
+  transition: transform var(--avatar-dur) var(--avatar-ease-in);
+  will-change: transform;
+}
+
+.t-input {
+  transition: border-color 150ms ease-out;
+  will-change: transform;
+}
+.t-input.is-error {
+  transition: border-color var(--revert-dur, 280ms) ease-out;
+}
+.t-error-msg {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--revert-dur, 280ms) ease-out,
+    visibility 0s linear var(--revert-dur, 280ms);
+}
+.t-input-wrap.is-error .t-error-msg {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity var(--revert-dur, 280ms) ease-out,
+    visibility 0s linear 0s;
+}
+.t-input.is-shaking {
+  animation: t-input-shake calc(
+      var(--shake-dur-a) * 2 + var(--shake-dur-b) * 2
+    ) linear;
+}
+@keyframes t-input-shake {
+  0% { transform: translateX(0); animation-timing-function: var(--shake-ease); }
+  28.57% { transform: translateX(var(--shake-distance)); animation-timing-function: var(--shake-ease); }
+  57.14% { transform: translateX(calc(var(--shake-distance) * -1)); animation-timing-function: var(--shake-ease); }
+  78.57% { transform: translateX(var(--shake-overshoot)); animation-timing-function: var(--shake-ease); }
+  100% { transform: translateX(0); }
+}
+
+.t-clear {
+  position: relative;
+  overflow: hidden;
+}
+.t-clear-mirror,
+.t-clear-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  z-index: 2;
+}
+.t-clear-mirror { opacity: 0; }
+.t-clear.has-value .t-clear-mirror,
+.t-clear.is-clearing .t-clear-mirror { opacity: 1; }
+.t-clear.has-value > input,
+.t-clear.is-clearing > input {
+  -webkit-text-fill-color: transparent;
+}
+.t-clear.has-value .t-clear-placeholder { opacity: 0; }
+.t-clear-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 3;
+  mix-blend-mode: multiply;
+}
+.dark .t-clear-glow {
+  mix-blend-mode: screen;
+}
+
+/* Sidebar drag-resize: suppress the width tween while actively dragging so the
+   edge tracks the pointer 1:1 (also honours reduced-motion by construction). */
+[data-resizing="true"] [data-slot="sidebar-gap"],
+[data-resizing="true"] [data-slot="sidebar-container"] {
+  transition-duration: 0s;
+}
+
+.t-skel { position: relative; }
+.t-skel-skeleton,
+.t-skel-content {
+  position: absolute;
+  inset: 0;
+}
+.t-skel-skeleton {
+  z-index: 1;
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    filter var(--reveal-dur) var(--reveal-ease);
+}
+.t-skel-content {
+  z-index: 2;
+  opacity: 0;
+  filter: blur(var(--reveal-blur));
+  transition:
+    opacity var(--reveal-dur) var(--reveal-ease),
+    filter var(--reveal-dur) var(--reveal-ease);
+}
+.t-skel.is-revealed .t-skel-skeleton {
+  opacity: 0;
+  filter: blur(var(--reveal-blur));
+}
+.t-skel.is-revealed .t-skel-content {
+  opacity: 1;
+  filter: blur(0);
+}
+.t-skel.is-resetting .t-skel-skeleton,
+.t-skel.is-resetting .t-skel-content {
+  transition: none !important;
+}
+.t-skel-skeleton.is-pulsing > *,
+[data-slot="skeleton"] {
+  animation: t-skel-pulse var(--pulse-dur) ease-in-out var(--pulse-count);
+}
+@keyframes t-skel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: var(--pulse-min); }
+}
+
+.t-shimmer {
+  position: relative;
+  display: inline-block;
+  color: var(--shimmer-base);
+}
+.t-shimmer::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 40%,
+    var(--shimmer-highlight) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: var(--shimmer-band) 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: t-shimmer var(--shimmer-dur) var(--shimmer-ease) infinite;
+}
+@keyframes t-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+.t-stagger-line {
+  display: block;
+  opacity: 0;
+  transform: translateY(var(--stagger-distance));
+  filter: blur(var(--stagger-blur));
+  transition:
+    opacity var(--stagger-dur) var(--stagger-ease),
+    transform var(--stagger-dur) var(--stagger-ease),
+    filter var(--stagger-dur) var(--stagger-ease);
+  will-change: transform, opacity, filter;
+}
+.t-stagger-line--2 { transition-delay: var(--stagger-stagger); }
+.t-stagger.is-shown .t-stagger-line {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+.t-stagger.is-hiding .t-stagger-line {
+  opacity: 0;
+  transform: translateY(0);
+  filter: blur(0);
+  transition:
+    opacity 200ms ease,
+    transform 0s linear,
+    filter 0s linear;
+  transition-delay: 0s;
+}
+
+.t-acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+}
+.t-acc[data-open="true"] .t-acc-panel {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+}
+.t-acc-panel-inner {
+  overflow: hidden;
+  opacity: 0;
+  filter: blur(2px);
+  transition:
+    opacity var(--acc-collapse) var(--acc-ease),
+    filter var(--acc-collapse) var(--acc-ease);
+}
+.t-acc[data-open="true"] .t-acc-panel-inner {
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity var(--acc-expand) var(--acc-ease),
+    filter var(--acc-expand) var(--acc-ease);
+}
+.t-acc-chevron {
+  display: inline-flex;
+  transform: scaleY(1);
+  transform-origin: center;
+  transition: transform var(--acc-chevron) var(--acc-ease);
+}
+.t-acc-chevron path { vector-effect: non-scaling-stroke; }
+.t-acc[data-open="true"] .t-acc-chevron {
+  transform: scaleY(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-digit-group .t-digit,
+  .t-badge,
+  .t-badge-dot,
+  .t-success-check,
+  .t-success-check svg path,
+  .t-skel-skeleton.is-pulsing > *,
+  [data-slot="skeleton"],
+  .t-shimmer::before {
+    animation: none !important;
+  }
+  .t-text-swap,
+  .t-modal,
+  .t-panel-slide,
+  .t-icon-swap .t-icon,
+  .t-avatar,
+  .t-skel-skeleton,
+  .t-skel-content,
+  .t-stagger-line,
+  .t-acc-panel,
+  .t-acc-panel-inner,
+  .t-acc-chevron {
+    transition: none !important;
+  }
+  .t-input {
+    animation: none !important;
+    transform: none !important;
+  }
+  .t-clear-glow {
+    opacity: 0 !important;
+  }
+  .t-success-check {
+    opacity: 1;
+  }
+  .t-success-check svg path {
+    stroke-dashoffset: 0 !important;
+  }
 }
 
 @layer base {
@@ -228,6 +794,13 @@
   color: oklch(from var(--foreground) l c h / 0.45);
 }
 
+/* Sonner honors most motion prefs, but pin transitions off under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toast] {
+    transition: none !important;
+  }
+}
+
 /* Page entrance on route navigation (app/template.tsx re-mounts per nav). */
 .page-enter {
   animation: page-enter var(--duration-fast) var(--ease-smooth-out) both;
@@ -274,9 +847,14 @@ a[data-slot="sidebar-menu-button"]:active {
   transform: scale(0.97);
 }
 
+/* Press-scale reads as a row wiggle on full-width list rows — keep them still. */
+button.ledger-transaction-row:active,
+button.transaction-review-row:active {
+  transform: none;
+}
+
 /* Origin-aware pop surfaces: grow from the trigger, exit faster than enter. */
 [data-slot="dropdown-menu-content"],
-[data-slot="select-content"],
 [data-slot="popover-content"],
 [data-slot="command-dialog-content"] {
   transform-origin: var(--transform-origin, center);
@@ -286,22 +864,23 @@ a[data-slot="sidebar-menu-button"]:active {
 }
 
 [data-slot="dropdown-menu-content"][data-starting-style],
-[data-slot="select-content"][data-starting-style],
 [data-slot="popover-content"][data-starting-style],
 [data-slot="dropdown-menu-content"][data-closed],
-[data-slot="select-content"][data-closed],
 [data-slot="popover-content"][data-closed] {
   opacity: 0;
   transform: scale(0.9);
 }
 
 [data-slot="dropdown-menu-content"][data-ending-style],
-[data-slot="select-content"][data-ending-style],
 [data-slot="popover-content"][data-ending-style] {
   opacity: 0;
   transform: scale(0.99);
   transition-duration: var(--duration-quick);
 }
+
+/* Select popup motion lives in components/ui/select.tsx. Keep it out of the
+   global data-starting-style transform path; Chromium can composite Base UI
+   select popups with inverted canvas colors on rules when that CSS scale runs. */
 
 /* Dialogs: centered origin, soft scale, faster exit. */
 [data-slot="dialog-content"] {
@@ -351,15 +930,6 @@ a[data-slot="sidebar-menu-button"]:active {
   }
 }
 
-@keyframes skeleton-shimmer {
-  0% {
-    transform: translateX(-125%);
-  }
-  100% {
-    transform: translateX(325%);
-  }
-}
-
 @keyframes chart-wave-slide {
   0% {
     stroke-dashoffset: 0;
@@ -371,43 +941,43 @@ a[data-slot="sidebar-menu-button"]:active {
   }
 }
 
+@keyframes agent-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.agent-stream-caret {
+  animation: agent-caret-blink var(--duration-slow) steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-stream-caret {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .animate-bounce-in {
   animation: bounce-in var(--duration-slow) var(--ease-bounce);
 }
 
 [data-slot="skeleton"] {
-  position: relative;
-  overflow: hidden;
-  --skeleton-width: 66%;
-  --shimmer-duration: calc(var(--duration-very-slow) + var(--duration-very-slow) + var(--duration-very-slow));
-  --shimmer-delay: 0ms;
-}
-
-[data-slot="skeleton"]::after {
-  content: "";
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: var(--skeleton-width);
-  transform: translateX(-125%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    oklch(from var(--foreground) l c h / 0.08),
-    transparent
-  );
-  animation: skeleton-shimmer var(--shimmer-duration) var(--ease-smooth-out) infinite;
-  animation-delay: var(--shimmer-delay);
+  --pulse-count: infinite;
 }
 
 [data-slot="skeleton"][data-variant="short"] {
-  --skeleton-width: 48%;
-  --shimmer-delay: var(--duration-micro);
+  width: 48%;
 }
 
 [data-slot="skeleton"][data-variant="long"] {
-  --skeleton-width: 82%;
-  --shimmer-delay: var(--duration-quick);
+  width: 82%;
 }
 
 [data-slot="chart-wave-loader"] .chart-wave-path {
@@ -488,6 +1058,167 @@ a[data-slot="sidebar-menu-button"]:active {
   }
 }
 
+/* ── Scroll-fade utilities ──────────────────────────────────────────────────
+   Mask-based edge fades driven by scroll position via scroll-driven animations.
+   Vendored & adapted from shadcn's scroll-fade
+   (https://ui.shadcn.com — registry "scroll-fade"). Each edge only fades when
+   there is scrollable content past it; falls back to a static symmetric fade
+   where scroll-driven animations are unsupported or reduced motion is asked.
+   Put the class on the *scrolling viewport* (Base UI ScrollArea: viewportClassName). */
+@property --sf-t {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --sf-b {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --sf-l {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --sf-r {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@keyframes sf-t-in {
+  from { --sf-t: 0; }
+  to { --sf-t: 1; }
+}
+@keyframes sf-b-out {
+  from { --sf-b: 1; }
+  to { --sf-b: 0; }
+}
+@keyframes sf-l-in {
+  from { --sf-l: 0; }
+  to { --sf-l: 1; }
+}
+@keyframes sf-r-out {
+  from { --sf-r: 1; }
+  to { --sf-r: 0; }
+}
+
+.scroll-fade,
+.scroll-fade-y,
+.scroll-fade-x,
+.scroll-fade-t,
+.scroll-fade-b,
+.scroll-fade-l,
+.scroll-fade-r {
+  --scroll-fade-size: 2.25rem;
+}
+.scroll-fade-sm {
+  --scroll-fade-size: 1.25rem;
+}
+.scroll-fade-lg {
+  --scroll-fade-size: 3.5rem;
+}
+
+/* Static fallback (no scroll-driven animation support): symmetric axis fade. */
+.scroll-fade,
+.scroll-fade-y {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--scroll-fade-size),
+    black calc(100% - var(--scroll-fade-size)),
+    transparent 100%
+  );
+}
+.scroll-fade-x {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--scroll-fade-size),
+    black calc(100% - var(--scroll-fade-size)),
+    transparent 100%
+  );
+}
+
+/* Single-edge static variants. */
+.scroll-fade-t {
+  mask-image: linear-gradient(to bottom, transparent, black var(--scroll-fade-size));
+}
+.scroll-fade-b {
+  mask-image: linear-gradient(to top, transparent, black var(--scroll-fade-size));
+}
+.scroll-fade-l {
+  mask-image: linear-gradient(to right, transparent, black var(--scroll-fade-size));
+}
+.scroll-fade-r {
+  mask-image: linear-gradient(to left, transparent, black var(--scroll-fade-size));
+}
+
+.scroll-fade-none {
+  mask-image: none !important;
+}
+
+@supports (animation-timeline: scroll()) {
+  .scroll-fade,
+  .scroll-fade-y {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black calc(var(--sf-t) * var(--scroll-fade-size)),
+      black calc(100% - var(--sf-b) * var(--scroll-fade-size)),
+      transparent
+    );
+    animation-name: sf-t-in, sf-b-out;
+    animation-timing-function: linear, linear;
+    animation-timeline: scroll(self y), scroll(self y);
+    animation-range:
+      0 var(--scroll-fade-size),
+      calc(100% - var(--scroll-fade-size)) 100%;
+    animation-fill-mode: both;
+  }
+  .scroll-fade-x {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black calc(var(--sf-l) * var(--scroll-fade-size)),
+      black calc(100% - var(--sf-r) * var(--scroll-fade-size)),
+      transparent
+    );
+    animation-name: sf-l-in, sf-r-out;
+    animation-timing-function: linear, linear;
+    animation-timeline: scroll(self x), scroll(self x);
+    animation-range:
+      0 var(--scroll-fade-size),
+      calc(100% - var(--scroll-fade-size)) 100%;
+    animation-fill-mode: both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Drop the scroll-linked mask animation; hold a static symmetric fade. */
+  .scroll-fade,
+  .scroll-fade-y {
+    animation: none;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      black var(--scroll-fade-size),
+      black calc(100% - var(--scroll-fade-size)),
+      transparent 100%
+    );
+  }
+  .scroll-fade-x {
+    animation: none;
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black var(--scroll-fade-size),
+      black calc(100% - var(--scroll-fade-size)),
+      transparent 100%
+    );
+  }
+}
+
 /* Transaction rows: compact table rhythm with a faded sticky amount edge.
    No hardcoded group min-width — the row grid column minimums are the floor;
    a fixed 44rem floor overflowed the inspector-open pane and the sticky edge
@@ -498,9 +1229,40 @@ a[data-slot="sidebar-menu-button"]:active {
 
 .ledger-transaction-row {
   --transaction-row-edge-bg: var(--background);
-  /* Minimums must fit the ~600px list pane with the inspector open, or the
-     sticky amount edge permanently covers the category column. */
-  grid-template-columns: 1.75rem minmax(8.5rem, 1.35fr) minmax(3.25rem, 0.4fr) minmax(6.75rem, 0.6fr) minmax(6rem, auto);
+  /* True columns: merchant/account own the flexible track, then fixed-width
+     category, amount, and review-dot tracks so pills start at the same x and
+     amounts align vertically down the list. Mobile drops the category track. */
+  grid-template-columns: 1.75rem minmax(0, 1fr) 5.5rem 0.5rem;
+  position: relative;
+}
+
+@media (min-width: 640px) {
+  .ledger-transaction-row {
+    grid-template-columns: 1.75rem minmax(0, 1fr) 8rem 5.5rem 0.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .ledger-transaction-row {
+    grid-template-columns: 1.75rem minmax(0, 1fr) 9rem 5.5rem 0.5rem;
+  }
+}
+
+/* The sticky amount edge (z-1) paints over row-level outlines, clipping the
+   focus ring right before the price. Draw the ring on an ::after above the
+   edge instead, and keep it as the visible focus indicator. */
+.ledger-transaction-row:focus-visible {
+  outline: none;
+}
+
+.ledger-transaction-row:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: calc(var(--radius) - 4px);
+  box-shadow: 0 0 0 1.5px var(--ring);
 }
 
 .ledger-transaction-row:hover,
@@ -526,15 +1288,17 @@ a[data-slot="sidebar-menu-button"]:active {
   min-width: 7.5rem;
   align-items: center;
   justify-content: flex-end;
-  margin-block: -0.5rem;
+  margin-block: -0.375rem;
   margin-right: -1rem;
-  padding-block: 0.5rem;
+  padding-block: 0.375rem;
   padding-right: 1rem;
   padding-left: 1.75rem;
   background: var(--transaction-row-edge-bg);
+  /* Must match the row's Tailwind transition-colors curve exactly — a different
+     easing makes the edge boundary + fade band flash on every hover. */
   transition:
-    background-color var(--duration-quick) ease,
-    color var(--duration-quick) ease;
+    background-color var(--duration-quick) cubic-bezier(0.4, 0, 0.2, 1),
+    color var(--duration-quick) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .transaction-row-edge::before {
@@ -568,7 +1332,6 @@ a[data-slot="sidebar-menu-button"]:active {
     transform: none;
   }
   [data-slot="dropdown-menu-content"],
-  [data-slot="select-content"],
   [data-slot="popover-content"],
   [data-slot="dialog-content"],
   [data-slot="tooltip-content"] {
@@ -576,7 +1339,6 @@ a[data-slot="sidebar-menu-button"]:active {
   }
   .animate-bounce-in,
   [data-slot="chart-wave-loader"] .chart-wave-path,
-  [data-slot="skeleton"]::after,
   [data-overflowing] {
     animation: none;
   }

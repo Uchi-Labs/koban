@@ -1,18 +1,24 @@
 "use client";
 
-import type { Category, TransactionRuleMatchOperator } from "@ai-finances/schema";
+import type { Category, TagStyle, TransactionRuleMatchOperator } from "@ai-finances/schema";
 import { Check, Play, Plus, Sparkles, Trash2, X } from "lucide-react";
-import type { FormEvent } from "react";
+import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
+import { TagChip } from "@/components/tag-chip";
+import { tagStyleMap } from "@/components/tag-style-map";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { MorphingPanel } from "@/components/ui/morphing-modal";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/components/ui/toast";
+import { useShakeReplay } from "@/lib/transitions";
 import { playSuccess } from "@/lib/ui-sound";
+import { cn } from "@/lib/utils";
 
 export interface RuleView {
   categoryId?: string;
@@ -146,6 +152,7 @@ interface RulesPanelProps {
   initialProvider: EnrichmentProviderView;
   initialSuggestions: EnrichmentSuggestionView[];
   initialRules: RuleView[];
+  tagStyles: TagStyle[];
 }
 
 export function RulesPanel(props: RulesPanelProps) {
@@ -157,17 +164,20 @@ function useRulesPanelModel({
   categories,
   initialProvider,
   initialSuggestions,
-  initialRules
+  initialRules,
+  tagStyles
 }: RulesPanelProps) {
   const [rules, setRules] = useState(initialRules);
   const [provider, setProvider] = useState(initialProvider);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
   const [message, setMessage] = useState("");
+  const [ruleFormErrorKey, setRuleFormErrorKey] = useState(0);
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerMessage, setProviderMessage] = useState("");
   const [suggestionMessage, setSuggestionMessage] = useState("");
   const [suggestionBusy, setSuggestionBusy] = useState(false);
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
+  const { showToast, updateToast } = useToast();
   const [form, setForm] = useState({
     categoryId: "cat_other",
     markReviewed: false,
@@ -178,6 +188,7 @@ function useRulesPanelModel({
     tags: ""
   });
   const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const tagStyleByName = tagStyleMap(tagStyles);
   const allSuggestionsSelected = suggestions.length > 0 && suggestions.every((suggestion) => selectedSuggestionIds.has(suggestion.id));
 
   return {
@@ -189,11 +200,13 @@ function useRulesPanelModel({
     provider,
     providerBusy,
     providerMessage,
+    ruleFormErrorKey,
     rules,
     selectedSuggestionIds,
     suggestionBusy,
     suggestionMessage,
     suggestions,
+    tagStyleByName,
     applyRules,
     batchResolveSuggestions,
     checkProvider,
@@ -309,6 +322,12 @@ function useRulesPanelModel({
 
     setSuggestionBusy(true);
     setSuggestionMessage(action === "accept" ? `Applying ${ids.length} suggestions...` : `Dismissing ${ids.length} suggestions...`);
+    const toastId = showToast({
+      description: `${action === "accept" ? "Applying" : "Dismissing"} ${ids.length.toLocaleString()} suggestions.`,
+      duration: 0,
+      status: "loading",
+      title: action === "accept" ? "Applying suggestions" : "Dismissing suggestions",
+    });
 
     try {
       const response = await fetch("/api/v1/enrichment/suggestions/batch", {
@@ -345,11 +364,23 @@ function useRulesPanelModel({
       }
 
       const failedCount = body.failed?.length ?? 0;
-      setSuggestionMessage(
-        `${appliedIds.size.toLocaleString()} suggestions ${action === "accept" ? "applied" : "dismissed"}.${failedCount > 0 ? ` ${failedCount.toLocaleString()} failed.` : ""}`
-      );
+      const nextMessage = `${appliedIds.size.toLocaleString()} suggestions ${action === "accept" ? "applied" : "dismissed"}.${failedCount > 0 ? ` ${failedCount.toLocaleString()} failed.` : ""}`;
+      setSuggestionMessage(nextMessage);
+      updateToast(toastId, {
+        description: nextMessage,
+        duration: failedCount > 0 ? 5200 : 3600,
+        status: failedCount > 0 ? "error" : "success",
+        title: action === "accept" ? "Suggestions applied" : "Suggestions dismissed",
+      });
     } catch (error) {
-      setSuggestionMessage(error instanceof Error ? error.message : "Unable to update suggestions.");
+      const errorMessage = error instanceof Error ? error.message : "Unable to update suggestions.";
+      setSuggestionMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Suggestion update failed",
+      });
     } finally {
       setSuggestionBusy(false);
     }
@@ -358,6 +389,12 @@ function useRulesPanelModel({
   async function resolveSuggestion(suggestion: EnrichmentSuggestionView, status: "applied" | "dismissed") {
     setSuggestionBusy(true);
     setSuggestionMessage(status === "applied" ? "Applying suggestion..." : "Dismissing suggestion...");
+    const toastId = showToast({
+      description: status === "applied" ? suggestionLabel(suggestion) : "Dismissing enrichment suggestion.",
+      duration: 0,
+      status: "loading",
+      title: status === "applied" ? "Applying suggestion" : "Dismissing suggestion",
+    });
 
     try {
       const response = await fetch(`/api/v1/enrichment/suggestions/${encodeURIComponent(suggestion.id)}`, {
@@ -380,9 +417,23 @@ function useRulesPanelModel({
         return next;
       });
       await refreshRules();
-      setSuggestionMessage(status === "applied" ? "Suggestion applied." : "Suggestion dismissed.");
+      const nextMessage = status === "applied" ? "Suggestion applied." : "Suggestion dismissed.";
+      setSuggestionMessage(nextMessage);
+      updateToast(toastId, {
+        description: nextMessage,
+        duration: 3600,
+        status: "success",
+        title: status === "applied" ? "Suggestion applied" : "Suggestion dismissed",
+      });
     } catch (error) {
-      setSuggestionMessage(error instanceof Error ? error.message : "Unable to update suggestion.");
+      const errorMessage = error instanceof Error ? error.message : "Unable to update suggestion.";
+      setSuggestionMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Suggestion update failed",
+      });
     } finally {
       setSuggestionBusy(false);
     }
@@ -423,6 +474,13 @@ function useRulesPanelModel({
 
   async function createRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!form.name.trim() || !form.pattern.trim()) {
+      setMessage("Name and match pattern are required.");
+      setRuleFormErrorKey((current) => current + 1);
+      return;
+    }
+
     setMessage("Creating rule...");
 
     const response = await fetch("/api/v1/rules", {
@@ -496,6 +554,12 @@ function useRulesPanelModel({
 
   async function applyRules() {
     setMessage("Applying enabled rules...");
+    const toastId = showToast({
+      description: "Running enabled transaction rules against the local ledger.",
+      duration: 0,
+      status: "loading",
+      title: "Applying rules",
+    });
     const response = await fetch("/api/v1/rules/apply", {
       method: "POST"
     });
@@ -506,12 +570,26 @@ function useRulesPanelModel({
     };
 
     if (!response.ok) {
-      setMessage(body.error ?? "Unable to apply rules.");
+      const errorMessage = body.error ?? "Unable to apply rules.";
+      setMessage(errorMessage);
+      updateToast(toastId, {
+        description: errorMessage,
+        duration: 5200,
+        status: "error",
+        title: "Rule apply failed",
+      });
       return;
     }
 
     await refreshRules();
-    setMessage(`Applied ${body.rulesApplied ?? 0} rules. Updated ${body.transactionsUpdated ?? 0} transactions.`);
+    const nextMessage = `Applied ${body.rulesApplied ?? 0} rules. Updated ${body.transactionsUpdated ?? 0} transactions.`;
+    setMessage(nextMessage);
+    updateToast(toastId, {
+      description: nextMessage,
+      duration: 3600,
+      status: "success",
+      title: "Rules applied",
+    });
   }
 
   async function refreshRules() {
@@ -549,7 +627,13 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
         </div>
         <Button disabled={model.suggestionBusy} onClick={model.generateSuggestions} size="sm" type="button" variant="secondary">
           <Sparkles size={14} />
-          {model.suggestionBusy ? "Analyzing..." : "Generate suggestions"}
+          {model.suggestionBusy ? (
+            <span className="t-shimmer" data-text="Analyzing...">
+              Analyzing...
+            </span>
+          ) : (
+            "Generate suggestions"
+          )}
         </Button>
       </CardHeader>
 
@@ -610,6 +694,7 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
               selected={model.selectedSuggestionIds.has(suggestion.id)}
               suggestion={suggestion}
               suggestionBusy={model.suggestionBusy}
+              tagStyleByName={model.tagStyleByName}
             />
           ))}
           {model.suggestions.length === 0 ? (
@@ -659,7 +744,8 @@ function SuggestionRow({
   onToggleSelected,
   selected,
   suggestion,
-  suggestionBusy
+  suggestionBusy,
+  tagStyleByName
 }: {
   category?: Category;
   onResolve: (suggestion: EnrichmentSuggestionView, status: "applied" | "dismissed") => void;
@@ -667,6 +753,7 @@ function SuggestionRow({
   selected: boolean;
   suggestion: EnrichmentSuggestionView;
   suggestionBusy: boolean;
+  tagStyleByName: Map<string, TagStyle>;
 }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-2xl border border-border p-4">
@@ -700,9 +787,7 @@ function SuggestionRow({
         <div className="flex flex-wrap items-center gap-1.5">
           {category ? <CategoryPill category={category} /> : null}
           {suggestion.tags.map((tag) => (
-            <Badge key={tag} variant="secondary">
-              {tag}
-            </Badge>
+            <TagChip color={tagStyleByName.get(tag.toLowerCase())?.color} key={tag} tag={tag} />
           ))}
           {suggestion.rulePattern ? <Badge variant="secondary">{suggestion.rulePattern}</Badge> : null}
           {suggestion.markReviewed ? <Badge variant="secondary">reviewed</Badge> : null}
@@ -761,6 +846,7 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
               onDelete={model.deleteRule}
               onToggle={model.toggleRule}
               rule={rule}
+              tagStyleByName={model.tagStyleByName}
             />
           ))}
           {model.rules.length === 0 ? <p className="text-sm text-muted-foreground">No local transaction rules yet.</p> : null}
@@ -773,51 +859,73 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
 }
 
 function RuleForm({ model }: { model: RulesPanelModel }) {
+  const { ref, shaking } = useShakeReplay(model.ruleFormErrorKey);
+  const isError = model.ruleFormErrorKey > 0 && (!model.form.name.trim() || !model.form.pattern.trim());
+
   return (
-    <form className="grid grid-cols-2 gap-3 rounded-2xl bg-muted/40 p-4 md:grid-cols-3 lg:grid-cols-6" onSubmit={model.createRule}>
-      <label className="flex flex-col gap-1 text-xs" htmlFor="transaction-rule-name">
-        <span className="text-muted-foreground">Name</span>
-        <Input
-          autoComplete="off"
-          id="transaction-rule-name"
-          onChange={(event) => model.setForm((current) => ({ ...current, name: event.target.value }))}
-          placeholder="OpenAI subscriptions"
-          value={model.form.name}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs" htmlFor="transaction-rule-pattern">
-        <span className="text-muted-foreground">Match</span>
-        <Input
-          autoComplete="off"
-          id="transaction-rule-pattern"
-          onChange={(event) => model.setForm((current) => ({ ...current, pattern: event.target.value }))}
-          placeholder="OPENAI"
-          value={model.form.pattern}
-        />
-      </label>
-      <RuleSelects model={model} />
-      <label className="flex flex-col gap-1 text-xs" htmlFor="transaction-rule-tags">
-        <span className="text-muted-foreground">Tags</span>
-        <Input
-          autoComplete="off"
-          id="transaction-rule-tags"
-          onChange={(event) => model.setForm((current) => ({ ...current, tags: event.target.value }))}
-          placeholder="ai, work"
-          value={model.form.tags}
-        />
-      </label>
-      <label className="col-span-2 flex items-center gap-2 text-xs md:col-span-3 lg:col-span-4" htmlFor="transaction-rule-mark-reviewed">
-        <Checkbox
-          checked={model.form.markReviewed}
-          id="transaction-rule-mark-reviewed"
-          onCheckedChange={(checked) => model.setForm((current) => ({ ...current, markReviewed: checked === true }))}
-        />
-        <span className="text-muted-foreground">Mark reviewed</span>
-      </label>
-      <Button className="col-span-2 md:col-span-1 lg:col-span-2" type="submit">
-        <Plus size={15} />
-        Create rule
-      </Button>
+    <form
+      className={cn(
+        "t-input t-input-wrap rounded-2xl bg-muted/40",
+        isError && "is-error",
+        shaking && "is-shaking"
+      )}
+      onSubmit={model.createRule}
+      ref={ref as RefObject<HTMLFormElement>}
+    >
+      <MorphingPanel className="p-4" viewId={isError ? "rule-form-error" : "rule-form-ready"}>
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex min-w-0 flex-col gap-1 text-xs" htmlFor="transaction-rule-name">
+              <span className="text-muted-foreground">Name</span>
+              <Input
+                autoComplete="off"
+                id="transaction-rule-name"
+                onChange={(event) => model.setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="OpenAI subscriptions"
+                value={model.form.name}
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs" htmlFor="transaction-rule-pattern">
+              <span className="text-muted-foreground">Match</span>
+              <Input
+                autoComplete="off"
+                id="transaction-rule-pattern"
+                onChange={(event) => model.setForm((current) => ({ ...current, pattern: event.target.value }))}
+                placeholder="OPENAI"
+                value={model.form.pattern}
+              />
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <RuleSelects model={model} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+            <label className="flex min-w-0 flex-col gap-1 text-xs" htmlFor="transaction-rule-tags">
+              <span className="text-muted-foreground">Tags</span>
+              <Input
+                autoComplete="off"
+                id="transaction-rule-tags"
+                onChange={(event) => model.setForm((current) => ({ ...current, tags: event.target.value }))}
+                placeholder="ai, work"
+                value={model.form.tags}
+              />
+            </label>
+            <label className="flex min-h-8 items-center gap-2 text-xs" htmlFor="transaction-rule-mark-reviewed">
+              <Checkbox
+                checked={model.form.markReviewed}
+                id="transaction-rule-mark-reviewed"
+                onCheckedChange={(checked) => model.setForm((current) => ({ ...current, markReviewed: checked === true }))}
+              />
+              <span className="whitespace-nowrap text-muted-foreground">Mark reviewed</span>
+            </label>
+            <Button className="w-full sm:w-auto sm:justify-self-end" type="submit">
+              <Plus size={15} />
+              Create rule
+            </Button>
+          </div>
+          <p className="t-error-msg text-xs text-destructive">Name and match pattern are required.</p>
+        </div>
+      </MorphingPanel>
     </form>
   );
 }
@@ -825,7 +933,7 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
 function RuleSelects({ model }: { model: RulesPanelModel }) {
   return (
     <>
-      <div className="flex flex-col gap-1 text-xs">
+      <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Field</span>
         <Select
           onValueChange={(value) =>
@@ -843,7 +951,7 @@ function RuleSelects({ model }: { model: RulesPanelModel }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-1 text-xs">
+      <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Operator</span>
         <Select
           onValueChange={(value) =>
@@ -861,7 +969,7 @@ function RuleSelects({ model }: { model: RulesPanelModel }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-1 text-xs">
+      <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Category</span>
         <Select
           onValueChange={(value) => model.setForm((current) => ({ ...current, categoryId: value ?? current.categoryId }))}
@@ -887,12 +995,14 @@ function RuleRow({
   category,
   onDelete,
   onToggle,
-  rule
+  rule,
+  tagStyleByName
 }: {
   category?: Category;
   onDelete: (rule: RuleView) => void;
   onToggle: (rule: RuleView) => void;
   rule: RuleView;
+  tagStyleByName: Map<string, TagStyle>;
 }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-2xl border border-border p-4">
@@ -907,9 +1017,7 @@ function RuleRow({
         <div className="flex flex-wrap items-center gap-1.5">
           {category ? <CategoryPill category={category} /> : null}
           {rule.tags.map((tag) => (
-            <Badge key={tag} variant="secondary">
-              {tag}
-            </Badge>
+            <TagChip color={tagStyleByName.get(tag.toLowerCase())?.color} key={tag} tag={tag} />
           ))}
           {rule.markReviewed ? <Badge variant="secondary">reviewed</Badge> : null}
         </div>
@@ -919,7 +1027,7 @@ function RuleRow({
         </em>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <Button onClick={() => onToggle(rule)} size="sm" type="button" variant="secondary">
+        <Button data-sound={rule.enabled ? "toggleOff" : "toggleOn"} onClick={() => onToggle(rule)} size="sm" type="button" variant="secondary">
           {rule.enabled ? "Pause" : "Enable"}
         </Button>
         <Button

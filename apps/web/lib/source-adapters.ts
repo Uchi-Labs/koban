@@ -350,7 +350,7 @@ export function syncSourceAdapter(sourceId: string): Promise<SourceSyncResult> {
   return runServerEffect(syncSourceAdapterEffect(sourceId));
 }
 
-export function syncSourceAdapterEffect(sourceId: string): Effect.Effect<SourceSyncResult, SourceRefreshError, never> {
+function syncSourceAdapterEffect(sourceId: string): Effect.Effect<SourceSyncResult, SourceRefreshError, never> {
   return Effect.gen(function* () {
     yield* sourcePromise(() => ensureSourceCatalog(), "Source catalog initialization failed.");
     const definition = sourceAdapterDefinitions.find((adapter) => adapter.id === sourceId);

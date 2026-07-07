@@ -36,16 +36,17 @@ test("PWA installability assets are served", async ({ page }) => {
   expect(manifest).toMatchObject({
     background_color: "#07090b",
     display: "standalone",
-    name: "AI Finances",
+    // e2e servers run without NEXT_PUBLIC_APP_ENV, which resolves to the local icon set.
+    name: "Koban (local)",
     scope: "/",
-    short_name: "Finances",
+    short_name: "Koban",
     start_url: "/",
     theme_color: "#07090b"
   });
   expect(manifest.icons).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ sizes: "192x192", src: "/icons/icon-192.png", type: "image/png" }),
-      expect.objectContaining({ sizes: "512x512", src: "/icons/icon-512.png", type: "image/png" }),
+      expect.objectContaining({ sizes: "192x192", src: "/icons/koban-local-192.png", type: "image/png" }),
+      expect.objectContaining({ sizes: "512x512", src: "/icons/koban-local-512.png", type: "image/png" }),
       expect.objectContaining({ purpose: "maskable", sizes: "192x192", src: "/icons/maskable-icon-192.png" }),
       expect.objectContaining({ purpose: "maskable", sizes: "512x512", src: "/icons/maskable-icon-512.png" })
     ])
@@ -67,6 +68,28 @@ test("transactions fit at 390px without horizontal body scroll", async ({ page }
 
   await expect(page.getByTestId("transactions-page")).toBeVisible();
   await expect(page.getByTestId("transaction-row").first()).toBeVisible();
+
+  const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
+  expect(scrollWidth).toBeLessThanOrEqual(391);
+});
+
+test("investments holdings table fits at 390px without horizontal body scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/investments");
+
+  await expect(page.getByTestId("investments-page")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Holdings" })).toBeVisible();
+
+  const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
+  expect(scrollWidth).toBeLessThanOrEqual(391);
+});
+
+test("dashboard cards fit at 390px without horizontal body scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Monthly spending" })).toBeVisible();
 
   const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
   expect(scrollWidth).toBeLessThanOrEqual(391);
@@ -450,12 +473,23 @@ test("left-nav finance pages render real ledger views", async ({ page }) => {
 
   await page.goto("/categories");
   await expect(page.getByTestId("categories-page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Category rollups" })).toBeVisible();
+  // "Category rollups" / "Spending by category" headings no longer exist after the Copilot-style
+  // two-pane rebuild; assert the workbench's real regions instead: a "Regular Categories" tree
+  // (left) and a "Category detail" pane (right).
+  await expect(page.getByRole("heading", { name: "Regular Categories", exact: true })).toBeVisible();
   await expect(page.getByLabel("Category totals")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Spending by category" })).toBeVisible();
-  await page.locator('a[href^="/transactions?category_id="]').first().click();
-  await expect(page).toHaveURL(/\/transactions\?category_id=/);
-  await expect(page.getByLabel("Active transaction filters")).toContainText("Category:");
+  await expect(page.getByLabel("Category detail")).toBeVisible();
+  const categoryTree = page.getByLabel("Regular categories");
+  // Real ledger-backed spend, not stub data: at least one category row shows a nonzero dollar figure.
+  await expect(categoryTree.getByText(/\$[1-9][\d,]*/).first()).toBeVisible();
+  const categoryRow = page.getByLabel(/^View /).first();
+  const categoryName = (await categoryRow.getAttribute("aria-label"))?.replace(/^View /, "") ?? "";
+  expect(categoryName).not.toBe("");
+  // The rebuilt categories page has no /transactions?category_id= link -- that click-through was
+  // replaced by an inline detail pane. Equivalent-strength interaction assertion: selecting a
+  // category row swaps the detail pane's heading to that category's name.
+  await categoryRow.click();
+  await expect(page.getByRole("heading", { name: categoryName, exact: true })).toBeVisible();
 
   await page.goto("/investments");
   await expect(page.getByTestId("investments-page")).toBeVisible();
@@ -655,16 +689,17 @@ test("semantic search returns local finance results", async ({ page }) => {
 });
 
 test("finance agent answers with local ledger evidence and a chart", async ({ page }) => {
-  await page.goto("/assistant");
+  const question = "Where did my money go this month?";
 
-  await expect(page.getByTestId("assistant-page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Ask your finances" })).toBeVisible();
-  await expect(page.getByLabel("Finance question")).toBeVisible();
-  await expect(page.getByLabel("Answer metrics")).toBeVisible();
+  await page.goto(`/?ask=${encodeURIComponent(question)}`);
 
-  await page.getByRole("button", { name: "How are source syncs doing?" }).click();
-  await expect(page.getByRole("heading", { name: "How are source syncs doing?" })).toBeVisible();
-  await expect(page.getByText("Source items", { exact: true })).toBeVisible();
+  const panel = page.getByTestId("agent-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByLabel("Finance question")).toHaveValue(question);
+  await expect(panel.getByTestId("agent-answer-text")).toContainText(/spending/i, { timeout: 15_000 });
+  await expect(panel.getByLabel("Answer metrics")).toBeVisible({ timeout: 15_000 });
+  await expect(panel.getByTestId("agent-answer-metric").first()).toBeVisible();
+  await expect(panel.getByTestId("agent-chart")).toBeVisible();
 
   const response = await page.request.post("/api/v1/assistant", {
     data: {
@@ -696,5 +731,5 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   expect(sourceStatusPayload.metrics?.some((metric) => metric.label === "Source items")).toBe(true);
   expect(sourceStatusPayload.evidence).toEqual([]);
 
-  await page.screenshot({ fullPage: true, path: "test-results/assistant-smoke.png" });
+  await page.screenshot({ fullPage: true, path: "test-results/agent-panel-smoke.png" });
 });

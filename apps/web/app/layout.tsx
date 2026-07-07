@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
+import { AgentationDev } from "@/components/agentation-dev";
 import { AppShell } from "@/components/app-shell";
 import { PwaServiceWorker } from "@/components/pwa-service-worker";
-import { authCookieName, getBearerToken, getConfiguredAuthToken } from "@/lib/auth";
-import { timingSafeTokenEquals } from "@/lib/auth-node";
+import { Toaster } from "@/components/ui/sonner";
+import { authenticateApiRequest } from "@/lib/auth";
 import { getShellData } from "@/lib/finance-data";
 import "./shadcn.css";
 import "./globals.css";
@@ -14,13 +15,13 @@ const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 const pwaThemeColor = "#07090b";
 
 export const metadata: Metadata = {
-  applicationName: "AI Finances",
+  applicationName: "Koban",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AI Finances"
+    title: "Koban"
   },
-  title: "AI Finances",
+  title: "Koban",
   description: "Teller-backed personal finance app",
   icons: {
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
@@ -40,8 +41,6 @@ export const viewport: Viewport = {
   width: "device-width"
 };
 
-export const dynamic = "force-dynamic";
-
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const shouldRenderShell = await isShellRequestAuthenticated();
 
@@ -51,6 +50,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <body>
           <PwaServiceWorker />
           {children}
+          <Toaster />
+          <AgentationDev />
         </body>
       </html>
     );
@@ -66,27 +67,21 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           accounts={shellData.accounts}
           accountGroups={shellData.accountGroups}
           lastSyncedAt={shellData.lastSyncedAt}
+          reviewActionableCount={shellData.reviewActionableCount}
           source={shellData.source}
           transactionCount={shellData.transactionCount}
         >
           {children}
         </AppShell>
+        <Toaster />
+        <AgentationDev />
       </body>
     </html>
   );
 }
 
 async function isShellRequestAuthenticated(): Promise<boolean> {
-  const expectedToken = getConfiguredAuthToken();
-
-  if (!expectedToken) {
-    return true;
-  }
-
-  const cookieStore = await cookies();
   const headerStore = await headers();
-  const sessionToken = cookieStore.get(authCookieName)?.value;
-  const bearerToken = getBearerToken(headerStore.get("authorization"));
-
-  return timingSafeTokenEquals(sessionToken, expectedToken) || timingSafeTokenEquals(bearerToken, expectedToken);
+  const result = await authenticateApiRequest(new Request("http://shell.internal/", { headers: headerStore }));
+  return result.authenticated;
 }

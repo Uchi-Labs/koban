@@ -8,11 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { POST as postBatchSuggestions } from "@/app/api/v1/enrichment/suggestions/batch/route";
 import {
   closeFinanceDbForTests,
-  generateEnrichmentSuggestions,
   listEnrichmentSuggestions,
   readFinanceDbSnapshot,
   replaceTellerLedgerInDb
 } from "@/lib/db/finance-db";
+import { generateEnrichmentSuggestions } from "@/lib/enrichment-runs";
 import type { TellerLedger } from "@/lib/finance-data";
 
 let testDbPath: string | null = null;

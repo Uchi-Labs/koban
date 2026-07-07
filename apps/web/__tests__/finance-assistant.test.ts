@@ -413,6 +413,11 @@ function createAssistantLlmClient(overrides: Partial<LlmGenerationClient>): LlmG
       overrides.generateText ??
       (async () => {
         throw new Error("Unexpected LLM text generation.");
+      }),
+    streamText:
+      overrides.streamText ??
+      (async () => {
+        throw new Error("Unexpected LLM stream generation.");
       })
   };
 }

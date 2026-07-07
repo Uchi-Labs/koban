@@ -4,7 +4,24 @@ import { useEffect } from "react";
 
 export function PwaServiceWorker() {
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !canRegisterServiceWorker(window.location)) {
+    if (!("serviceWorker" in navigator)) {
+      return;
+    }
+
+    // Never run the SW in development: it caches hashed chunks across code
+    // changes, which caused stale-module crashes and hydration mismatches
+    // (server HTML from new code, client chunks from old). Also actively
+    // unregister any SW left over from a previous dev session.
+    if (process.env.NODE_ENV !== "production") {
+      void navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          void registration.unregister();
+        }
+      });
+      return;
+    }
+
+    if (!canRegisterServiceWorker(window.location)) {
       return;
     }
 
