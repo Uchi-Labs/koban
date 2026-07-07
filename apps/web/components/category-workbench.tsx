@@ -171,7 +171,7 @@ function SummaryCard({
   return (
     <button
       className={cn(
-        "flex items-center justify-between gap-4 rounded-2xl border bg-card px-5 py-5 text-left transition-colors",
+        "flex items-center justify-center gap-10 rounded-2xl border bg-card px-5 py-5 text-left transition-colors",
         selectedAll ? "border-ring/50 ring-1 ring-ring/30" : "border-border hover:border-border/80 hover:bg-muted/30"
       )}
       onClick={onSelectAll}

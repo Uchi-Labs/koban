@@ -434,7 +434,7 @@ function AppSidebarSections({
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <div className="mx-2 mb-1 flex items-center gap-1 group-data-[collapsible=icon]:mx-auto">
+            <div className="mx-2 mb-1 flex items-center gap-1 group-data-[collapsible=icon]:mx-0 group-data-[collapsible=icon]:justify-center">
               <button
                 aria-label="Open search"
                 className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-input/30 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-input/50 hover:text-foreground group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
