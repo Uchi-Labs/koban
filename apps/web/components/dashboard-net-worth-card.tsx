@@ -21,6 +21,7 @@ export function DashboardNetWorthCard({
   currentNetWorth,
   currency = "USD",
   defaultRange = "1M",
+  settingsSlot,
   trends
 }: {
   accountStats?: Array<{
@@ -33,6 +34,7 @@ export function DashboardNetWorthCard({
   currentNetWorth: number;
   currency?: string;
   defaultRange?: NetWorthRange;
+  settingsSlot?: React.ReactNode;
   trends: NetWorthRangeTrend[];
 }) {
   const trendByRange = useMemo(() => new Map(trends.map((trend) => [trend.label, trend])), [trends]);
@@ -49,9 +51,12 @@ export function DashboardNetWorthCard({
           <MoneyHero amount={currentNetWorth} currency={currency} />
           <div className="mt-1 text-xs text-muted-foreground">Net worth</div>
         </div>
-        <Badge className="border-transparent font-medium tabular-nums" variant={positive ? "under-budget" : "over-budget"}>
-          {percentLabel}
-        </Badge>
+        <div className="flex items-center gap-1">
+          {settingsSlot}
+          <Badge className="border-transparent font-medium tabular-nums" variant={positive ? "under-budget" : "over-budget"}>
+            {percentLabel}
+          </Badge>
+        </div>
       </div>
 
       <NetWorthChart className="mt-3 h-32" points={activeTrend.points} positive={positive} />

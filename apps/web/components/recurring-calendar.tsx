@@ -362,7 +362,8 @@ function BreakdownDonut({ segments }: { segments: RecurringDonutSegment[] }) {
               onMouseEnter={() => setActiveId(arc.id)}
               onMouseLeave={() => setActiveId(null)}
               r={radius}
-              stroke={activeId === arc.id ? arc.color : "color-mix(in oklab, var(--foreground) 14%, var(--muted))"}
+              stroke={arc.color}
+              opacity={activeId === null || activeId === arc.id ? 1 : 0.35}
               strokeDasharray={`${arc.length} ${circumference - arc.length}`}
               strokeDashoffset={-arc.start}
               strokeLinecap="round"

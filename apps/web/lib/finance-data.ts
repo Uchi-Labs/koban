@@ -10,6 +10,7 @@ import type {
 import { unstable_noStore as noStore } from "next/cache";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { applyInclusionOverrides, getAccountInclusionOverrides } from "@/lib/account-overlays";
 import { displayCurrencyCode } from "@/lib/currency";
 import {
   consumeFinanceDbRecoveryEvent,
@@ -123,14 +124,14 @@ export async function getFinanceData(): Promise<FinanceData> {
   const financeDbLedger = await getFinanceDbLedger();
   if (financeDbLedger && financeDbLedger.accounts.length > 0) {
     scheduleReadPathNormalizationMigration(financeDbLedger);
-    return createFinanceDataFromLedger(financeDbLedger, categories);
+    return createFinanceDataFromLedger(await withInclusionOverrides(financeDbLedger), categories);
   }
 
   if (consumeFinanceDbRecoveryEvent()) {
     const restored = await importTellerLedgerBackupFile();
 
     if (restored && restored.accounts.length > 0) {
-      return createFinanceDataFromLedger(restored, categories);
+      return createFinanceDataFromLedger(await withInclusionOverrides(restored), categories);
     }
   }
 
@@ -219,6 +220,16 @@ export async function updateStoredTransactionInDb(
   update: Partial<Pick<Transaction, "categoryId" | "notes" | "reviewed" | "tags">>
 ): Promise<Transaction | null> {
   return updateDbTransaction(transactionId, update);
+}
+
+async function withInclusionOverrides(ledger: TellerLedger): Promise<TellerLedger> {
+  const overrides = await getAccountInclusionOverrides();
+
+  if (Object.keys(overrides).length === 0) {
+    return ledger;
+  }
+
+  return { ...ledger, accounts: applyInclusionOverrides(ledger.accounts, overrides) };
 }
 
 function createFinanceDataFromLedger(tellerLedger: TellerLedger, categories: Category[]): FinanceData {
@@ -399,10 +410,15 @@ export function createDashboardSummary({
 
 export function createRecurringItems(transactions: Transaction[]): RecurringItem[] {
   const groups = new Map<string, Transaction[]>();
+  let latestDataDate = "";
 
   for (const transaction of transactions) {
     if (!isSpendingTransaction(transaction) || transaction.status !== "posted") {
       continue;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(transaction.date) && transaction.date > latestDataDate) {
+      latestDataDate = transaction.date;
     }
 
     const key = `${transaction.accountId}:${normalizeMerchantKey(transaction.merchantName)}`;
@@ -423,6 +439,11 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
         .slice(1)
         .map((transaction, index) => daysBetween(datedTransactions[index].date, transaction.date))
         .filter((gap) => Number.isFinite(gap) && gap > 0);
+
+      if (gaps.length < 2) {
+        return [];
+      }
+
       const medianGap = median(gaps);
       const cadence = cadenceFromGap(medianGap);
       const lastTransaction = datedTransactions.at(-1);
@@ -431,10 +452,43 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
         return [];
       }
 
-      const averageAmount =
-        datedTransactions.reduce((total, transaction) => total + Math.abs(transaction.amount), 0) / datedTransactions.length;
-      const categoryId = mostCommon(datedTransactions.map((transaction) => transaction.categoryId)) ?? "cat_other";
+      // Regularity gate: subscriptions charge on a steady beat. Frequent-but-random
+      // merchants (Amazon, groceries) produce a plausible *median* gap while the
+      // individual gaps scatter — require most gaps to sit near the cadence period.
       const cadenceDays = cadenceToDays(cadence);
+      const gapTolerance = cadenceGapTolerance(cadence);
+      const regularGaps = gaps.filter((gap) => Math.abs(gap - cadenceDays) <= gapTolerance);
+      if (regularGaps.length / gaps.length < 0.7) {
+        return [];
+      }
+
+      // Short cadences need more evidence: two coincidental week-apart purchases
+      // must not mint a "weekly" subscription.
+      if ((cadence === "weekly" || cadence === "biweekly") && gaps.length < 3) {
+        return [];
+      }
+
+      // Amount gate: subscription charges cluster around one price (price hikes
+      // allowed); variable spending scatters.
+      const amounts = datedTransactions.map((transaction) => Math.abs(transaction.amount));
+      const medianAmount = median(amounts);
+      if (medianAmount <= 0) {
+        return [];
+      }
+      const amountTolerance = Math.max(3, medianAmount * 0.3);
+      const consistentAmounts = amounts.filter((amount) => Math.abs(amount - medianAmount) <= amountTolerance);
+      if (consistentAmounts.length / amounts.length < 0.7) {
+        return [];
+      }
+
+      // Recency gate: a merchant that missed two straight cycles is cancelled, not due.
+      if (latestDataDate && daysBetween(lastTransaction.date, latestDataDate) > cadenceDays * 2 + gapTolerance) {
+        return [];
+      }
+
+      // Median, not mean: robust to the occasional off-price charge inside the gate.
+      const averageAmount = medianAmount;
+      const categoryId = mostCommon(datedTransactions.map((transaction) => transaction.categoryId)) ?? "cat_other";
 
       return [
         {
@@ -522,6 +576,21 @@ function cadenceFromGap(days: number): RecurringItem["cadence"] {
   }
 
   return "annual";
+}
+
+function cadenceGapTolerance(cadence: RecurringItem["cadence"]): number {
+  switch (cadence) {
+    case "weekly":
+      return 2;
+    case "biweekly":
+      return 3;
+    case "monthly":
+      return 5;
+    case "quarterly":
+      return 12;
+    case "annual":
+      return 20;
+  }
 }
 
 function cadenceToDays(cadence: RecurringItem["cadence"]): number {
