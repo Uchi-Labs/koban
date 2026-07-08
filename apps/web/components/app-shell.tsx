@@ -177,6 +177,7 @@ interface AppShellProps {
   accountGroups: AccountGroup[];
   accounts: Account[];
   children: React.ReactNode;
+  demoMode?: boolean;
   lastSyncedAt?: string;
   reviewActionableCount: number;
   source: "empty" | "teller";
@@ -196,6 +197,7 @@ export function AppShell(props: AppShellProps) {
 function AppShellContent({
   accountGroups,
   accounts,
+  demoMode,
   lastSyncedAt,
   reviewActionableCount,
   source,
@@ -369,6 +371,7 @@ function AppShellContent({
           accountGroups={accountGroups}
           accountCount={accounts.length}
           agentPanel={agentPanel}
+          demoMode={demoMode}
           lastSyncedAt={lastSyncedAt}
           onOpenPalette={() => changePaletteOpen(true)}
           pathname={pathname}
@@ -393,6 +396,7 @@ function AppSidebarSections({
   accountGroups,
   accountCount,
   agentPanel,
+  demoMode,
   lastSyncedAt,
   onOpenPalette,
   pathname,
@@ -407,6 +411,7 @@ function AppSidebarSections({
   accountGroups: AccountGroup[];
   accountCount: number;
   agentPanel: ReturnType<typeof useAgentPanel>;
+  demoMode?: boolean;
   lastSyncedAt?: string;
   onOpenPalette: () => void;
   pathname: string;
@@ -427,6 +432,18 @@ function AppSidebarSections({
           <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             Koban
           </span>
+          {demoMode ? (
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase group-data-[collapsible=icon]:hidden"
+              style={{
+                backgroundColor: "color-mix(in oklab, oklch(0.78 0.15 72) 16%, transparent)",
+                color: "oklch(0.78 0.15 72)"
+              }}
+              title="Demo mode is on — money figures are scrambled"
+            >
+              Demo
+            </span>
+          ) : null}
           <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:ml-0" />
         </div>
       </SidebarHeader>

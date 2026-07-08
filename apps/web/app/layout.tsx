@@ -66,6 +66,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <AppShell
           accounts={shellData.accounts}
           accountGroups={shellData.accountGroups}
+          demoMode={shellData.demoMode}
           lastSyncedAt={shellData.lastSyncedAt}
           reviewActionableCount={shellData.reviewActionableCount}
           source={shellData.source}

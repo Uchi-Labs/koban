@@ -268,12 +268,7 @@ function InvestmentAccountsSection({ accounts }: { accounts: InvestmentsData["ac
               className="relative flex flex-col gap-2 overflow-hidden rounded-2xl border border-border bg-card/95 p-4 shadow-sm ring-1 ring-foreground/5"
               key={account.id}
             >
-              <span
-                aria-hidden
-                className="absolute inset-y-0 left-0 w-1"
-                style={{ background: `var(${accent})`, opacity: 0.9 }}
-              />
-              <div className="flex items-start justify-between gap-2 pl-1">
+              <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span
                     className="flex size-8 shrink-0 items-center justify-center rounded-xl text-xs font-semibold"

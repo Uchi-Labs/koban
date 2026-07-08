@@ -2317,8 +2317,8 @@ function TransactionRowButton({
   return (
     <div
       className={cn(
-        "ledger-transaction-row group/row relative grid w-full items-center gap-2.5 border-l-2 border-transparent px-4 py-1 text-left transition-colors sm:px-6",
-        isSelected && "border-l-primary bg-accent"
+        "ledger-transaction-row group/row relative grid w-full items-center gap-2.5 px-4 py-1 text-left transition-colors sm:px-6",
+        isSelected && "bg-accent"
       )}
       data-selected={isSelected ? "" : undefined}
       data-testid="transaction-row"
