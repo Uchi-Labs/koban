@@ -12,7 +12,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { applyInclusionOverrides, getAccountInclusionOverrides } from "@/lib/account-overlays";
 import { displayCurrencyCode } from "@/lib/currency";
-import { isDemoModeEnabled, scrambleAccounts, scrambleBalanceSnapshots, scrambleTransactions } from "@/lib/demo-mode";
+import {
+  buildDemoFactors,
+  isDemoModeEnabled,
+  scrambleAccounts,
+  scrambleBalanceSnapshots,
+  scrambleTransactions
+} from "@/lib/demo-mode";
 import {
   consumeFinanceDbRecoveryEvent,
   financeDbExists,
@@ -135,7 +141,7 @@ function demoScrambleShellData(value: ShellData, demoMode: boolean): ShellData {
     return value;
   }
 
-  const accounts = scrambleAccounts(value.accounts);
+  const accounts = scrambleAccounts(value.accounts, buildDemoFactors(value.accounts));
   return { ...value, accounts, accountGroups: createAccountGroups(accounts), demoMode: true };
 }
 
@@ -255,11 +261,12 @@ async function withInclusionOverrides(ledger: TellerLedger): Promise<TellerLedge
     return withOverrides;
   }
 
+  const factors = buildDemoFactors(withOverrides.accounts);
   return {
     ...withOverrides,
-    accounts: scrambleAccounts(withOverrides.accounts),
+    accounts: scrambleAccounts(withOverrides.accounts, factors),
     balanceSnapshots: withOverrides.balanceSnapshots
-      ? scrambleBalanceSnapshots(withOverrides.balanceSnapshots)
+      ? scrambleBalanceSnapshots(withOverrides.balanceSnapshots, factors)
       : withOverrides.balanceSnapshots,
     transactions: scrambleTransactions(withOverrides.transactions)
   };
