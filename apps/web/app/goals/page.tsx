@@ -1,11 +1,11 @@
 import { GoalManager, type GoalView } from "@/components/goal-manager";
 import { listFinancialGoals } from "@/lib/db/finance-db";
-import { isDemoModeEnabled, scrambleAmount } from "@/lib/demo-mode";
+import { isDemoModeEnabled, squashAmount } from "@/lib/demo-mode";
 
 export default async function GoalsPage() {
   const goals = await listFinancialGoals();
   const demoMode = await isDemoModeEnabled();
-  const scrambleCents = (cents: number, seed: string) => Math.round(scrambleAmount(cents / 100, seed) * 100);
+  const scrambleCents = (cents: number, seed: string) => Math.round(squashAmount(cents / 100, seed) * 100);
   const goalViews: GoalView[] = goals.map((goal) => ({
     emoji: goal.emoji ?? null,
     id: goal.id,

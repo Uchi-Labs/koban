@@ -1,6 +1,12 @@
 import type { Account, InvestmentPosition } from "@ai-finances/schema";
 import { displayCurrencyCode } from "@/lib/currency";
-import { isDemoModeEnabled, scrambleAccounts, scrambleBalanceSnapshots, scramblePositions } from "@/lib/demo-mode";
+import {
+  buildDemoFactors,
+  isDemoModeEnabled,
+  scrambleAccounts,
+  scrambleBalanceSnapshots,
+  scramblePositions
+} from "@/lib/demo-mode";
 import type { AccountBalanceSnapshot } from "@/lib/finance-data";
 import { readFinanceDbSnapshot, listInvestmentPositions } from "@/lib/db/finance-db";
 
@@ -237,13 +243,16 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
   const snapshot = await readFinanceDbSnapshot();
   const demoMode = await isDemoModeEnabled();
   const rawAccounts = (snapshot?.accounts ?? []).filter((account) => account.type === "investment");
-  const accounts = demoMode ? scrambleAccounts(rawAccounts) : rawAccounts;
+  const demoFactors = buildDemoFactors(rawAccounts);
+  const accounts = demoMode ? scrambleAccounts(rawAccounts, demoFactors) : rawAccounts;
   const rawBalanceSnapshots = snapshot?.balanceSnapshots ?? [];
-  const balanceSnapshots = demoMode ? scrambleBalanceSnapshots(rawBalanceSnapshots) : rawBalanceSnapshots;
+  const balanceSnapshots = demoMode ? scrambleBalanceSnapshots(rawBalanceSnapshots, demoFactors) : rawBalanceSnapshots;
   const accountIds = accounts.map((account) => account.id);
   const rawPositions = accountIds.length > 0 ? await listInvestmentPositions(accountIds) : [];
-  const positions = demoMode ? scramblePositions(rawPositions) : rawPositions;
+  const positions = demoMode ? scramblePositions(rawPositions, demoFactors) : rawPositions;
   const accountById = new Map(accounts.map((account) => [account.id, account]));
+  // TradingView symbols resolve off the real brokerage — scrambled institution names would break them.
+  const rawAccountById = new Map(rawAccounts.map((account) => [account.id, account]));
 
   const weightedPositions = computeHoldingWeights(positions);
   const holdings: HoldingView[] = weightedPositions.map((position) => {
@@ -264,7 +273,7 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
       unrealizedPnlPercent,
       currency: position.currency,
       weight: position.weight,
-      tradingViewSymbol: tradingViewSymbol(position, account)
+      tradingViewSymbol: tradingViewSymbol(position, rawAccountById.get(position.accountId) ?? account)
     };
   });
 
