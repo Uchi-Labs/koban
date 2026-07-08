@@ -1,5 +1,6 @@
 import type { Account, InvestmentPosition } from "@ai-finances/schema";
 import { displayCurrencyCode } from "@/lib/currency";
+import { isDemoModeEnabled, scrambleAccounts, scrambleBalanceSnapshots, scramblePositions } from "@/lib/demo-mode";
 import type { AccountBalanceSnapshot } from "@/lib/finance-data";
 import { readFinanceDbSnapshot, listInvestmentPositions } from "@/lib/db/finance-db";
 
@@ -234,10 +235,14 @@ export function computePortfolioChange(history: PortfolioPoint[]): PortfolioChan
 /** Assemble the full investments view model from finance-db read paths. */
 export async function getInvestmentsData(): Promise<InvestmentsData> {
   const snapshot = await readFinanceDbSnapshot();
-  const accounts = (snapshot?.accounts ?? []).filter((account) => account.type === "investment");
-  const balanceSnapshots = snapshot?.balanceSnapshots ?? [];
+  const demoMode = await isDemoModeEnabled();
+  const rawAccounts = (snapshot?.accounts ?? []).filter((account) => account.type === "investment");
+  const accounts = demoMode ? scrambleAccounts(rawAccounts) : rawAccounts;
+  const rawBalanceSnapshots = snapshot?.balanceSnapshots ?? [];
+  const balanceSnapshots = demoMode ? scrambleBalanceSnapshots(rawBalanceSnapshots) : rawBalanceSnapshots;
   const accountIds = accounts.map((account) => account.id);
-  const positions = accountIds.length > 0 ? await listInvestmentPositions(accountIds) : [];
+  const rawPositions = accountIds.length > 0 ? await listInvestmentPositions(accountIds) : [];
+  const positions = demoMode ? scramblePositions(rawPositions) : rawPositions;
   const accountById = new Map(accounts.map((account) => [account.id, account]));
 
   const weightedPositions = computeHoldingWeights(positions);

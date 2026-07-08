@@ -1,5 +1,6 @@
 import { ApiTokensPanel } from "@/components/api-tokens-panel";
 import { AiProviderPanel } from "@/components/sync-everything-panel";
+import { DemoModePanel } from "@/components/demo-mode-panel";
 import Link from "next/link";
 import { LocalDataPanel, TellerConnectSetup } from "@/components/teller-connect-setup";
 import { PlaidConnectSetup } from "@/components/plaid-connect-setup";
@@ -12,6 +13,7 @@ import { SyncEverythingPanel } from "@/components/sync-everything-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { normalizeCurrencyCode } from "@/lib/currency";
+import { isDemoModeEnabled } from "@/lib/demo-mode";
 import {
   ensureAppSyncSchedule,
   getLatestAppSyncRun,
@@ -33,6 +35,7 @@ import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
 import { getTellerSetupStatus } from "@/lib/teller-server";
 
 export default async function SettingsPage() {
+  const demoModeEnabled = await isDemoModeEnabled();
   const [
     tellerStatus,
     snapTradeStatus,
@@ -291,6 +294,7 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="data" className="flex flex-col gap-6">
+          <DemoModePanel initialEnabled={demoModeEnabled} />
           <SoundSettingsPanel />
           <LocalDataPanel initialStatus={tellerStatusPayload} />
         </TabsContent>

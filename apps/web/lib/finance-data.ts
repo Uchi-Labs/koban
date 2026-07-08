@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { applyInclusionOverrides, getAccountInclusionOverrides } from "@/lib/account-overlays";
 import { displayCurrencyCode } from "@/lib/currency";
+import { isDemoModeEnabled, scrambleAccounts, scrambleBalanceSnapshots, scrambleTransactions } from "@/lib/demo-mode";
 import {
   consumeFinanceDbRecoveryEvent,
   financeDbExists,
@@ -72,6 +73,7 @@ export interface AccountBalanceSnapshot {
 export interface ShellData {
   accounts: Account[];
   accountGroups: AccountGroup[];
+  demoMode: boolean;
   lastSyncedAt?: string;
   reviewActionableCount: number;
   source: "empty" | "teller";
@@ -93,28 +95,48 @@ export function invalidateShellDataCache(): void {
 export async function getShellData(): Promise<ShellData> {
   noStore();
 
+  // The cache holds real values; demo scrambling is applied per-request on the
+  // way out so toggling the cookie never leaks between requests.
+  const demoMode = await isDemoModeEnabled();
   const now = Date.now();
   if (shellDataCache && shellDataCache.expiresAt > now) {
-    return shellDataCache.value;
+    return demoScrambleShellData(shellDataCache.value, demoMode);
   }
 
   const snapshot = await readShellSnapshot();
   if (!snapshot) {
-    const value = { accounts: [], accountGroups: [], reviewActionableCount: 0, source: "empty" as const, transactionCount: 0 };
+    const value = {
+      accounts: [],
+      accountGroups: [],
+      demoMode: false,
+      reviewActionableCount: 0,
+      source: "empty" as const,
+      transactionCount: 0
+    };
     shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
-    return value;
+    return demoScrambleShellData(value, demoMode);
   }
 
   const value = {
     accounts: snapshot.accounts,
     accountGroups: createAccountGroups(snapshot.accounts),
+    demoMode: false,
     lastSyncedAt: snapshot.lastSyncedAt,
     reviewActionableCount: snapshot.reviewActionableCount,
     source: "teller" as const,
     transactionCount: snapshot.transactionCount
   };
   shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
-  return value;
+  return demoScrambleShellData(value, demoMode);
+}
+
+function demoScrambleShellData(value: ShellData, demoMode: boolean): ShellData {
+  if (!demoMode) {
+    return value;
+  }
+
+  const accounts = scrambleAccounts(value.accounts);
+  return { ...value, accounts, accountGroups: createAccountGroups(accounts), demoMode: true };
 }
 
 export async function getFinanceData(): Promise<FinanceData> {
@@ -224,12 +246,23 @@ export async function updateStoredTransactionInDb(
 
 async function withInclusionOverrides(ledger: TellerLedger): Promise<TellerLedger> {
   const overrides = await getAccountInclusionOverrides();
+  const withOverrides =
+    Object.keys(overrides).length === 0
+      ? ledger
+      : { ...ledger, accounts: applyInclusionOverrides(ledger.accounts, overrides) };
 
-  if (Object.keys(overrides).length === 0) {
-    return ledger;
+  if (!(await isDemoModeEnabled())) {
+    return withOverrides;
   }
 
-  return { ...ledger, accounts: applyInclusionOverrides(ledger.accounts, overrides) };
+  return {
+    ...withOverrides,
+    accounts: scrambleAccounts(withOverrides.accounts),
+    balanceSnapshots: withOverrides.balanceSnapshots
+      ? scrambleBalanceSnapshots(withOverrides.balanceSnapshots)
+      : withOverrides.balanceSnapshots,
+    transactions: scrambleTransactions(withOverrides.transactions)
+  };
 }
 
 function createFinanceDataFromLedger(tellerLedger: TellerLedger, categories: Category[]): FinanceData {
