@@ -43,7 +43,8 @@ import {
   syncPlaidDataEffect,
   type PlaidSyncResult
 } from "@/lib/plaid-server";
-import { syncTellerDataEffect, type TellerSyncResult } from "@/lib/teller-server";
+import { getStoredTellerEnrollments, syncTellerDataEffect, type TellerSyncResult } from "@/lib/teller-server";
+import { readWorkspaceEnv } from "@/lib/workspace-env";
 import { Effect, Schedule } from "effect";
 import type { Duration } from "effect";
 
@@ -163,12 +164,17 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
   return Effect.gen(function* () {
     const startedAt = new Date().toISOString();
     const enrichmentLimit = normalizeEnrichmentLimit(options.enrichmentLimit);
-    const tellerResult = normalizeTellerStep(
-      yield* runSyncStepEffect(syncTellerDataEffect(), {
-        timeout: "2 minutes",
-        timeoutError: () => new TellerSyncError({ message: "Teller sync timed out." })
-      })
-    );
+    // Teller withdrew its API product (Jul 2026). Skip the step entirely when no
+    // enrollments remain instead of failing every scheduled run against a dead provider.
+    const tellerConfigured = getStoredTellerEnrollments(readWorkspaceEnv()).length > 0;
+    const tellerResult = tellerConfigured
+      ? normalizeTellerStep(
+          yield* runSyncStepEffect(syncTellerDataEffect(), {
+            timeout: "2 minutes",
+            timeoutError: () => new TellerSyncError({ message: "Teller sync timed out." })
+          })
+        )
+      : { data: undefined, status: "succeeded" as const };
     const snapTradeResult = normalizeSnapTradeStep(
       isSnapTradeConfigured()
         ? yield* runSyncStepEffect(syncSnapTradeDataEffect(), {
@@ -454,7 +460,8 @@ function plaidSyncStepStatus(result: PlaidSyncResult): SyncStepStatus {
 
 function summarizeTellerStep(step: StepResult<TellerSyncResult>): Record<string, unknown> {
   if (!step.data) {
-    return { error: step.error ?? "Teller sync failed." };
+    // Succeeded with no data = deliberately skipped (no enrollments / dead provider).
+    return step.status === "succeeded" ? { skipped: true } : { error: step.error ?? "Teller sync failed." };
   }
 
   return {

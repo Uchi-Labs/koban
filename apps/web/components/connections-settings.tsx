@@ -511,13 +511,19 @@ function AddConnectionDialog({
   tellerStatus: TellerSetupStatus;
 }) {
   const options = [
-    {
-      description: tellerStatus.readyForConnect ? "Bank and credit-card accounts" : "Application ID missing",
-      enabled: tellerStatus.readyForConnect,
-      icon: Landmark,
-      id: "teller" as const,
-      label: "Teller Connect"
-    },
+    // Teller withdrew its API product (Jul 2026); only offer it while enrollments
+    // still exist (so they can be managed), never for new connections.
+    ...(tellerStatus.enrollmentCount > 0
+      ? [
+          {
+            description: "Legacy Teller enrollments (provider discontinued)",
+            enabled: tellerStatus.readyForConnect,
+            icon: Landmark,
+            id: "teller" as const,
+            label: "Teller Connect"
+          }
+        ]
+      : []),
     {
       description: plaidStatus.readyForLink ? "Bank transaction accounts" : "Plaid credentials missing",
       enabled: plaidStatus.readyForLink,
@@ -649,9 +655,8 @@ function buildConnectionRows({
       };
     })
   );
-  if (tellerStatus.connections.length === 0) {
-    rows.push(emptyProviderRow("teller", "No Teller connection"));
-  }
+  // No empty-state row for Teller: the provider shut down, so a "not set up"
+  // prompt would invite connecting to a dead service.
 
   rows.push(
     ...plaidStatus.items.map((item) => ({
