@@ -1,22 +1,9 @@
 "use client";
 
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { Check, Plus } from "lucide-react";
-import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
 import * as React from "react";
+import { Popover, PopoverPopup, PopoverPortal, PopoverPositioner, PopoverTrigger } from "@/components/motion/popover";
 import { cn } from "@/lib/utils";
-
-const PANEL_VARIANTS: Variants = {
-  closed: { opacity: 0, scale: 0.96, y: -4 },
-  open: { opacity: 1, scale: 1, y: 0 }
-};
-
-const PANEL_TRANSITION = {
-  damping: 32,
-  mass: 0.85,
-  stiffness: 420,
-  type: "spring"
-} as const;
 
 export interface FinancialGoal {
   emoji?: string;
@@ -52,7 +39,6 @@ export function TransactionGoalPopover({
   side = "bottom",
   value
 }: TransactionGoalPopoverProps) {
-  const reduce = useReducedMotion();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [goals, setGoals] = React.useState<FinancialGoal[]>([]);
@@ -140,24 +126,15 @@ export function TransactionGoalPopover({
   }
 
   return (
-    <LazyMotion features={domAnimation}>
-      <PopoverPrimitive.Root open={open} onOpenChange={setOpenState}>
-        <PopoverPrimitive.Trigger nativeButton={nativeButton} render={children} />
-        <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Positioner align={align} className="isolate z-50" side={side} sideOffset={6}>
-          <PopoverPrimitive.Popup
+      <Popover open={open} onOpenChange={setOpenState}>
+        <PopoverTrigger nativeButton={nativeButton} render={children} />
+        <PopoverPortal>
+        <PopoverPositioner align={align} className="isolate z-50" side={side} sideOffset={6}>
+          <PopoverPopup
             data-slot="transaction-goal-popover"
             finalFocus={{ current: null }}
             initialFocus={inputRef}
             className="relative z-50 flex w-60 max-w-[min(18rem,calc(100vw-2rem))] origin-(--transform-origin) flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
-            render={
-              <m.div
-                animate={reduce ? { opacity: 1, scale: 1, y: 0 } : "open"}
-                initial={reduce ? false : "closed"}
-                transition={reduce ? { duration: 0 } : PANEL_TRANSITION}
-                variants={reduce ? undefined : PANEL_VARIANTS}
-              />
-            }
           >
             <div className="border-b border-border/60 px-2.5 py-2">
               <input
@@ -236,10 +213,9 @@ export function TransactionGoalPopover({
                 </button>
               ) : null}
             </div>
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-        </PopoverPrimitive.Portal>
-      </PopoverPrimitive.Root>
-    </LazyMotion>
+          </PopoverPopup>
+        </PopoverPositioner>
+        </PopoverPortal>
+      </Popover>
   );
 }
