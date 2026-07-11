@@ -17,7 +17,11 @@ export interface SyncIslandState {
   tone: "idle" | "syncing" | "success" | "error";
 }
 
-const SYNC_ISLAND_PHASES = ["Teller", "Evidence", "Semantic", "AI"];
+// Server stages a single sync-run runs through, in order. We don't get live
+// progress events, so the label advances on a timer and HOLDS on the last stage
+// until the run actually finishes — it never wraps back to the start.
+const SYNC_ISLAND_PHASES = ["Teller", "sources", "evidence", "AI enrichment", "finishing up"];
+export const SYNC_ISLAND_PHASE_COUNT = SYNC_ISLAND_PHASES.length;
 
 const syncTimeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
@@ -37,7 +41,8 @@ export function deriveSyncIslandState({
     source === "teller"
       ? `${accountCount.toLocaleString()} accounts, ${transactionCount.toLocaleString()} transactions`
       : "Connect Teller in Settings";
-  const phaseLabel = SYNC_ISLAND_PHASES[phaseIndex % SYNC_ISLAND_PHASES.length] ?? SYNC_ISLAND_PHASES[0];
+  // Clamp (not modulo) so phases advance once and hold — no looping.
+  const phaseLabel = SYNC_ISLAND_PHASES[Math.min(phaseIndex, SYNC_ISLAND_PHASES.length - 1)] ?? SYNC_ISLAND_PHASES[0];
 
   if (status === "syncing") {
     return {

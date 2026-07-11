@@ -48,7 +48,7 @@ import { SyncStatusIsland } from "@/components/ui/sync-status-island";
 import { ActionSwapIcon, ActionSwapText } from "@/components/ui/action-swap";
 import { Button } from "@/components/ui/button";
 import { ToastProvider, useToast } from "@/components/ui/toast";
-import { deriveSyncIslandState } from "@/lib/sync-island-state";
+import { deriveSyncIslandState, SYNC_ISLAND_PHASE_COUNT } from "@/lib/sync-island-state";
 import { cn } from "@/lib/utils";
 
 const accountColorByType = {
@@ -270,8 +270,15 @@ function AppShellContent({
 
     setSyncPhaseIndex(0);
     const interval = window.setInterval(() => {
-      setSyncPhaseIndex((current) => current + 1);
-    }, 900);
+      setSyncPhaseIndex((current) => {
+        if (current >= SYNC_ISLAND_PHASE_COUNT - 1) {
+          // Reached the final stage — hold there instead of looping.
+          window.clearInterval(interval);
+          return current;
+        }
+        return current + 1;
+      });
+    }, 1400);
     return () => window.clearInterval(interval);
   }, [syncStatus]);
 
