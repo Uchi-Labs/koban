@@ -449,6 +449,14 @@ export interface SourceEvidenceRefreshResult {
 
 export type AppSyncRunStatus = "error" | "partial" | "succeeded";
 export const appSyncScheduleId = "whole_app";
+export const snapTradeSyncScheduleId = "snaptrade";
+export type SyncScheduleId = typeof appSyncScheduleId | typeof snapTradeSyncScheduleId;
+
+// Insert defaults per schedule (disabled until the user/ops enables them).
+const syncScheduleDefaults: Record<SyncScheduleId, { intervalMinutes: number }> = {
+  [appSyncScheduleId]: { intervalMinutes: 240 },
+  [snapTradeSyncScheduleId]: { intervalMinutes: 30 }
+};
 
 export interface AppSyncRunInput {
   enrichmentStatus: AppSyncRunStatus;
@@ -2597,21 +2605,24 @@ export async function listAppSyncRuns(limit = 10): Promise<AppSyncRunRecord[]> {
   return result.rows.map(appSyncRunFromRow);
 }
 
-export async function ensureAppSyncSchedule(): Promise<SyncScheduleRecord> {
+export async function ensureAppSyncSchedule(scheduleId: SyncScheduleId = appSyncScheduleId): Promise<SyncScheduleRecord> {
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const now = new Date().toISOString();
-    await ensureAppSyncScheduleInDb(db, now);
-    return readAppSyncScheduleInDb(db);
+    await ensureAppSyncScheduleInDb(db, now, scheduleId);
+    return readAppSyncScheduleInDb(db, scheduleId);
   });
 }
 
-export async function updateAppSyncSchedule(input: SyncScheduleUpdateInput): Promise<SyncScheduleRecord> {
+export async function updateAppSyncSchedule(
+  input: SyncScheduleUpdateInput,
+  scheduleId: SyncScheduleId = appSyncScheduleId
+): Promise<SyncScheduleRecord> {
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const now = new Date().toISOString();
-    await ensureAppSyncScheduleInDb(db, now);
-    const current = await readAppSyncScheduleInDb(db);
+    await ensureAppSyncScheduleInDb(db, now, scheduleId);
+    const current = await readAppSyncScheduleInDb(db, scheduleId);
     const enabled = input.enabled ?? current.enabled;
     const intervalMinutes = normalizeSyncIntervalMinutes(input.intervalMinutes ?? current.intervalMinutes);
     const nextRunAt =
@@ -2631,19 +2642,22 @@ export async function updateAppSyncSchedule(input: SyncScheduleUpdateInput): Pro
         next_run_at = $4,
         updated_at = $5
       WHERE id = $1`,
-      [appSyncScheduleId, enabled, intervalMinutes, nextRunAt, now]
+      [scheduleId, enabled, intervalMinutes, nextRunAt, now]
     );
 
-    return readAppSyncScheduleInDb(db);
+    return readAppSyncScheduleInDb(db, scheduleId);
   });
 }
 
-export async function recordAppSyncScheduleRun(run: AppSyncRunRecord): Promise<SyncScheduleRecord> {
+export async function recordAppSyncScheduleRun(
+  run: AppSyncRunRecord,
+  scheduleId: SyncScheduleId = appSyncScheduleId
+): Promise<SyncScheduleRecord> {
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const now = new Date().toISOString();
-    await ensureAppSyncScheduleInDb(db, now);
-    const current = await readAppSyncScheduleInDb(db);
+    await ensureAppSyncScheduleInDb(db, now, scheduleId);
+    const current = await readAppSyncScheduleInDb(db, scheduleId);
     const nextRunAt = current.enabled ? addMinutesIso(run.finishedAt, current.intervalMinutes) : null;
 
     await db.query(
@@ -2658,7 +2672,7 @@ export async function recordAppSyncScheduleRun(run: AppSyncRunRecord): Promise<S
         updated_at = $8
       WHERE id = $1`,
       [
-        appSyncScheduleId,
+        scheduleId,
         nextRunAt,
         run.startedAt,
         run.finishedAt,
@@ -2669,7 +2683,7 @@ export async function recordAppSyncScheduleRun(run: AppSyncRunRecord): Promise<S
       ]
     );
 
-    return readAppSyncScheduleInDb(db);
+    return readAppSyncScheduleInDb(db, scheduleId);
   });
 }
 
@@ -6848,7 +6862,11 @@ function appSyncRunFromRow(row: AppSyncRunRow): AppSyncRunRecord {
   };
 }
 
-async function ensureAppSyncScheduleInDb(db: FinanceDb, timestamp: string): Promise<void> {
+async function ensureAppSyncScheduleInDb(
+  db: FinanceDb,
+  timestamp: string,
+  scheduleId: SyncScheduleId = appSyncScheduleId
+): Promise<void> {
   await db.query(
     `INSERT INTO sync_schedules (
       id,
@@ -6859,16 +6877,19 @@ async function ensureAppSyncScheduleInDb(db: FinanceDb, timestamp: string): Prom
       updated_at
     ) VALUES ($1, FALSE, $2, NULL, $3, $3)
     ON CONFLICT (id) DO NOTHING`,
-    [appSyncScheduleId, 240, timestamp]
+    [scheduleId, syncScheduleDefaults[scheduleId].intervalMinutes, timestamp]
   );
 }
 
-async function readAppSyncScheduleInDb(db: FinanceDb): Promise<SyncScheduleRecord> {
-  const result = await db.query<SyncScheduleRow>("SELECT * FROM sync_schedules WHERE id = $1", [appSyncScheduleId]);
+async function readAppSyncScheduleInDb(
+  db: FinanceDb,
+  scheduleId: SyncScheduleId = appSyncScheduleId
+): Promise<SyncScheduleRecord> {
+  const result = await db.query<SyncScheduleRow>("SELECT * FROM sync_schedules WHERE id = $1", [scheduleId]);
   const row = result.rows[0];
 
   if (!row) {
-    throw new Error("App sync schedule is missing.");
+    throw new Error(`Sync schedule ${scheduleId} is missing.`);
   }
 
   return syncScheduleFromRow(row);

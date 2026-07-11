@@ -3,8 +3,10 @@ import { readOptionalJsonObject } from "@/lib/api-request";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { runAppSync } from "@/lib/app-sync-service";
 import {
+  appSyncScheduleId,
   ensureAppSyncSchedule,
   recordAppSyncScheduleRun,
+  snapTradeSyncScheduleId,
   updateAppSyncSchedule
 } from "@/lib/db/finance-db";
 import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync-request";
@@ -12,9 +14,15 @@ import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync
 export const runtime = "nodejs";
 
 export async function GET() {
-  const schedule = await ensureAppSyncSchedule();
+  const [schedule, snaptrade] = await Promise.all([
+    ensureAppSyncSchedule(),
+    ensureAppSyncSchedule(snapTradeSyncScheduleId)
+  ]);
 
-  return NextResponse.json(syncScheduleRecordToPayload(schedule));
+  return NextResponse.json({
+    ...syncScheduleRecordToPayload(schedule),
+    snaptrade: syncScheduleRecordToPayload(snaptrade)
+  });
 }
 
 export async function PATCH(request: Request) {
@@ -27,11 +35,16 @@ export async function PATCH(request: Request) {
   const body = parsed.body as {
     enabled?: unknown;
     interval_minutes?: unknown;
+    schedule_id?: unknown;
   };
-  const schedule = await updateAppSyncSchedule({
-    enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
-    intervalMinutes: typeof body.interval_minutes === "number" ? body.interval_minutes : undefined
-  });
+  const scheduleId = body.schedule_id === snapTradeSyncScheduleId ? snapTradeSyncScheduleId : appSyncScheduleId;
+  const schedule = await updateAppSyncSchedule(
+    {
+      enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+      intervalMinutes: typeof body.interval_minutes === "number" ? body.interval_minutes : undefined
+    },
+    scheduleId
+  );
 
   return NextResponse.json(syncScheduleRecordToPayload(schedule));
 }
