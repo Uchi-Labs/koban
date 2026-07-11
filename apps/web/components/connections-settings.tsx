@@ -40,7 +40,7 @@ import type { SnapTradeSetupStatus } from "@/lib/snaptrade-server";
 import type { TellerSetupStatus } from "@/lib/teller-server";
 import { cn } from "@/lib/utils";
 
-type ConnectionProvider = "financekit" | "plaid" | "simplefin" | "snaptrade" | "teller";
+type ConnectionProvider = "copilot" | "financekit" | "plaid" | "simplefin" | "snaptrade" | "teller";
 
 interface UnifiedConnectionRow {
   accountCount: number;
@@ -61,6 +61,7 @@ interface LaunchRequests {
 }
 
 const providerLabels: Record<ConnectionProvider, string> = {
+  copilot: "Copilot",
   financekit: "FinanceKit",
   plaid: "Plaid",
   simplefin: "SimpleFIN",
@@ -69,6 +70,7 @@ const providerLabels: Record<ConnectionProvider, string> = {
 };
 
 const providerIcons = {
+  copilot: WalletCards,
   financekit: Smartphone,
   plaid: WalletCards,
   simplefin: WalletCards,
@@ -729,6 +731,21 @@ function buildConnectionRows({
       rows.push(emptyProviderRow("simplefin", "No SimpleFIN connection"));
     }
   }
+
+  const copilotConnections = providerConnections.filter((connection) => connection.provider === "copilot");
+  rows.push(
+    ...copilotConnections.map((connection) => ({
+      accountCount: accountCountByConnection[connection.id] ?? 0,
+      errorMessage: connection.errorMessage,
+      id: connection.id,
+      lastSyncedAt: connection.lastSyncedAt,
+      name: cleanProviderName(connection.displayName, "Copilot"),
+      provider: "copilot" as const,
+      removable: false,
+      status: connection.status,
+      syncable: false
+    }))
+  );
 
   return rows;
 }

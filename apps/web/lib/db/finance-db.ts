@@ -4926,7 +4926,7 @@ function classifyTagKind(name: string): "source" | "user" {
     return "user";
   }
 
-  if (normalized.includes(":")) {
+  if (normalized.startsWith("copilot:") || normalized.includes(":")) {
     return "source";
   }
 
