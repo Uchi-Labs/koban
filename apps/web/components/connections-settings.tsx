@@ -676,7 +676,8 @@ function buildConnectionRows({
       errorMessage: connection.errorMessage,
       id: connection.id,
       lastSyncedAt: connection.lastSyncedAt,
-      name: connection.name,
+      // SnapTrade names authorizations "Connection-N"; the brokerage is the identity.
+      name: connection.brokerageName ?? connection.name,
       provider: "snaptrade" as const,
       removable: false,
       status: connection.status,
