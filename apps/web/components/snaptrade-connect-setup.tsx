@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, Landmark, LineChart, Loader2, RefreshCw } from "lucide-react";
-import { useReducer } from "react";
+import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { ProviderConsentLine } from "@/components/provider-consent-line";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -71,7 +71,15 @@ function snapTradeConnectReducer(
   return { ...state, ...action.patch };
 }
 
-export function SnapTradeConnectSetup({ initialStatus }: { initialStatus: SnapTradeSetupStatus }) {
+export function SnapTradeConnectSetup({
+  detailsOnly = false,
+  initialStatus,
+  launchRequest = 0
+}: {
+  detailsOnly?: boolean;
+  initialStatus: SnapTradeSetupStatus;
+  launchRequest?: number;
+}) {
   const [state, dispatch] = useReducer(snapTradeConnectReducer, initialStatus, (status): SnapTradeConnectState => ({
     busy: false,
     error: "",
@@ -81,6 +89,7 @@ export function SnapTradeConnectSetup({ initialStatus }: { initialStatus: SnapTr
   }));
   const { busy, error, message, status, syncSummary } = state;
   const hasConnections = status.connections.length > 0;
+  const handledLaunchRequest = useRef(launchRequest);
 
   function updateState(patch: Partial<SnapTradeConnectState>) {
     dispatch({ type: "patch", patch });
@@ -136,6 +145,17 @@ export function SnapTradeConnectSetup({ initialStatus }: { initialStatus: SnapTr
       updateState({ busy: false });
     }
   }
+
+  const launchConnectionPortal = useEffectEvent(openConnectionPortal);
+
+  useEffect(() => {
+    if (launchRequest <= handledLaunchRequest.current) {
+      return;
+    }
+
+    handledLaunchRequest.current = launchRequest;
+    void launchConnectionPortal();
+  }, [launchRequest]);
 
   async function syncSnapTrade() {
     updateState({
@@ -194,17 +214,19 @@ export function SnapTradeConnectSetup({ initialStatus }: { initialStatus: SnapTr
             Link brokerage accounts with SnapTrade to include investment balances and positions in net worth.
           </p>
         </div>
-        <div className="flex max-w-sm flex-col items-end gap-2">
-          <Button variant="tonal" disabled={!status.readyForConnect || busy} onClick={openConnectionPortal} type="button">
-            <ExternalLink className="size-4" aria-hidden />
-            {busy ? "Working..." : hasConnections ? "Connect another brokerage" : "Connect brokerage"}
-          </Button>
-          <ProviderConsentLine className="text-right" />
-        </div>
+        {!detailsOnly ? (
+          <div className="flex max-w-sm flex-col items-end gap-2">
+            <Button variant="tonal" disabled={!status.readyForConnect || busy} onClick={openConnectionPortal} type="button">
+              <ExternalLink className="size-4" aria-hidden />
+              {busy ? "Working..." : hasConnections ? "Connect another brokerage" : "Connect brokerage"}
+            </Button>
+            <ProviderConsentLine className="text-right" />
+          </div>
+        ) : null}
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {hasConnections ? (
+        {!detailsOnly && hasConnections ? (
           <div className="flex flex-col gap-2" aria-label="SnapTrade connections">
             {status.connections.map((connection) => (
               <SnapTradeConnectionRow connection={connection} key={connection.id} />
@@ -214,7 +236,7 @@ export function SnapTradeConnectSetup({ initialStatus }: { initialStatus: SnapTr
               {status.storedPositionCount.toLocaleString()} positions.
             </p>
           </div>
-        ) : (
+        ) : !detailsOnly ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center">
             <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <LineChart className="size-5" aria-hidden />
@@ -226,7 +248,7 @@ export function SnapTradeConnectSetup({ initialStatus }: { initialStatus: SnapTr
                 : "Add SNAPTRADE_CLIENT_ID and SNAPTRADE_CONSUMER_KEY to your ignored .env to enable SnapTrade."}
             </p>
           </div>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="SnapTrade setup status">
           <CredentialTile label="Client ID" ready={status.clientIdConfigured} />

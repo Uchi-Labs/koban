@@ -1,12 +1,10 @@
 import { ApiTokensPanel } from "@/components/api-tokens-panel";
 import { AiProviderPanel } from "@/components/sync-everything-panel";
+import { ConnectionsSettings } from "@/components/connections-settings";
 import { DemoModePanel } from "@/components/demo-mode-panel";
 import Link from "next/link";
-import { LocalDataPanel, TellerConnectSetup } from "@/components/teller-connect-setup";
-import { PlaidConnectSetup } from "@/components/plaid-connect-setup";
+import { LocalDataPanel } from "@/components/teller-connect-setup";
 import { SecuritySettingsPanel } from "@/components/security-settings-panel";
-import { SnapTradeConnectSetup } from "@/components/snaptrade-connect-setup";
-import { SimpleFinConnectSetup } from "@/components/simplefin-connect-setup";
 import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
 import { SoundSettingsPanel } from "@/components/sound-settings-panel";
 import { SyncEverythingPanel } from "@/components/sync-everything-panel";
@@ -26,11 +24,11 @@ import { activeEmbeddingModel } from "@/lib/embeddings";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
 import { isHostedAuthMode } from "@/lib/auth";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
+import { getFinanceData } from "@/lib/finance-data";
 import { getPlaidSetupStatus } from "@/lib/plaid-server";
 import { getSourceAdapterDiagnostics, summarizeSourceReadiness } from "@/lib/source-adapters";
 import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/source-preview";
 import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
-import { FinanceKitConnectSetup } from "@/components/financekit-connect-setup";
 import { getFinanceKitSetupStatus } from "@/lib/financekit-server";
 import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
 import { getTellerSetupStatus } from "@/lib/teller-server";
@@ -38,6 +36,7 @@ import { getTellerSetupStatus } from "@/lib/teller-server";
 export default async function SettingsPage() {
   const demoModeEnabled = await isDemoModeEnabled();
   const [
+    financeData,
     tellerStatus,
     snapTradeStatus,
     plaidStatus,
@@ -51,6 +50,7 @@ export default async function SettingsPage() {
     sourceItems,
     evidenceLinks
   ] = await Promise.all([
+    getFinanceData(),
     getTellerSetupStatus(),
     getSnapTradeSetupStatus(),
     getPlaidSetupStatus(),
@@ -243,10 +243,19 @@ export default async function SettingsPage() {
   const plaidStatusPayload = toSerializable(plaidStatus);
   const simpleFinStatusPayload = toSerializable(simpleFinStatus);
   const financeKitStatusPayload = toSerializable(financeKitStatus);
+  const providerConnectionsPayload = toSerializable(financeData.providerConnections);
+  const accountCountByConnection = toSerializable(
+    Object.fromEntries(
+      financeData.providerConnections.map((connection) => [
+        connection.id,
+        financeData.accounts.filter((account) => account.providerConnectionId === connection.id).length
+      ])
+    )
+  );
   const hostedAuth = isHostedAuthMode();
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 p-4 sm:p-6">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
@@ -263,21 +272,23 @@ export default async function SettingsPage() {
       </header>
 
       <Tabs defaultValue="connections" className="gap-5">
-        <TabsList className="w-full max-w-md justify-start">
+        <TabsList className="w-full max-w-xl justify-start">
           <TabsTrigger value="connections">Connections</TabsTrigger>
-          <TabsTrigger value="sync">Sync</TabsTrigger>
-          <TabsTrigger value="ai">AI</TabsTrigger>
+          <TabsTrigger value="sync-ai">Sync &amp; AI</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="access">Access</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="connections" className="flex flex-col gap-6">
-          <TellerConnectSetup initialStatus={tellerStatusPayload} />
-          <PlaidConnectSetup initialStatus={plaidStatusPayload} />
-          <SimpleFinConnectSetup initialStatus={simpleFinStatusPayload} />
-          <SnapTradeConnectSetup initialStatus={snapTradeStatusPayload} />
-          <FinanceKitConnectSetup endpointUrl="/api/v1/financekit/ingest" initialStatus={financeKitStatusPayload} />
+        <TabsContent value="connections" className="flex flex-col gap-5">
+          <ConnectionsSettings
+            accountCountByConnection={accountCountByConnection}
+            financeKitStatus={financeKitStatusPayload}
+            plaidStatus={plaidStatusPayload}
+            providerConnections={providerConnectionsPayload}
+            simpleFinStatus={simpleFinStatusPayload}
+            snapTradeStatus={snapTradeStatusPayload}
+            tellerStatus={tellerStatusPayload}
+          />
           <SourceAdaptersPanel
             initialAdapters={sourceAdapterPayload}
             initialEvidenceLinks={initialEvidenceLinks}
@@ -286,23 +297,17 @@ export default async function SettingsPage() {
           />
         </TabsContent>
 
-        <TabsContent value="sync">
+        <TabsContent value="sync-ai" className="flex flex-col gap-5">
           <SyncEverythingPanel initialSchedule={syncSchedulePayload} initialStatus={syncStatusPayload} />
-        </TabsContent>
-
-        <TabsContent value="ai">
           <AiProviderPanel initialProvider={aiProviderPayload} />
         </TabsContent>
 
-        <TabsContent value="security">
+        <TabsContent value="security" className="flex flex-col gap-5">
           <SecuritySettingsPanel hostedAuth={hostedAuth} />
-        </TabsContent>
-
-        <TabsContent value="access">
           <ApiTokensPanel hostedAuth={hostedAuth} />
         </TabsContent>
 
-        <TabsContent value="data" className="flex flex-col gap-6">
+        <TabsContent value="data" className="flex flex-col gap-5">
           <DemoModePanel initialEnabled={demoModeEnabled} />
           <SoundSettingsPanel />
           <LocalDataPanel initialStatus={tellerStatusPayload} />
