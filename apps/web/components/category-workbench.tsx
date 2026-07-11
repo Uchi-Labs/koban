@@ -7,6 +7,7 @@ import { CategoryEditDialog } from "@/components/category-manager";
 import { CategoryPill } from "@/components/category-pill";
 import { NewCategoryDialog } from "@/components/new-category-dialog";
 import { Button } from "@/components/ui/button";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -177,12 +178,12 @@ function SummaryCard({
       type="button"
     >
       <div className="flex flex-col gap-0.5">
-        <span className="text-2xl font-semibold tabular-nums">{formatWhole(spent)}</span>
+        <AnimatedNumber className="text-2xl font-semibold tabular-nums" format={formatWhole} value={spent} />
         <span className="text-xs text-muted-foreground">spent in {monthLabel.split(" ")[0]}</span>
       </div>
       <SpendDonut summaries={summaries} total={spent} />
       <div className="flex flex-col items-end gap-0.5">
-        <span className="text-2xl font-semibold tabular-nums">{formatWhole(budget)}</span>
+        <AnimatedNumber className="text-2xl font-semibold tabular-nums" format={formatWhole} value={budget} />
         <span className="text-xs text-muted-foreground">total budget</span>
       </div>
     </button>

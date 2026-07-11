@@ -10,6 +10,7 @@ import {
   type CashflowChartVariant
 } from "@/components/cashflow-chart";
 import { Card, EmptyState } from "@/components/ui/card";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -319,7 +320,12 @@ function CashflowCard({
       </div>
 
       <div className="px-(--card-spacing)">
-        <div className={cn("text-3xl font-semibold tabular-nums", figureColor)}>{formatCurrency(figure, currency)}</div>
+        <AnimatedNumber
+          className={cn("text-3xl font-semibold tabular-nums", figureColor)}
+          format={(value) => formatCurrency(value, currency)}
+          startOnView={false}
+          value={figure}
+        />
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <DeltaPill delta={delta} metric={deltaMetric} />
           <span className="text-muted-foreground">
