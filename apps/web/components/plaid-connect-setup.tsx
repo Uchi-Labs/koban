@@ -4,6 +4,7 @@ import { CreditCard, Landmark, LinkIcon, Loader2, RefreshCw, WalletCards } from 
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from "react";
 import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 import { ProviderConsentLine } from "@/components/provider-consent-line";
+import { useToast } from "@/components/ui/toast";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -157,7 +158,23 @@ export function PlaidConnectSetup({
     }
   }
 
+  const { showToast } = useToast();
+
+  // The launch usually starts from the Add-connection chooser, which closes
+  // instantly — without a toast, the 2-4s token-fetch + iframe boot reads as
+  // "nothing happened", and Link failures were fully silent. A short auto-dismiss
+  // toast on launch (not an indefinite loading one) can't hang; errors get their own.
   const { open, ready } = usePlaidLink({
+    onExit: (exitError) => {
+      if (exitError) {
+        playError();
+        const detail = exitError.display_message ?? exitError.error_message ?? exitError.error_code ?? "unknown error";
+        showToast({ description: detail, duration: 6000, status: "error", title: "Plaid Link failed" });
+        updateState({ busy: false, error: `Plaid Link exited: ${detail}` });
+      } else {
+        updateState({ busy: false });
+      }
+    },
     onSuccess: handleSuccess,
     receivedRedirectUri,
     token: linkToken
@@ -212,13 +229,22 @@ export function PlaidConnectSetup({
       updateState({ message: openWhenReady ? "Opening Plaid Link..." : "Plaid Link is ready." });
     } catch (caughtError) {
       playError();
-      updateState({ error: caughtError instanceof Error ? caughtError.message : "Unable to create Plaid Link token." });
+      const detail = caughtError instanceof Error ? caughtError.message : "Unable to create Plaid Link token.";
+      showToast({ description: detail, duration: 6000, status: "error", title: "Plaid Link failed" });
+      updateState({ error: detail });
     } finally {
       updateState({ busy: false });
     }
   }
 
   async function linkAccount() {
+    showToast({
+      description: "Plaid's secure widget is starting — it may take a couple seconds.",
+      duration: 3500,
+      status: "loading",
+      title: "Opening Plaid Link…"
+    });
+
     if (linkToken && ready) {
       open();
       return;
