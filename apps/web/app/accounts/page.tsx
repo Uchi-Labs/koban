@@ -2,6 +2,7 @@ import type { Account, Transaction } from "@ai-finances/schema";
 import type React from "react";
 import { ArrowRight, Banknote, CreditCard, Landmark, TrendingUp, WalletCards } from "lucide-react";
 import Link from "next/link";
+import { AccountCardDialog } from "@/components/account-card-dialog";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { formatCurrency } from "@/lib/format";
@@ -182,58 +183,80 @@ export default async function AccountsPage() {
                       <h3 className="text-sm font-semibold">{group.name}</h3>
                       <span className="text-xs text-muted-foreground">{groupRows.length.toLocaleString()} accounts</span>
                     </div>
-                    {/* Trailing spacer mirrors each row's arrow column (gap-3 + size-4) so the
-                        group subtotal right-aligns with the per-row Net-worth impact figures. */}
+                    {/* Trailing spacers mirror each row's card-button + arrow columns (gap-3 each)
+                        so the group subtotal right-aligns with the per-row Net-worth impact figures. */}
                     <div className="flex items-center gap-3">
                       <strong className="text-sm font-semibold tabular-nums">{formatCurrency(groupContribution, groupCurrency)}</strong>
+                      <span aria-hidden="true" className="size-7 shrink-0" />
                       <span aria-hidden="true" className="size-4 shrink-0" />
                     </div>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    {groupRows.map((row) => (
-                      <Link
-                        aria-label={`View transactions for ${row.account.name}`}
-                        className={cn(
-                          "group grid grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
-                          accent.hoverClassName
-                        )}
-                        href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
-                        key={row.account.id}
-                      >
-                        <div className="flex min-w-0 items-start gap-2">
-                          <span
-                            aria-hidden="true"
-                            className="mt-1.5 size-2 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: accountDotColor(accent.colorVar, row.account.institutionName || row.account.id)
-                            }}
+                    {groupRows.map((row) => {
+                      const supportsDetails =
+                        row.account.id.startsWith("teller_") &&
+                        (row.account.type === "checking" || row.account.type === "savings" || row.account.type === "cash");
+
+                      return (
+                        <div
+                          className={cn(
+                            "group relative grid grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
+                            accent.hoverClassName
+                          )}
+                          key={row.account.id}
+                        >
+                          {/* Stretched-link overlay keeps the whole row clickable while the
+                              card button stays independently interactive above it. */}
+                          <Link
+                            aria-label={`View transactions for ${row.account.name}`}
+                            className="absolute inset-0 rounded-xl"
+                            href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
                           />
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{row.account.name}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {row.account.institutionName}
-                              {row.account.mask ? ` ${row.account.mask}` : ""}
-                            </p>
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span
+                              aria-hidden="true"
+                              className="mt-1.5 size-2 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: accountDotColor(accent.colorVar, row.account.institutionName || row.account.id)
+                              }}
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{row.account.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {row.account.institutionName}
+                                {row.account.mask ? ` ${row.account.mask}` : ""}
+                              </p>
+                            </div>
                           </div>
+                          <RowStat
+                            label="Current"
+                            tone={currentBalanceTone(row.account)}
+                            value={formatCurrency(row.account.currentBalance, row.account.currency)}
+                          />
+                          <RowStat
+                            label="Available"
+                            value={row.account.availableBalance === undefined ? "N/A" : formatCurrency(row.account.availableBalance, row.account.currency)}
+                          />
+                          <RowStat label="30 day spend" value={formatCurrency(row.thirtyDaySpending, row.account.currency)} />
+                          <RowStat
+                            label="Net-worth impact"
+                            tone={signTone(row.netWorthContribution)}
+                            value={formatSignedCurrency(row.netWorthContribution, row.account.currency)}
+                          />
+                          <span className="relative z-10 flex size-7 items-center justify-center">
+                            {supportsDetails ? (
+                              <AccountCardDialog
+                                accountId={row.account.id}
+                                institutionName={row.account.institutionName}
+                                mask={row.account.mask}
+                                name={row.account.name}
+                              />
+                            ) : null}
+                          </span>
+                          <ArrowRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                         </div>
-                        <RowStat
-                          label="Current"
-                          tone={currentBalanceTone(row.account)}
-                          value={formatCurrency(row.account.currentBalance, row.account.currency)}
-                        />
-                        <RowStat
-                          label="Available"
-                          value={row.account.availableBalance === undefined ? "N/A" : formatCurrency(row.account.availableBalance, row.account.currency)}
-                        />
-                        <RowStat label="30 day spend" value={formatCurrency(row.thirtyDaySpending, row.account.currency)} />
-                        <RowStat
-                          label="Net-worth impact"
-                          tone={signTone(row.netWorthContribution)}
-                          value={formatSignedCurrency(row.netWorthContribution, row.account.currency)}
-                        />
-                        <ArrowRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                      </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
