@@ -33,7 +33,7 @@ type LoadState = "error" | "idle" | "loading" | "ready";
 export function TransactionGoalPopover({
   align = "end",
   children,
-  nativeButton = false,
+  nativeButton = true,
   onAssign,
   onOpenChange,
   side = "bottom",
@@ -126,9 +126,9 @@ export function TransactionGoalPopover({
   }
 
   return (
-      <Popover open={open} onOpenChange={setOpenState}>
-        <PopoverTrigger nativeButton={nativeButton} render={children} />
-        <PopoverPortal>
+    <Popover open={open} onOpenChange={setOpenState}>
+      <PopoverTrigger nativeButton={nativeButton} render={children} />
+      <PopoverPortal>
         <PopoverPositioner align={align} className="isolate z-50" side={side} sideOffset={6}>
           <PopoverPopup
             data-slot="transaction-goal-popover"
@@ -215,7 +215,7 @@ export function TransactionGoalPopover({
             </div>
           </PopoverPopup>
         </PopoverPositioner>
-        </PopoverPortal>
-      </Popover>
+      </PopoverPortal>
+    </Popover>
   );
 }
