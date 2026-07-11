@@ -39,6 +39,7 @@ import {
   SidebarTrigger,
   useSidebar
 } from "@/components/ui/sidebar";
+import { Dock, DockItem } from "@/components/motion/dock";
 import { SharedLayoutBg } from "@/components/ui/shared-layout-bg";
 import { SyncStatusIsland } from "@/components/ui/sync-status-island";
 import { StatefulButton } from "@/components/ui/stateful-button";
@@ -66,6 +67,13 @@ const navItems = [
   { label: "Recurrings", href: "/recurrings", icon: Repeat2, activePath: "/recurrings" },
   { label: "Rules", href: "/rules", icon: ScrollText, activePath: "/rules" },
   { label: "Settings", href: "/settings", icon: Settings, activePath: "/settings" }
+];
+
+const mobileNavItems = [
+  { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Transactions", href: "/transactions", icon: Layers },
+  { label: "Recurrings", href: "/recurrings", icon: Repeat2 },
+  { label: "Cash flow", href: "/cash-flow", icon: ArrowLeftRight }
 ];
 
 const SIDEBAR_MIN_WIDTH = 208;
@@ -385,7 +393,46 @@ function AppShellContent({
       </Sidebar>
 
       {/* ponytail: legacy pages offset themselves by --sidebar-width; zero it inside the inset until every page is migrated */}
-      <SidebarInset style={{ ["--sidebar-width" as string]: "0px" }}>{children}</SidebarInset>
+      <SidebarInset
+        className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0"
+        style={{ ["--sidebar-width" as string]: "0px" }}
+      >
+        {children}
+      </SidebarInset>
+      <nav
+        aria-label="Mobile primary"
+        className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-3 pb-[env(safe-area-inset-bottom)] md:hidden"
+      >
+        <Dock className="mb-2 w-full max-w-sm justify-around" size={52}>
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon;
+            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+
+            return (
+              <DockItem active={active} className="rounded-xl" key={item.href}>
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  aria-label={item.label}
+                  className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground motion-reduce:transition-none"
+                  href={item.href}
+                >
+                  <Icon className="size-4" />
+                  <span>{item.label}</span>
+                </Link>
+              </DockItem>
+            );
+          })}
+          <DockItem
+            active={paletteOpen}
+            aria-label="Search"
+            className="flex-col gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={() => changePaletteOpen(true)}
+          >
+            <Search className="size-4" />
+            <span>Search</span>
+          </DockItem>
+        </Dock>
+      </nav>
       <CommandPalette onOpenChangeAction={changePaletteOpen} open={paletteOpen} />
     </SidebarProvider>
   );

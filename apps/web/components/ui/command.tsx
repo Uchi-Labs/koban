@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
+import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -16,6 +17,7 @@ import {
   InputGroupAddon,
 } from "@/components/ui/input-group"
 import { SearchIcon, CheckIcon, XIcon } from "lucide-react"
+import { EASE_OUT, SPRING_PANEL } from "@/lib/motion"
 
 function Command({
   className,
@@ -47,6 +49,8 @@ function CommandDialog({
   showCloseButton?: boolean
   children: React.ReactNode
 }) {
+  const reduce = useReducedMotion()
+
   return (
     <Dialog {...props}>
       <DialogHeader className="sr-only">
@@ -60,7 +64,15 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        <LazyMotion features={domAnimation}>
+          <m.div
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
+            transition={reduce ? { duration: 0.12, ease: EASE_OUT } : SPRING_PANEL}
+          >
+            {children}
+          </m.div>
+        </LazyMotion>
       </DialogContent>
     </Dialog>
   )
