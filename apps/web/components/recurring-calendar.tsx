@@ -83,6 +83,7 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
   const [month, setMonth] = useState(initialMonth);
   const [view, setView] = useState<"breakdown" | "calendar">("calendar");
   const [totalHovered, setTotalHovered] = useState(false);
+  const [hoveredDay, setHoveredDay] = useState<DayEntry | null>(null);
   const [selectedDay, setSelectedDay] = useState<DayEntry | null>(null);
 
   const entries = useMemo(() => buildMonthEntries(items, month), [items, month]);
@@ -157,22 +158,36 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
           onMouseLeave={() => setTotalHovered(false)}
           title={isCurrentMonth ? `${formatCurrency(remaining)} still to charge this month` : undefined}
         >
-          {formatCurrency(showRemaining ? remaining : total)}
+          {formatCurrency(hoveredDay ? hoveredDay.total : showRemaining ? remaining : total)}
         </span>
-        <span
-          className={cn(
-            "inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium tabular-nums",
-            regular
-              ? "bg-[color-mix(in_oklab,var(--positive)_14%,transparent)] text-[var(--positive)]"
-              : drift > 0
-                ? "bg-[color-mix(in_oklab,var(--negative)_14%,transparent)] text-[var(--negative)]"
-                : "bg-[color-mix(in_oklab,var(--positive)_14%,transparent)] text-[var(--positive)]"
-          )}
-        >
-          {regular
-            ? "Regular month"
-            : `${drift > 0 ? "+" : "−"}${formatCurrency(Math.abs(drift))} vs typical`}
-        </span>
+        {hoveredDay ? (
+          // Hover-to-name: the chip calls out the hovered day's charge(s), like the
+          // reference's "• CleanShot • $20.00" readout.
+          <span className="inline-flex h-6 max-w-[16rem] items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs font-medium">
+            <ItemAvatar color={hoveredDay.items[0].color} name={hoveredDay.items[0].name} size="sm" />
+            <span className="truncate">
+              {hoveredDay.items.length === 1
+                ? hoveredDay.items[0].name
+                : `${hoveredDay.items.length} charges`}
+            </span>
+            <span className="tabular-nums text-muted-foreground">{formatCurrency(hoveredDay.total)}</span>
+          </span>
+        ) : (
+          <span
+            className={cn(
+              "inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium tabular-nums",
+              regular
+                ? "bg-[color-mix(in_oklab,var(--positive)_14%,transparent)] text-[var(--positive)]"
+                : drift > 0
+                  ? "bg-[color-mix(in_oklab,var(--negative)_14%,transparent)] text-[var(--negative)]"
+                  : "bg-[color-mix(in_oklab,var(--positive)_14%,transparent)] text-[var(--positive)]"
+            )}
+          >
+            {regular
+              ? "Regular month"
+              : `${drift > 0 ? "+" : "−"}${formatCurrency(Math.abs(drift))} vs typical`}
+          </span>
+        )}
       </div>
 
       <div className="w-full max-w-xl">
@@ -198,6 +213,8 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
                 dayNumber={index + 1}
                 isToday={date === today}
                 key={date}
+                onHover={entry ? () => setHoveredDay(entry) : undefined}
+                onLeave={() => setHoveredDay(null)}
                 onOpen={entry ? () => setSelectedDay(entry) : undefined}
               />
             );
@@ -253,13 +270,17 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
   );
 }
 
-function DayCell({ date, dayNumber, entry, isToday, onOpen }: {
+function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: {
   date: string;
   dayNumber: number;
   entry?: DayEntry;
   isToday: boolean;
+  onHover?: () => void;
+  onLeave?: () => void;
   onOpen?: () => void;
 }) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+
   const shared = cn(
     "relative flex h-12 items-center justify-center rounded-xl bg-muted/40",
     isToday && "ring-1 ring-ring/60"
@@ -277,15 +298,41 @@ function DayCell({ date, dayNumber, entry, isToday, onOpen }: {
   const visible = entry.items.slice(0, 2);
   const overflow = entry.items.length - visible.length;
 
+  function open() {
+    setTooltipOpen(true);
+    onHover?.();
+  }
+
+  function close() {
+    setTooltipOpen(false);
+    onLeave?.();
+  }
+
   return (
     <button
       aria-label={`${formatDayTitle(date)}: ${entry.items.length} recurring ${entry.items.length === 1 ? "charge" : "charges"}, ${formatCurrency(entry.total)}`}
       className={cn(shared, "transition-[filter] hover:brightness-125")}
+      onBlur={close}
       onClick={onOpen}
+      onFocus={open}
+      onMouseEnter={open}
+      onMouseLeave={close}
       style={{ backgroundColor: `color-mix(in oklab, ${entry.items[0].color} 22%, var(--muted))` }}
-      title={entry.items.map((item) => `${item.name} · ${formatCurrency(item.amount, item.currency)}`).join("\n")}
       type="button"
     >
+      {/* Custom floating tooltip (replaces native title) — mirrors the reference's
+          "$35.00" chip that pops above the hovered day. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute -top-1.5 left-1/2 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground tabular-nums shadow-md ring-1 ring-border transition-[opacity,transform] duration-150 motion-reduce:transition-none",
+          tooltipOpen ? "opacity-100" : "translate-y-[calc(-100%+3px)] opacity-0"
+        )}
+      >
+        {entry.items.length === 1
+          ? `${entry.items[0].name} · ${formatCurrency(entry.items[0].amount, entry.items[0].currency)}`
+          : `${entry.items.length} charges · ${formatCurrency(entry.total)}`}
+      </span>
       <span className="flex items-center -space-x-1.5">
         {visible.map((item) => (
           <ItemAvatar color={item.color} name={item.name} key={item.id} size="sm" />
