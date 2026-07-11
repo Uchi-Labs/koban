@@ -29,7 +29,7 @@ export interface ThemeToggleProps
 const VT_STYLE_ID = "beui-theme-toggle-vt";
 
 // Duration/easing is component-specific: View Transition API uses CSS, not
-// motion springs. 400ms + ease-out mirrors native OS mode-switch timing.
+// motion springs, so it consumes the shared CSS easing tokens directly.
 const VT_CSS = `
 html[data-beui-vt="rect"]::view-transition-old(root) {
   animation: none;
@@ -37,7 +37,7 @@ html[data-beui-vt="rect"]::view-transition-old(root) {
 }
 html[data-beui-vt="rect"]::view-transition-new(root) {
   mix-blend-mode: normal;
-  animation: beui-rect-reveal 400ms ease-out;
+  animation: beui-rect-reveal 280ms var(--ease-smooth-out);
 }
 html[data-beui-vt="circle"]::view-transition-old(root),
 html[data-beui-vt="circle-blur"]::view-transition-old(root) {
@@ -46,11 +46,11 @@ html[data-beui-vt="circle-blur"]::view-transition-old(root) {
 }
 html[data-beui-vt="circle"]::view-transition-new(root) {
   mix-blend-mode: normal;
-  animation: beui-circle-reveal 700ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: beui-circle-reveal 300ms var(--ease-in-out);
 }
 html[data-beui-vt="circle-blur"]::view-transition-new(root) {
   mix-blend-mode: normal;
-  animation: beui-circle-blur-reveal 700ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: beui-circle-blur-reveal 300ms var(--ease-in-out);
 }
 @keyframes beui-rect-reveal {
   from { clip-path: var(--beui-vt-from, inset(100% 0 0 0)); }
