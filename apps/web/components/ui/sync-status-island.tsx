@@ -29,15 +29,12 @@ export function SyncStatusIsland({ state }: { state: SyncIslandState }) {
       compact={compact}
       view={state.view}
     >
-      <DynamicIslandView className="min-w-[220px]" id="syncing">
-        <div className="flex w-full items-center gap-3">
-          <Loader className="shrink-0" label="Syncing" size={18} variant="dots" />
+      <DynamicIslandView className="min-w-[200px]" id="syncing">
+        <div className="flex w-full items-center gap-2.5">
+          <Loader className="shrink-0" label="Syncing" size={16} variant="dots" />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold">Syncing {state.phaseLabel}</p>
+            <p className="truncate text-xs font-semibold">Syncing {state.phaseLabel}</p>
             <p className="truncate text-[11px] text-current/70">{state.detail}</p>
-          </div>
-          <div className="h-1.5 w-14 overflow-hidden rounded-full bg-current/15">
-            <div className="h-full w-2/3 rounded-full bg-current/70" />
           </div>
         </div>
       </DynamicIslandView>

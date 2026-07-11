@@ -67,7 +67,29 @@ describe("Wave B sync island state", () => {
 
     expect(state.view).toBe("syncing");
     expect(state.tone).toBe("syncing");
-    expect(state.phaseLabel).toBe("Semantic");
+    expect(state.phaseLabel).toBe("evidence");
+  });
+
+  it("clamps the phase label to the final stage instead of looping", () => {
+    const first = deriveSyncIslandState({
+      accountCount: 2,
+      phaseIndex: 0,
+      source: "teller",
+      status: "syncing",
+      transactionCount: 1200
+    });
+    // A large phaseIndex must hold on the last stage, never wrap back to the first.
+    const overflow = deriveSyncIslandState({
+      accountCount: 2,
+      phaseIndex: 999,
+      source: "teller",
+      status: "syncing",
+      transactionCount: 1200
+    });
+
+    expect(first.phaseLabel).toBe("Teller");
+    expect(overflow.phaseLabel).toBe("finishing up");
+    expect(overflow.phaseLabel).not.toBe(first.phaseLabel);
   });
 
   it("maps completion and errors to flash views", () => {
