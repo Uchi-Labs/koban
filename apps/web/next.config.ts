@@ -37,9 +37,9 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' https://cdn.teller.io",
-      "connect-src 'self' https://api.teller.io https://*.teller.io",
-      "frame-src https://*.teller.io",
+      "script-src 'self' https://cdn.teller.io https://cdn.plaid.com",
+      "connect-src 'self' https://api.teller.io https://*.teller.io https://*.plaid.com",
+      "frame-src https://*.teller.io https://cdn.plaid.com",
       "upgrade-insecure-requests"
     ].join("; ")
   }
