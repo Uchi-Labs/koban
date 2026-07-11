@@ -1,20 +1,15 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import {
   applyPlan,
+  buildImportPlan,
   buildTransactionTags,
   findDuplicateTransaction,
+  loadFinanceDbCopilotImporter,
   matchCopilotAccount,
   normalizeBalanceMinor,
   toMinor
 } from "./import.mjs";
-
-const testDir = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(path.resolve(testDir, "../../apps/web/package.json"));
-const { PGlite } = require("@electric-sql/pglite");
 
 test("matches an account by mask plus fuzzy account and institution names", () => {
   const result = matchCopilotAccount(
@@ -108,47 +103,12 @@ test("builds source-only provenance tags from category, user tags, and Amazon", 
 
 test("normalizes credit debt balances to negative and leaves assets positive", () => {
   assert.equal(normalizeBalanceMinor(3132.69, "credit_card"), -313269);
+  assert.equal(normalizeBalanceMinor(-42.5, "credit_card"), 4250);
   assert.equal(normalizeBalanceMinor(3132.69, "checking"), 313269);
 });
 
-test("applies atomically and preserves Koban transaction overlays on an idempotent rerun", async () => {
-  const db = new PGlite();
-  await db.exec(`
-    CREATE TABLE provider_connections (
-      id TEXT PRIMARY KEY, provider TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL,
-      configured BOOLEAN NOT NULL, last_synced_at TEXT, metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-    );
-    CREATE TABLE accounts (
-      id TEXT PRIMARY KEY, provider_connection_id TEXT NOT NULL REFERENCES provider_connections(id),
-      group_id TEXT NOT NULL, name TEXT NOT NULL, institution_name TEXT NOT NULL, type TEXT NOT NULL,
-      mask TEXT, currency TEXT NOT NULL, current_balance_minor INTEGER NOT NULL,
-      available_balance_minor INTEGER, included_in_net_worth BOOLEAN NOT NULL, last_updated_at TEXT NOT NULL,
-      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-    );
-    CREATE TABLE account_balance_snapshots (
-      id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id), as_of_date TEXT NOT NULL,
-      captured_at TEXT NOT NULL, ledger_balance_minor INTEGER NOT NULL, available_balance_minor INTEGER,
-      currency TEXT NOT NULL, source TEXT NOT NULL
-    );
-    CREATE TABLE tag_registry (
-      name TEXT PRIMARY KEY, color TEXT, kind TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    );
-    CREATE TABLE transactions (
-      id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id),
-      provider_connection_id TEXT NOT NULL REFERENCES provider_connections(id), date TEXT NOT NULL,
-      posted_date TEXT, merchant_name TEXT NOT NULL, description TEXT NOT NULL, amount_minor INTEGER NOT NULL,
-      currency TEXT NOT NULL, category_id TEXT NOT NULL, status TEXT NOT NULL, reviewed BOOLEAN NOT NULL,
-      tags JSONB NOT NULL, notes TEXT, metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-    );
-  `);
-  const pool = {
-    async connect() {
-      return {
-        query: (sql, params) => db.query(sql, params),
-        release() {}
-      };
-    }
-  };
+test("delegates an approved plan to the finance-db import boundary", async () => {
+  let persisted;
   const plan = {
     blockingIssues: [],
     newAccounts: [
@@ -195,18 +155,85 @@ test("applies atomically and preserves Koban transaction overlays on an idempote
     ]
   };
 
-  await applyPlan(pool, plan);
-  await db.query(
-    `UPDATE transactions SET category_id = 'cat_food', reviewed = TRUE, tags = '["favorite"]'::jsonb, notes = 'Koban edit' WHERE id = 'copilot_txn_old'`
-  );
-  await applyPlan(pool, plan);
+  await applyPlan(plan, async (input) => {
+    persisted = input;
+  });
 
-  const transaction = (await db.query("SELECT category_id, reviewed, tags, notes FROM transactions WHERE id = 'copilot_txn_old'"))
-    .rows[0];
-  const account = (await db.query("SELECT included_in_net_worth FROM accounts WHERE id = 'copilot_acct_old'")).rows[0];
-  const tag = (await db.query("SELECT kind FROM tag_registry WHERE name = 'copilot:cat:Restaurants'")).rows[0];
-  assert.deepEqual(transaction, { category_id: "cat_food", reviewed: true, tags: ["favorite"], notes: "Koban edit" });
-  assert.equal(account.included_in_net_worth, false);
-  assert.equal(tag.kind, "source");
-  await db.close();
+  assert.equal(persisted.providerConnection.provider, "copilot");
+  assert.deepEqual(persisted.accounts[0], {
+    id: "copilot_acct_old",
+    providerConnectionId: "provider_copilot_import",
+    groupId: "group_credit",
+    name: "Old Card",
+    institutionName: "Old Bank",
+    type: "credit_card",
+    mask: "1234",
+    currency: "USD",
+    currentBalance: -50,
+    availableBalance: 100,
+    includedInNetWorth: false,
+    lastUpdatedAt: "2026-07-10T00:00:00.000Z"
+  });
+  assert.deepEqual(persisted.transactions[0], {
+    id: "copilot_txn_old",
+    accountId: "copilot_acct_old",
+    providerConnectionId: "provider_copilot_import",
+    date: "2026-07-10",
+    postedDate: "2026-07-10",
+    merchantName: "Dinner",
+    description: "DINNER",
+    amount: -25,
+    currency: "USD",
+    categoryId: "cat_other",
+    status: "posted",
+    reviewed: false,
+    tags: ["copilot:cat:Restaurants"],
+    notes: "Copilot note"
+  });
+});
+
+test("loads the app finance-db import boundary without opening a database", async () => {
+  const loaded = await loadFinanceDbCopilotImporter();
+  assert.equal(typeof loaded.apply, "function");
+  await loaded.close();
+});
+
+test("blocks apply when source currency and an unmatched account balance are absent", () => {
+  const plan = buildImportPlan({
+    balances: [],
+    existingAccounts: [],
+    existingSnapshots: [],
+    existingTransactions: [],
+    mappings: {
+      accounts: {
+        apple: {
+          id: "apple",
+          institutionName: "Apple Wallet",
+          name: "Apple Card",
+          originalSubtype: "credit card",
+          originalType: "credit"
+        }
+      },
+      categories: { dining: { id: "dining", name: "Restaurants" } },
+      tags: {}
+    },
+    sourceStats: { deletedCount: 0, pendingCount: 0 },
+    transactions: [
+      {
+        account_id: "apple",
+        amount: 25,
+        category_id: "dining",
+        date: "2026-07-10",
+        id: "apple_txn",
+        iso_currency_code: null,
+        is_amazon: 0,
+        name: "Dinner",
+        original_name: "DINNER",
+        tag_ids: null
+      }
+    ]
+  });
+
+  assert.ok(plan.blockingIssues.includes("1 transaction(s) without source currency"));
+  assert.ok(plan.blockingIssues.includes("1 new account(s) without accountDailyBalance history"));
 });

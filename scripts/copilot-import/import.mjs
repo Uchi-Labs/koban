@@ -17,6 +17,9 @@ const COPILOT_PROVIDER_CONNECTION_ID = "provider_copilot_import";
 const DAY_MS = 86_400_000;
 
 export function toMinor(amount) {
+  if (amount === null || amount === undefined || amount === "") {
+    throw new Error("Money amount is missing.");
+  }
   const parsed = Number(amount);
   if (!Number.isFinite(parsed)) {
     throw new Error(`Invalid money amount: ${amount}`);
@@ -25,8 +28,8 @@ export function toMinor(amount) {
 }
 
 export function normalizeBalanceMinor(amount, accountType) {
-  const minor = toMinor(amount ?? 0);
-  return accountType === "credit_card" || accountType === "loan" ? -Math.abs(minor) : minor;
+  const minor = toMinor(amount);
+  return accountType === "credit_card" || accountType === "loan" ? -minor : minor;
 }
 
 export function buildTransactionTags(transaction, mappings) {
@@ -152,7 +155,10 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       accountPlans.push({ sourceAccount, sourceAccountId, status: "ambiguous", candidates: match.candidates });
     } else {
       const latestBalance = newestBalance(balanceRowsByAccount.get(sourceAccountId) ?? []);
+      const latestTransaction = newestTransaction(transactionRowsByAccount.get(sourceAccountId) ?? []);
       const type = mapAccountType(sourceAccount);
+      const sourceName = cleanText(sourceAccount.name) || cleanText(sourceAccount.officialName);
+      const currency = cleanText(sourceAccount.currency) || accountCurrency(transactionRowsByAccount.get(sourceAccountId) ?? []);
       accountPlans.push({
         sourceAccount,
         sourceAccountId,
@@ -163,18 +169,21 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
           provider: "copilot",
           provider_connection_id: COPILOT_PROVIDER_CONNECTION_ID,
           group_id: groupIdForType(type),
-          name: sourceAccount.name || sourceAccount.officialName || `Copilot account ${sourceAccountId.slice(-6)}`,
+          name: sourceName,
           institution_name: sourceAccount.institutionName || "Copilot Money",
           type,
           mask: normalizeMask(sourceAccount.mask),
-          currency: accountCurrency(transactionRowsByAccount.get(sourceAccountId) ?? []),
-          current_balance_minor: normalizeBalanceMinor(latestBalance?.current_balance ?? 0, type),
+          currency,
+          current_balance_minor:
+            latestBalance?.current_balance === null || latestBalance?.current_balance === undefined
+              ? null
+              : normalizeBalanceMinor(latestBalance.current_balance, type),
           available_balance_minor:
             latestBalance?.available_balance === null || latestBalance?.available_balance === undefined
               ? null
               : toMinor(latestBalance.available_balance),
           included_in_net_worth: false,
-          last_updated_at: latestBalance?.date ? `${dateOnly(latestBalance.date)}T00:00:00.000Z` : new Date(0).toISOString()
+          last_updated_at: `${dateOnly(latestBalance?.date ?? latestTransaction?.date)}T00:00:00.000Z`
         }
       });
     }
@@ -184,6 +193,9 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   const duplicates = [];
   const importTransactions = [];
   const invalidTagJsonTransactionIds = [];
+  const invalidTransactionAmountIds = [];
+  const missingTransactionCurrencyIds = [];
+  const missingTransactionNameIds = [];
   const missingCategoryIds = new Set();
   const missingTagIds = new Set();
 
@@ -206,6 +218,20 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       }
     }
 
+    if (transaction.amount === null || transaction.amount === undefined || !Number.isFinite(Number(transaction.amount))) {
+      invalidTransactionAmountIds.push(transaction.id);
+      continue;
+    }
+    const currency = cleanText(transaction.iso_currency_code)?.toUpperCase();
+    if (!currency) {
+      missingTransactionCurrencyIds.push(transaction.id);
+    }
+    const merchantName = cleanText(transaction.name_override) || cleanText(transaction.name) || cleanText(transaction.original_name);
+    const description = cleanText(transaction.original_name) || cleanText(transaction.name);
+    if (!merchantName || !description) {
+      missingTransactionNameIds.push(transaction.id);
+    }
+
     const duplicate =
       accountPlan.status === "matched"
         ? findDuplicateTransaction(transaction, existingTransactionsByAccount.get(accountPlan.targetAccount.id) ?? [])
@@ -221,10 +247,10 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       accountId: accountPlan.targetAccount.id,
       providerConnectionId: accountPlan.targetAccount.provider_connection_id,
       date: dateOnly(transaction.date),
-      merchantName: cleanText(transaction.name_override) || cleanText(transaction.name) || cleanText(transaction.original_name) || "Copilot transaction",
-      description: cleanText(transaction.original_name) || cleanText(transaction.name) || "Copilot transaction",
+      merchantName,
+      description,
       amountMinor: toMinor(-Number(transaction.amount)),
-      currency: cleanText(transaction.iso_currency_code)?.toUpperCase() || "USD",
+      currency,
       categoryId: "cat_other",
       status: "posted",
       reviewed: false,
@@ -234,9 +260,14 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   }
 
   const snapshots = [];
+  const invalidBalanceRows = [];
   for (const balance of balances) {
     const accountPlan = accountPlanBySourceId.get(balance.account_id);
     if (!accountPlan || !["matched", "unmatched"].includes(accountPlan.status)) {
+      continue;
+    }
+    if (balance.current_balance === null || balance.current_balance === undefined || !Number.isFinite(Number(balance.current_balance))) {
+      invalidBalanceRows.push(`${balance.account_id}:${balance.date}`);
       continue;
     }
     const accountType = accountPlan.targetAccount.type ?? mapAccountType(accountPlan.sourceAccount);
@@ -246,12 +277,15 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       accountId: accountPlan.targetAccount.id,
       asOfDate: date,
       capturedAt: `${date}T00:00:00.000Z`,
-      ledgerBalanceMinor: normalizeBalanceMinor(balance.current_balance ?? 0, accountType),
+      ledgerBalanceMinor: normalizeBalanceMinor(balance.current_balance, accountType),
       availableBalanceMinor:
         balance.available_balance === null || balance.available_balance === undefined
           ? null
           : toMinor(balance.available_balance),
-      currency: accountPlan.targetAccount.currency || accountCurrency(transactionRowsByAccount.get(balance.account_id) ?? []),
+      currency:
+        accountPlan.targetAccount.currency ||
+        cleanText(accountPlan.sourceAccount?.currency) ||
+        accountCurrency(transactionRowsByAccount.get(balance.account_id) ?? []),
       source: "copilot"
     });
   }
@@ -259,15 +293,24 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   const blockingIssues = [];
   const ambiguous = accountPlans.filter((plan) => plan.status === "ambiguous");
   const missingAccountMappings = accountPlans.filter((plan) => plan.status === "missing_mapping");
+  const newAccounts = accountPlans
+    .filter((plan) => plan.status === "unmatched" && plan.targetAccount.provider === "copilot" && !existingCopilotAccounts.has(plan.targetAccount.id))
+    .map((plan) => plan.targetAccount);
+  const missingBalanceAccountIds = newAccounts.filter((account) => account.current_balance_minor === null).map((account) => account.id);
+  const missingCurrencyAccountIds = newAccounts.filter((account) => !account.currency).map((account) => account.id);
+  const missingNameAccountIds = newAccounts.filter((account) => !account.name).map((account) => account.id);
   if (ambiguous.length > 0) blockingIssues.push(`${ambiguous.length} ambiguous account mapping(s)`);
   if (missingAccountMappings.length > 0) blockingIssues.push(`${missingAccountMappings.length} missing account mapping(s)`);
   if (missingCategoryIds.size > 0) blockingIssues.push(`${missingCategoryIds.size} used category id(s) without names`);
   if (missingTagIds.size > 0) blockingIssues.push(`${missingTagIds.size} used tag id(s) without names`);
   if (invalidTagJsonTransactionIds.length > 0) blockingIssues.push(`${invalidTagJsonTransactionIds.length} transaction(s) with invalid tag_ids JSON`);
-
-  const newAccounts = accountPlans
-    .filter((plan) => plan.status === "unmatched" && plan.targetAccount.provider === "copilot" && !existingCopilotAccounts.has(plan.targetAccount.id))
-    .map((plan) => plan.targetAccount);
+  if (invalidTransactionAmountIds.length > 0) blockingIssues.push(`${invalidTransactionAmountIds.length} transaction(s) with invalid amounts`);
+  if (missingTransactionCurrencyIds.length > 0) blockingIssues.push(`${missingTransactionCurrencyIds.length} transaction(s) without source currency`);
+  if (missingTransactionNameIds.length > 0) blockingIssues.push(`${missingTransactionNameIds.length} transaction(s) without source names/descriptions`);
+  if (invalidBalanceRows.length > 0) blockingIssues.push(`${invalidBalanceRows.length} balance row(s) without valid current_balance`);
+  if (missingBalanceAccountIds.length > 0) blockingIssues.push(`${missingBalanceAccountIds.length} new account(s) without accountDailyBalance history`);
+  if (missingCurrencyAccountIds.length > 0) blockingIssues.push(`${missingCurrencyAccountIds.length} new account(s) without source currency`);
+  if (missingNameAccountIds.length > 0) blockingIssues.push(`${missingNameAccountIds.length} new account(s) without a source name`);
   const importedDateRange = range(importTransactions.map((transaction) => transaction.date));
   const sourceDateRange = range(transactions.map((transaction) => dateOnly(transaction.date)));
   const snapshotDateRange = range(snapshots.map((snapshot) => snapshot.asOfDate));
@@ -278,6 +321,23 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   const creditSourceBalance = creditAccountPlan
     ? newestBalance(balanceRowsByAccount.get(creditAccountPlan.sourceAccountId) ?? [])
     : undefined;
+  const balanceSignEvidence =
+    creditAccountPlan && creditSourceBalance
+      ? {
+          account: creditAccountPlan.targetAccount.name,
+          copilotRawMinor: toMinor(creditSourceBalance.current_balance),
+          normalizedMinor: normalizeBalanceMinor(creditSourceBalance.current_balance, "credit_card"),
+          kobanExistingMinor: Number(latestExistingSnapshotByAccount.get(creditAccountPlan.targetAccount.id).ledger_balance_minor)
+        }
+      : undefined;
+  if (
+    balanceSignEvidence &&
+    balanceSignEvidence.normalizedMinor !== 0 &&
+    balanceSignEvidence.kobanExistingMinor !== 0 &&
+    Math.sign(balanceSignEvidence.normalizedMinor) !== Math.sign(balanceSignEvidence.kobanExistingMinor)
+  ) {
+    blockingIssues.push("credit balance sign verification disagrees with the existing Koban snapshot");
+  }
 
   return {
     accountPlans,
@@ -285,8 +345,13 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
     duplicates,
     importTransactions,
     invalidTagJsonTransactionIds,
+    invalidTransactionAmountIds,
+    missingBalanceAccountIds,
     missingCategoryIds: [...missingCategoryIds].sort(),
+    missingCurrencyAccountIds,
     missingTagIds: [...missingTagIds].sort(),
+    missingTransactionCurrencyIds,
+    missingTransactionNameIds,
     newAccounts,
     snapshots,
     sourceStats,
@@ -301,15 +366,7 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       amazonTransactionCount: transactions.filter((transaction) => Number(transaction.is_amazon) === 1).length
     },
     signEvidence: {
-      balance:
-        creditAccountPlan && creditSourceBalance
-          ? {
-              account: creditAccountPlan.targetAccount.name,
-              copilotRawMinor: toMinor(creditSourceBalance.current_balance ?? 0),
-              normalizedMinor: normalizeBalanceMinor(creditSourceBalance.current_balance ?? 0, "credit_card"),
-              kobanExistingMinor: Number(latestExistingSnapshotByAccount.get(creditAccountPlan.targetAccount.id).ledger_balance_minor)
-            }
-          : undefined,
+      balance: balanceSignEvidence,
       transaction: signEvidenceDuplicate
         ? {
             merchant: cleanText(signEvidenceDuplicate.source.name) || cleanText(signEvidenceDuplicate.source.original_name) || "(unnamed)",
@@ -379,10 +436,14 @@ export function formatDryRunReport(plan) {
     `- Copilot user tags: ${formatNumber(plan.sourceCounts.taggedTransactionCount)} tagged transactions; missing tag ids ${plan.missingTagIds.length}`,
     `- Amazon provenance: ${formatNumber(plan.sourceCounts.amazonTransactionCount)} transactions tagged copilot:amazon`,
     `- Invalid tag_ids JSON rows: ${formatNumber(plan.invalidTagJsonTransactionIds.length)}`,
+    `- Invalid amount rows: ${formatNumber(plan.invalidTransactionAmountIds.length)}`,
+    `- Rows without source currency: ${formatNumber(plan.missingTransactionCurrencyIds.length)}`,
+    `- Rows without source names/descriptions: ${formatNumber(plan.missingTransactionNameIds.length)}`,
     "",
     "Balance history",
     `- Snapshots to upsert: ${formatNumber(plan.snapshots.length)} (${formatRange(plan.ranges.snapshotDateRange)})`,
     `- New archival accounts: ${formatNumber(plan.newAccounts.length)} under ${COPILOT_PROVIDER_CONNECTION_ID}, includedInNetWorth=false`,
+    `- New accounts without accountDailyBalance history: ${formatNumber(plan.missingBalanceAccountIds.length)}`,
     "",
     "Sign verification"
   );
@@ -413,146 +474,103 @@ export function formatDryRunReport(plan) {
   }
   if (plan.missingCategoryIds.length > 0) lines.push(`- Missing category ids: ${plan.missingCategoryIds.join(", ")}`);
   if (plan.missingTagIds.length > 0) lines.push(`- Missing tag ids: ${plan.missingTagIds.join(", ")}`);
+  if (plan.missingBalanceAccountIds.length > 0) lines.push(`- Missing-balance account ids: ${plan.missingBalanceAccountIds.join(", ")}`);
+  if (plan.missingCurrencyAccountIds.length > 0) lines.push(`- Missing-currency account ids: ${plan.missingCurrencyAccountIds.join(", ")}`);
 
   return `${lines.join("\n")}\n`;
 }
 
-export async function applyPlan(pool, plan) {
+export async function applyPlan(plan, persist = persistThroughFinanceDb) {
   if (plan.blockingIssues.length > 0) {
     throw new Error(`Refusing --apply because the dry run has blockers: ${plan.blockingIssues.join("; ")}`);
   }
 
-  const client = await pool.connect();
   const now = new Date().toISOString();
+  return persist({
+    accounts: plan.newAccounts.map((account) => ({
+      id: account.id,
+      providerConnectionId: account.provider_connection_id,
+      groupId: account.group_id,
+      name: account.name,
+      institutionName: account.institution_name,
+      type: account.type,
+      mask: account.mask ?? undefined,
+      currency: account.currency,
+      currentBalance: account.current_balance_minor / 100,
+      availableBalance:
+        account.available_balance_minor === null ? undefined : account.available_balance_minor / 100,
+      includedInNetWorth: false,
+      lastUpdatedAt: account.last_updated_at
+    })),
+    balanceSnapshots: plan.snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      accountId: snapshot.accountId,
+      asOfDate: snapshot.asOfDate,
+      capturedAt: snapshot.capturedAt,
+      ledgerBalance: snapshot.ledgerBalanceMinor / 100,
+      availableBalance:
+        snapshot.availableBalanceMinor === null ? undefined : snapshot.availableBalanceMinor / 100,
+      currency: snapshot.currency,
+      source: snapshot.source
+    })),
+    providerConnection:
+      plan.newAccounts.length > 0
+        ? {
+            id: COPILOT_PROVIDER_CONNECTION_ID,
+            provider: "copilot",
+            displayName: "Copilot Money Import",
+            status: "connected",
+            configured: true,
+            lastSyncedAt: now
+          }
+        : undefined,
+    transactions: plan.importTransactions.map((transaction) => ({
+      id: transaction.id,
+      accountId: transaction.accountId,
+      providerConnectionId: transaction.providerConnectionId,
+      date: transaction.date,
+      postedDate: transaction.date,
+      merchantName: transaction.merchantName,
+      description: transaction.description,
+      amount: transaction.amountMinor / 100,
+      currency: transaction.currency,
+      categoryId: "cat_other",
+      status: "posted",
+      reviewed: false,
+      tags: transaction.tags,
+      notes: transaction.notes ?? undefined
+    }))
+  });
+}
+
+async function persistThroughFinanceDb(input) {
+  const loaded = await loadFinanceDbCopilotImporter();
   try {
-    await client.query("BEGIN");
-    if (plan.newAccounts.length > 0) {
-      await client.query(
-        `INSERT INTO provider_connections (id, provider, display_name, status, configured, last_synced_at, metadata)
-         VALUES ($1, 'copilot', 'Copilot Money Import', 'connected', TRUE, $2, $3::jsonb)
-         ON CONFLICT (id) DO UPDATE SET
-           provider = EXCLUDED.provider,
-           display_name = EXCLUDED.display_name,
-           status = EXCLUDED.status,
-           configured = EXCLUDED.configured,
-           last_synced_at = EXCLUDED.last_synced_at,
-           metadata = EXCLUDED.metadata`,
-        [COPILOT_PROVIDER_CONNECTION_ID, now, JSON.stringify({ importOnly: true, syncable: false })]
-      );
-    }
-
-    for (const account of plan.newAccounts) {
-      await client.query(
-        `INSERT INTO accounts (
-           id, provider_connection_id, group_id, name, institution_name, type, mask, currency,
-           current_balance_minor, available_balance_minor, included_in_net_worth, last_updated_at, metadata
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,$11,$12::jsonb)
-         ON CONFLICT (id) DO UPDATE SET
-           provider_connection_id = EXCLUDED.provider_connection_id,
-           group_id = EXCLUDED.group_id,
-           name = EXCLUDED.name,
-           institution_name = EXCLUDED.institution_name,
-           type = EXCLUDED.type,
-           mask = EXCLUDED.mask,
-           currency = EXCLUDED.currency,
-           current_balance_minor = EXCLUDED.current_balance_minor,
-           available_balance_minor = EXCLUDED.available_balance_minor,
-           included_in_net_worth = FALSE,
-           last_updated_at = EXCLUDED.last_updated_at,
-           metadata = EXCLUDED.metadata`,
-        [
-          account.id,
-          account.provider_connection_id,
-          account.group_id,
-          account.name,
-          account.institution_name,
-          account.type,
-          account.mask,
-          account.currency,
-          account.current_balance_minor,
-          account.available_balance_minor,
-          account.last_updated_at,
-          JSON.stringify({ importedFrom: "copilot" })
-        ]
-      );
-    }
-
-    for (const snapshot of plan.snapshots) {
-      await client.query(
-        `INSERT INTO account_balance_snapshots (
-           id, account_id, as_of_date, captured_at, ledger_balance_minor, available_balance_minor, currency, source
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT (id) DO UPDATE SET
-           account_id = EXCLUDED.account_id,
-           as_of_date = EXCLUDED.as_of_date,
-           captured_at = EXCLUDED.captured_at,
-           ledger_balance_minor = EXCLUDED.ledger_balance_minor,
-           available_balance_minor = EXCLUDED.available_balance_minor,
-           currency = EXCLUDED.currency,
-           source = EXCLUDED.source`,
-        [
-          snapshot.id,
-          snapshot.accountId,
-          snapshot.asOfDate,
-          snapshot.capturedAt,
-          snapshot.ledgerBalanceMinor,
-          snapshot.availableBalanceMinor,
-          snapshot.currency,
-          snapshot.source
-        ]
-      );
-    }
-
-    const sourceTags = [...new Set(plan.importTransactions.flatMap((transaction) => transaction.tags))].sort();
-    for (const tag of sourceTags) {
-      await client.query(
-        `INSERT INTO tag_registry (name, color, kind, created_at, updated_at)
-         VALUES ($1, NULL, 'source', $2, $2)
-         ON CONFLICT (name) DO UPDATE SET kind = 'source', updated_at = EXCLUDED.updated_at`,
-        [tag, now]
-      );
-    }
-
-    for (const transaction of plan.importTransactions) {
-      await client.query(
-        `INSERT INTO transactions (
-           id, account_id, provider_connection_id, date, posted_date, merchant_name, description,
-           amount_minor, currency, category_id, status, reviewed, tags, notes, metadata
-         ) VALUES ($1,$2,$3,$4,$4,$5,$6,$7,$8,'cat_other','posted',FALSE,$9::jsonb,$10,$11::jsonb)
-         ON CONFLICT (id) DO UPDATE SET
-           account_id = EXCLUDED.account_id,
-           provider_connection_id = EXCLUDED.provider_connection_id,
-           date = EXCLUDED.date,
-           posted_date = EXCLUDED.posted_date,
-           merchant_name = EXCLUDED.merchant_name,
-           description = EXCLUDED.description,
-           amount_minor = EXCLUDED.amount_minor,
-           currency = EXCLUDED.currency,
-           status = EXCLUDED.status,
-           metadata = EXCLUDED.metadata`,
-        [
-          transaction.id,
-          transaction.accountId,
-          transaction.providerConnectionId,
-          transaction.date,
-          transaction.merchantName,
-          transaction.description,
-          transaction.amountMinor,
-          transaction.currency,
-          JSON.stringify(transaction.tags),
-          transaction.notes,
-          JSON.stringify({ copilotTransactionId: transaction.sourceId })
-        ]
-      );
-    }
-
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
+    return await loaded.apply(input);
   } finally {
-    client.release();
+    await loaded.close();
   }
+}
+
+export async function loadFinanceDbCopilotImporter() {
+  const require = createRequire(path.join(ROOT_DIR, "apps/web/package.json"));
+  const viteEntry = require.resolve("vite");
+  const { createServer } = await import(pathToFileURL(viteEntry).href);
+  const appRoot = path.join(ROOT_DIR, "apps/web");
+  const server = await createServer({
+    appType: "custom",
+    configFile: false,
+    logLevel: "error",
+    resolve: { alias: { "@": appRoot } },
+    root: appRoot,
+    server: { middlewareMode: true }
+  });
+
+  const financeDb = await server.ssrLoadModule("/lib/db/finance-db.ts");
+  return {
+    apply: financeDb.applyCopilotHistoryImport,
+    close: () => server.close()
+  };
 }
 
 async function main() {
@@ -594,6 +612,7 @@ async function main() {
   const require = createRequire(path.join(ROOT_DIR, "apps/web/package.json"));
   const { Pool } = require("pg");
   const pool = new Pool({ connectionString: databaseUrl });
+  let plan;
   try {
     const [accountsResult, transactionsResult, snapshotsResult, categoryResult] = await Promise.all([
       pool.query(
@@ -618,7 +637,7 @@ async function main() {
       throw new Error("Target category cat_other does not exist; refusing to plan an import.");
     }
 
-    const plan = buildImportPlan({
+    plan = buildImportPlan({
       balances,
       existingAccounts: accountsResult.rows,
       existingSnapshots: snapshotsResult.rows,
@@ -635,14 +654,15 @@ async function main() {
     if (args.report) {
       writeFileSync(args.report, report, "utf8");
     }
-    if (args.apply) {
-      await applyPlan(pool, plan);
-      process.stdout.write(
-        `\nAPPLY COMPLETE: ${plan.newAccounts.length} new accounts, ${plan.importTransactions.length} transactions, ${plan.snapshots.length} snapshots.\n`
-      );
-    }
   } finally {
     await pool.end();
+  }
+
+  if (args.apply) {
+    await applyPlan(plan);
+    process.stdout.write(
+      `\nAPPLY COMPLETE: ${plan.newAccounts.length} new accounts, ${plan.importTransactions.length} transactions, ${plan.snapshots.length} snapshots.\n`
+    );
   }
 }
 
@@ -816,8 +836,12 @@ function newestBalance(rows) {
   return [...rows].sort((left, right) => dateOnly(right.date).localeCompare(dateOnly(left.date)))[0];
 }
 
+function newestTransaction(rows) {
+  return [...rows].sort((left, right) => dateOnly(right.date).localeCompare(dateOnly(left.date)))[0];
+}
+
 function accountCurrency(transactions) {
-  return cleanText(transactions.find((transaction) => transaction.iso_currency_code)?.iso_currency_code)?.toUpperCase() || "USD";
+  return cleanText(transactions.find((transaction) => transaction.iso_currency_code)?.iso_currency_code)?.toUpperCase() || null;
 }
 
 function range(values) {
