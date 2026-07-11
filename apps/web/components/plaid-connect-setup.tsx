@@ -145,6 +145,15 @@ export function PlaidConnectSetup({
 
       window.sessionStorage.removeItem(PLAID_LINK_SESSION_STORAGE_KEY);
       playSuccess();
+      // Toast, not just inline state: this component lives inside a collapsed
+      // accordion, so an inline-only message/error is invisible after the widget closes.
+      const institution = metadata.institution?.name;
+      showToast({
+        description: institution ? `${institution} linked. Run Plaid sync to import transactions.` : "Run Plaid sync to import transactions.",
+        duration: 5000,
+        status: "success",
+        title: "Bank connected"
+      });
       updateState({
         message: "Plaid item linked. Run Plaid sync to import transactions.",
         status: body.status ? statusFromApi(body.status) : status
@@ -152,7 +161,9 @@ export function PlaidConnectSetup({
       await refreshStatus();
     } catch (caughtError) {
       playError();
-      updateState({ error: caughtError instanceof Error ? caughtError.message : "Plaid token exchange failed." });
+      const detail = caughtError instanceof Error ? caughtError.message : "Plaid token exchange failed.";
+      showToast({ description: detail, duration: 7000, status: "error", title: "Couldn't finish linking" });
+      updateState({ error: detail });
     } finally {
       updateState({ busy: false });
     }
