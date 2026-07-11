@@ -24,6 +24,7 @@ DOCUMENT_RE = re.compile(
 CATEGORY_RE = re.compile(r"^users/[^/]+/categories/([^/]+)$")
 TAG_RE = re.compile(r"^users/[^/]+/tags/([^/]+)$")
 ACCOUNT_RE = re.compile(r"^items/([^/]+)/accounts/([^/]+)$")
+ITEM_RE = re.compile(r"^items/([^/]+)$")
 
 FIELDS = {
     "category": {"color", "emoji", "name"},
@@ -39,6 +40,7 @@ FIELDS = {
         "subtype",
         "type",
     },
+    "item": {"institution_id", "institution_name"},
 }
 
 # Known Firestore field names that delimit a missing/short value. In the
@@ -94,6 +96,7 @@ BUCKETS = {
     "category": "categories",
     "tag": "tags",
     "account": "accounts",
+    "item": "items",
 }
 
 OUTPUT_NAMES = {
@@ -146,6 +149,7 @@ def parse_documents(lines: Iterable[str]) -> dict[str, dict[str, dict[str, str]]
         "categories": {},
         "tags": {},
         "accounts": {},
+        "items": {},
     }
     current: dict[str, str] | None = None
     current_kind: str | None = None
@@ -172,6 +176,7 @@ def parse_documents(lines: Iterable[str]) -> dict[str, dict[str, dict[str, str]]
             category_match = CATEGORY_RE.fullmatch(document_path)
             tag_match = TAG_RE.fullmatch(document_path)
             account_match = ACCOUNT_RE.fullmatch(document_path)
+            item_match = ITEM_RE.fullmatch(document_path)
 
             if category_match:
                 current_kind = "category"
@@ -185,6 +190,10 @@ def parse_documents(lines: Iterable[str]) -> dict[str, dict[str, dict[str, str]]
                 current_kind = "account"
                 current_id = account_match.group(2)
                 current = {"id": current_id, "itemId": account_match.group(1)}
+            elif item_match:
+                current_kind = "item"
+                current_id = item_match.group(1)
+                current = {"id": current_id}
             continue
 
         if current is None or current_kind is None:
@@ -219,11 +228,15 @@ def parse_documents(lines: Iterable[str]) -> dict[str, dict[str, dict[str, str]]
                 account.pop(key, None)
         if account.get("mask") and not re.fullmatch(r"\d{1,4}", account["mask"]):
             account.pop("mask", None)
+        if not account.get("institutionName"):
+            item = output["items"].get(account.get("itemId", ""), {})
+            account["institutionName"] = item.get("institutionName") or item.get("institution_id")
         if account.get("institutionName") == "Apple Wallet":
             suffix = "Card" if "credit" in account.get("originalSubtype", "").lower() else "Cash"
             for field in ("name", "officialName"):
                 if account.get(field) == "Apple":
                     account[field] = f"Apple {suffix}"
+    output.pop("items", None)
     return output
 
 

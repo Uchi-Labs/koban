@@ -5,6 +5,7 @@ import {
   buildImportPlan,
   buildTransactionTags,
   findDuplicateTransaction,
+  findMerchantSignEvidence,
   loadFinanceDbCopilotImporter,
   matchCopilotAccount,
   normalizeBalanceMinor,
@@ -83,6 +84,22 @@ test("dedupes a negated Copilot amount on the same account within two days", () 
 
   assert.equal(findDuplicateTransaction(copilotTransaction, existing)?.id, "plaid_txn_match");
   assert.equal(toMinor(-copilotTransaction.amount), -1234);
+});
+
+test("uses merchant identity in both systems for sign evidence", () => {
+  const evidence = findMerchantSignEvidence([
+    {
+      source: { name: "STARBUCKS" },
+      target: { description: "Starbucks", merchant_name: "Starbucks" }
+    },
+    {
+      source: { name: "UNRELATED" },
+      target: { description: "Different merchant", merchant_name: "Different merchant" }
+    }
+  ]);
+
+  assert.equal(evidence.source.name, "STARBUCKS");
+  assert.ok(evidence.merchantScore >= 0.55);
 });
 
 test("builds source-only provenance tags from category, user tags, and Amazon", () => {

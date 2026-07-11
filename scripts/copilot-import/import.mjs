@@ -71,6 +71,21 @@ export function findDuplicateTransaction(copilotTransaction, existingTransaction
   return candidates[0];
 }
 
+export function findMerchantSignEvidence(duplicates) {
+  return duplicates
+    .map((duplicate) => {
+      const sourceNames = [duplicate.source.name_override, duplicate.source.name, duplicate.source.original_name].filter(Boolean);
+      const targetNames = [duplicate.target.merchant_name, duplicate.target.description].filter(Boolean);
+      const merchantScore = Math.max(
+        0,
+        ...sourceNames.flatMap((sourceName) => targetNames.map((targetName) => textSimilarity(sourceName, targetName)))
+      );
+      return { ...duplicate, merchantScore: roundScore(merchantScore) };
+    })
+    .filter((duplicate) => duplicate.merchantScore >= 0.55)
+    .sort((left, right) => right.merchantScore - left.merchantScore)[0];
+}
+
 export function matchCopilotAccount(sourceAccount, targetAccounts) {
   const mask = normalizeMask(sourceAccount.mask);
   if (!mask) {
@@ -154,8 +169,8 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
     } else if (match.status === "ambiguous") {
       accountPlans.push({ sourceAccount, sourceAccountId, status: "ambiguous", candidates: match.candidates });
     } else {
-      const latestBalance = newestBalance(balanceRowsByAccount.get(sourceAccountId) ?? []);
-      const latestTransaction = newestTransaction(transactionRowsByAccount.get(sourceAccountId) ?? []);
+      const latestBalance = newestDatedRow(balanceRowsByAccount.get(sourceAccountId) ?? []);
+      const latestTransaction = newestDatedRow(transactionRowsByAccount.get(sourceAccountId) ?? []);
       const type = mapAccountType(sourceAccount);
       const sourceName = cleanText(sourceAccount.name) || cleanText(sourceAccount.officialName);
       const currency = cleanText(sourceAccount.currency) || accountCurrency(transactionRowsByAccount.get(sourceAccountId) ?? []);
@@ -168,9 +183,9 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
           id: stableAccountId,
           provider: "copilot",
           provider_connection_id: COPILOT_PROVIDER_CONNECTION_ID,
-          group_id: groupIdForType(type),
+          group_id: type ? groupIdForType(type) : null,
           name: sourceName,
-          institution_name: sourceAccount.institutionName || "Copilot Money",
+          institution_name: cleanText(sourceAccount.institutionName),
           type,
           mask: normalizeMask(sourceAccount.mask),
           currency,
@@ -298,7 +313,9 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
     .map((plan) => plan.targetAccount);
   const missingBalanceAccountIds = newAccounts.filter((account) => account.current_balance_minor === null).map((account) => account.id);
   const missingCurrencyAccountIds = newAccounts.filter((account) => !account.currency).map((account) => account.id);
+  const missingInstitutionAccountIds = newAccounts.filter((account) => !account.institution_name).map((account) => account.id);
   const missingNameAccountIds = newAccounts.filter((account) => !account.name).map((account) => account.id);
+  const missingTypeAccountIds = newAccounts.filter((account) => !account.type).map((account) => account.id);
   if (ambiguous.length > 0) blockingIssues.push(`${ambiguous.length} ambiguous account mapping(s)`);
   if (missingAccountMappings.length > 0) blockingIssues.push(`${missingAccountMappings.length} missing account mapping(s)`);
   if (missingCategoryIds.size > 0) blockingIssues.push(`${missingCategoryIds.size} used category id(s) without names`);
@@ -310,16 +327,18 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   if (invalidBalanceRows.length > 0) blockingIssues.push(`${invalidBalanceRows.length} balance row(s) without valid current_balance`);
   if (missingBalanceAccountIds.length > 0) blockingIssues.push(`${missingBalanceAccountIds.length} new account(s) without accountDailyBalance history`);
   if (missingCurrencyAccountIds.length > 0) blockingIssues.push(`${missingCurrencyAccountIds.length} new account(s) without source currency`);
+  if (missingInstitutionAccountIds.length > 0) blockingIssues.push(`${missingInstitutionAccountIds.length} new account(s) without a source institution`);
   if (missingNameAccountIds.length > 0) blockingIssues.push(`${missingNameAccountIds.length} new account(s) without a source name`);
+  if (missingTypeAccountIds.length > 0) blockingIssues.push(`${missingTypeAccountIds.length} new account(s) without a recognized source type`);
   const importedDateRange = range(importTransactions.map((transaction) => transaction.date));
   const sourceDateRange = range(transactions.map((transaction) => dateOnly(transaction.date)));
   const snapshotDateRange = range(snapshots.map((snapshot) => snapshot.asOfDate));
-  const signEvidenceDuplicate = duplicates.find((duplicate) => duplicate.source.name || duplicate.source.original_name) ?? duplicates[0];
+  const signEvidenceDuplicate = findMerchantSignEvidence(duplicates);
   const creditAccountPlan = accountPlans.find(
     (plan) => plan.status === "matched" && plan.targetAccount.type === "credit_card" && latestExistingSnapshotByAccount.has(plan.targetAccount.id)
   );
   const creditSourceBalance = creditAccountPlan
-    ? newestBalance(balanceRowsByAccount.get(creditAccountPlan.sourceAccountId) ?? [])
+    ? newestDatedRow(balanceRowsByAccount.get(creditAccountPlan.sourceAccountId) ?? [])
     : undefined;
   const balanceSignEvidence =
     creditAccountPlan && creditSourceBalance
@@ -338,6 +357,9 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   ) {
     blockingIssues.push("credit balance sign verification disagrees with the existing Koban snapshot");
   }
+  if (!signEvidenceDuplicate) {
+    blockingIssues.push("no amount/date duplicate also matched merchant identity for transaction sign verification");
+  }
 
   return {
     accountPlans,
@@ -349,9 +371,11 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
     missingBalanceAccountIds,
     missingCategoryIds: [...missingCategoryIds].sort(),
     missingCurrencyAccountIds,
+    missingInstitutionAccountIds,
     missingTagIds: [...missingTagIds].sort(),
     missingTransactionCurrencyIds,
     missingTransactionNameIds,
+    missingTypeAccountIds,
     newAccounts,
     snapshots,
     sourceStats,
@@ -369,7 +393,13 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       balance: balanceSignEvidence,
       transaction: signEvidenceDuplicate
         ? {
-            merchant: cleanText(signEvidenceDuplicate.source.name) || cleanText(signEvidenceDuplicate.source.original_name) || "(unnamed)",
+            copilotMerchant:
+              cleanText(signEvidenceDuplicate.source.name_override) ||
+              cleanText(signEvidenceDuplicate.source.name) ||
+              cleanText(signEvidenceDuplicate.source.original_name),
+            kobanMerchant:
+              cleanText(signEvidenceDuplicate.target.merchant_name) || cleanText(signEvidenceDuplicate.target.description),
+            merchantScore: signEvidenceDuplicate.merchantScore,
             copilotAmountMinor: toMinor(signEvidenceDuplicate.source.amount),
             normalizedMinor: toMinor(-Number(signEvidenceDuplicate.source.amount)),
             kobanExistingMinor: Number(signEvidenceDuplicate.target.amount_minor),
@@ -451,7 +481,8 @@ export function formatDryRunReport(plan) {
   if (plan.signEvidence.transaction) {
     const evidence = plan.signEvidence.transaction;
     lines.push(
-      `- Known overlap row: ${evidence.date} ${evidence.merchant}; Copilot ${money(evidence.copilotAmountMinor)} -> Koban ${money(evidence.normalizedMinor)}, existing Koban ${money(evidence.kobanExistingMinor)}`
+      `- Known overlap row: ${evidence.date}; Copilot merchant "${evidence.copilotMerchant}" and Koban merchant "${evidence.kobanMerchant}" ` +
+        `(similarity ${evidence.merchantScore}); Copilot ${money(evidence.copilotAmountMinor)} -> Koban ${money(evidence.normalizedMinor)}, existing Koban ${money(evidence.kobanExistingMinor)}`
     );
   } else {
     lines.push("- No overlapping transaction was available for a merchant-row sign check.");
@@ -476,6 +507,8 @@ export function formatDryRunReport(plan) {
   if (plan.missingTagIds.length > 0) lines.push(`- Missing tag ids: ${plan.missingTagIds.join(", ")}`);
   if (plan.missingBalanceAccountIds.length > 0) lines.push(`- Missing-balance account ids: ${plan.missingBalanceAccountIds.join(", ")}`);
   if (plan.missingCurrencyAccountIds.length > 0) lines.push(`- Missing-currency account ids: ${plan.missingCurrencyAccountIds.join(", ")}`);
+  if (plan.missingInstitutionAccountIds.length > 0) lines.push(`- Missing-institution account ids: ${plan.missingInstitutionAccountIds.join(", ")}`);
+  if (plan.missingTypeAccountIds.length > 0) lines.push(`- Missing-type account ids: ${plan.missingTypeAccountIds.join(", ")}`);
 
   return `${lines.join("\n")}\n`;
 }
@@ -747,7 +780,8 @@ function mapAccountType(account) {
   if (/checking/.test(value)) return "checking";
   if (/investment|brokerage|stock plan/.test(value)) return "investment";
   if (/loan|mortgage/.test(value)) return "loan";
-  return "cash";
+  if (/cash|other/.test(value)) return "cash";
+  return null;
 }
 
 function groupIdForType(type) {
@@ -832,11 +866,7 @@ function groupBy(items, keyFor) {
   return result;
 }
 
-function newestBalance(rows) {
-  return [...rows].sort((left, right) => dateOnly(right.date).localeCompare(dateOnly(left.date)))[0];
-}
-
-function newestTransaction(rows) {
+function newestDatedRow(rows) {
   return [...rows].sort((left, right) => dateOnly(right.date).localeCompare(dateOnly(left.date)))[0];
 }
 
