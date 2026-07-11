@@ -932,6 +932,93 @@ export async function upsertAccountBalanceSnapshots(snapshots: AccountBalanceSna
   return enqueueDbWrite(() => upsertAccountBalanceSnapshotsNow(snapshots));
 }
 
+export interface CopilotHistoryImportInput {
+  accounts: Account[];
+  balanceSnapshots: AccountBalanceSnapshot[];
+  providerConnection?: ProviderConnection;
+  transactions: Transaction[];
+}
+
+export interface CopilotHistoryImportRecord {
+  accountCount: number;
+  balanceSnapshotCount: number;
+  transactionCount: number;
+}
+
+/**
+ * Persist an approved one-time Copilot history plan through the same serialized
+ * write boundary as live provider syncs. Existing transaction overlays always
+ * win on idempotent reruns.
+ */
+export async function applyCopilotHistoryImport(
+  input: CopilotHistoryImportInput
+): Promise<CopilotHistoryImportRecord> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const existingOverlays = await readTransactionOverlays(db);
+
+    await db.exec("BEGIN");
+    try {
+      if (input.providerConnection) {
+        await upsertProviderConnection(db, input.providerConnection);
+      }
+
+      for (const account of input.accounts) {
+        await upsertAccount(db, account);
+      }
+
+      for (const snapshot of input.balanceSnapshots) {
+        await db.query(
+          `INSERT INTO account_balance_snapshots (
+            id,
+            account_id,
+            as_of_date,
+            captured_at,
+            ledger_balance_minor,
+            available_balance_minor,
+            currency,
+            source
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (id) DO UPDATE SET
+            account_id = EXCLUDED.account_id,
+            as_of_date = EXCLUDED.as_of_date,
+            captured_at = EXCLUDED.captured_at,
+            ledger_balance_minor = EXCLUDED.ledger_balance_minor,
+            available_balance_minor = EXCLUDED.available_balance_minor,
+            currency = EXCLUDED.currency,
+            source = EXCLUDED.source`,
+          [
+            snapshot.id,
+            snapshot.accountId,
+            snapshot.asOfDate,
+            snapshot.capturedAt,
+            moneyToMinor(snapshot.ledgerBalance),
+            snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+            snapshot.currency,
+            snapshot.source
+          ]
+        );
+      }
+
+      for (const transaction of input.transactions) {
+        await upsertTransaction(db, mergeTransactionOverlay(transaction, existingOverlays.get(transaction.id)));
+      }
+
+      await db.exec("COMMIT");
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+
+    invalidateShellDataCache();
+    return {
+      accountCount: input.accounts.length,
+      balanceSnapshotCount: input.balanceSnapshots.length,
+      transactionCount: input.transactions.length
+    };
+  });
+}
+
 export async function replacePlaidLedgerSnapshot(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
   return enqueueDbWrite(() => replacePlaidLedgerSnapshotNow(input));
 }

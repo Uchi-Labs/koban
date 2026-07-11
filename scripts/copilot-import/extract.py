@@ -30,6 +30,7 @@ FIELDS = {
     "tag": {"color_name", "hex_color", "name"},
     "account": {
         "institution_name",
+        "iso_currency_code",
         "mask",
         "name",
         "official_name",
@@ -99,6 +100,7 @@ OUTPUT_NAMES = {
     "color_name": "colorName",
     "hex_color": "hexColor",
     "institution_name": "institutionName",
+    "iso_currency_code": "currency",
     "official_name": "officialName",
     "original_subtype": "originalSubtype",
     "original_type": "originalType",
@@ -217,12 +219,11 @@ def parse_documents(lines: Iterable[str]) -> dict[str, dict[str, dict[str, str]]
                 account.pop(key, None)
         if account.get("mask") and not re.fullmatch(r"\d{1,4}", account["mask"]):
             account.pop("mask", None)
-        if account.get("institutionName") == "Apple Wallet" and account.get("name") == "Apple":
+        if account.get("institutionName") == "Apple Wallet":
             suffix = "Card" if "credit" in account.get("originalSubtype", "").lower() else "Cash"
-            account["name"] = f"Apple {suffix}"
-        if account.get("institutionName") == "Apple Wallet" and account.get("officialName") == "Apple":
-            suffix = "Card" if "credit" in account.get("originalSubtype", "").lower() else "Cash"
-            account["officialName"] = f"Apple {suffix}"
+            for field in ("name", "officialName"):
+                if account.get(field) == "Apple":
+                    account[field] = f"Apple {suffix}"
     return output
 
 

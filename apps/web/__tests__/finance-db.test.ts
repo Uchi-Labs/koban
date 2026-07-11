@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   closeFinanceDbForTests,
+  applyCopilotHistoryImport,
   createFinancialGoal,
   createTransactionEvidenceLink,
   createTransactionContextNote,
@@ -278,6 +279,87 @@ describe("finance db", () => {
     const tellerStyle = styles.find((style) => style.name === "teller");
 
     expect(tellerStyle).toMatchObject({ kind: "source", name: "teller" });
+  });
+
+  it("applies Copilot history through the DB queue and preserves overlays on rerun", async () => {
+    useTempDb();
+    const providerConnection = {
+      configured: true,
+      displayName: "Copilot Money Import",
+      id: "provider_copilot_import",
+      lastSyncedAt: "2026-07-11T18:00:00.000Z",
+      provider: "copilot",
+      status: "connected"
+    } satisfies ProviderConnection;
+    const account = {
+      currency: "USD",
+      currentBalance: -50,
+      groupId: "group_credit",
+      id: "copilot_acct_old",
+      includedInNetWorth: false,
+      institutionName: "Old Bank",
+      lastUpdatedAt: "2026-07-10T00:00:00.000Z",
+      mask: "1234",
+      name: "Old Card",
+      providerConnectionId: providerConnection.id,
+      type: "credit_card"
+    } satisfies Account;
+    const transaction = {
+      accountId: account.id,
+      amount: -25,
+      categoryId: "cat_other",
+      currency: "USD",
+      date: "2026-07-10",
+      description: "DINNER",
+      id: "copilot_txn_old",
+      merchantName: "Dinner",
+      notes: "Copilot note",
+      postedDate: "2026-07-10",
+      providerConnectionId: providerConnection.id,
+      reviewed: false,
+      status: "posted",
+      tags: ["copilot:cat:Restaurants"]
+    } satisfies Transaction;
+    const input = {
+      accounts: [account],
+      balanceSnapshots: [
+        {
+          accountId: account.id,
+          asOfDate: "2026-07-10",
+          capturedAt: "2026-07-10T00:00:00.000Z",
+          currency: "USD",
+          id: "copilot_bal_old_2026-07-10",
+          ledgerBalance: -50,
+          source: "copilot"
+        }
+      ],
+      providerConnection,
+      transactions: [transaction]
+    };
+
+    await applyCopilotHistoryImport(input);
+    await updateDbTransaction(transaction.id, {
+      categoryId: "cat_food",
+      notes: "Koban edit",
+      reviewed: true,
+      tags: ["favorite"]
+    });
+    await applyCopilotHistoryImport(input);
+
+    const snapshot = await readFinanceDbSnapshot();
+    expect(snapshot?.accounts.find((candidate) => candidate.id === account.id)).toMatchObject({
+      currentBalance: -50,
+      includedInNetWorth: false
+    });
+    expect(snapshot?.transactions.find((candidate) => candidate.id === transaction.id)).toMatchObject({
+      categoryId: "cat_food",
+      notes: "Koban edit",
+      reviewed: true,
+      tags: ["favorite"]
+    });
+    expect((await listTagStyles()).find((style) => style.name === "copilot:cat:Restaurants")).toMatchObject({
+      kind: "source"
+    });
   });
 
   it("auto-registers user-edited transaction tags as kind 'user'", async () => {
