@@ -125,7 +125,14 @@ export function matchCopilotAccount(sourceAccount, targetAccounts) {
   return { status: "ambiguous", candidates: scored };
 }
 
-export function buildImportPlan({ balances, existingAccounts, existingSnapshots, existingTransactions, mappings, sourceStats, transactions }) {
+export function buildImportPlan({ balances, existingAccounts, existingSnapshots, existingTransactions, mappings, overrides = {}, sourceStats, transactions }) {
+  // Operator-supplied resolutions for dry-run blockers: forced account matches
+  // (verified out-of-band, e.g. by balance equality), a default currency for a
+  // single-currency user's rows that predate Copilot storing one, and permission
+  // for archival accounts to import with a zero opening balance.
+  const forcedMatches = overrides.forcedMatches ?? {};
+  const defaultCurrency = overrides.defaultCurrency;
+  const allowEmptyBalances = overrides.allowEmptyBalances === true;
   const accountMappings = normalizeMappingBucket(mappings.accounts);
   const categoryMappings = normalizeMappingBucket(mappings.categories);
   const tagMappings = normalizeMappingBucket(mappings.tags);
@@ -163,7 +170,16 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       continue;
     }
 
-    const match = matchCopilotAccount(sourceAccount, targetAccounts);
+    const forcedTargetId = forcedMatches[sourceAccountId];
+    const match = forcedTargetId
+      ? (() => {
+          const forced = targetAccounts.find((account) => account.id === forcedTargetId);
+          if (!forced) {
+            throw new Error(`Forced match target ${forcedTargetId} does not exist for ${sourceAccountId}.`);
+          }
+          return { status: "matched", account: forced };
+        })()
+      : matchCopilotAccount(sourceAccount, targetAccounts);
     if (match.status === "matched") {
       accountPlans.push({ sourceAccount, sourceAccountId, status: "matched", targetAccount: match.account });
     } else if (match.status === "ambiguous") {
@@ -173,7 +189,11 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       const latestTransaction = newestDatedRow(transactionRowsByAccount.get(sourceAccountId) ?? []);
       const type = mapAccountType(sourceAccount);
       const sourceName = cleanText(sourceAccount.name) || cleanText(sourceAccount.officialName);
-      const currency = cleanText(sourceAccount.currency) || accountCurrency(transactionRowsByAccount.get(sourceAccountId) ?? []);
+      const currency =
+        cleanText(sourceAccount.currency) ||
+        accountCurrency(transactionRowsByAccount.get(sourceAccountId) ?? []) ||
+        defaultCurrency ||
+        null;
       accountPlans.push({
         sourceAccount,
         sourceAccountId,
@@ -237,7 +257,7 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       invalidTransactionAmountIds.push(transaction.id);
       continue;
     }
-    const currency = cleanText(transaction.iso_currency_code)?.toUpperCase();
+    const currency = cleanText(transaction.iso_currency_code)?.toUpperCase() || defaultCurrency;
     if (!currency) {
       missingTransactionCurrencyIds.push(transaction.id);
     }
@@ -311,6 +331,13 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   const newAccounts = accountPlans
     .filter((plan) => plan.status === "unmatched" && plan.targetAccount.provider === "copilot" && !existingCopilotAccounts.has(plan.targetAccount.id))
     .map((plan) => plan.targetAccount);
+  if (allowEmptyBalances) {
+    for (const account of newAccounts) {
+      if (account.current_balance_minor === null) {
+        account.current_balance_minor = 0; // archival, net-worth-excluded — zero is honest
+      }
+    }
+  }
   const missingBalanceAccountIds = newAccounts.filter((account) => account.current_balance_minor === null).map((account) => account.id);
   const missingCurrencyAccountIds = newAccounts.filter((account) => !account.currency).map((account) => account.id);
   const missingInstitutionAccountIds = newAccounts.filter((account) => !account.institution_name).map((account) => account.id);
@@ -676,6 +703,11 @@ async function main() {
       existingSnapshots: snapshotsResult.rows,
       existingTransactions: transactionsResult.rows,
       mappings,
+      overrides: {
+        allowEmptyBalances: args.allowEmptyBalances,
+        defaultCurrency: args.defaultCurrency,
+        forcedMatches: args.forcedMatches
+      },
       sourceStats: {
         deletedCount: Number(sourceStats.deleted_count ?? 0),
         pendingCount: Number(sourceStats.pending_count ?? 0)
@@ -701,7 +733,10 @@ async function main() {
 
 function parseArgs(argv) {
   const args = {
+    allowEmptyBalances: false,
     apply: false,
+    defaultCurrency: undefined,
+    forcedMatches: {},
     mappings: path.join(SCRIPT_DIR, "mappings.json"),
     report: null,
     sqlite: DEFAULT_SQLITE
@@ -709,11 +744,21 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--apply") args.apply = true;
-    else if (argument === "--mappings") args.mappings = path.resolve(requireValue(argv, ++index, argument));
+    else if (argument === "--allow-empty-balance-accounts") args.allowEmptyBalances = true;
+    else if (argument === "--default-currency")
+      args.defaultCurrency = requireValue(argv, ++index, argument).toUpperCase();
+    else if (argument === "--match") {
+      const pair = requireValue(argv, ++index, argument);
+      const [sourceId, targetId] = pair.split("=");
+      if (!sourceId || !targetId) throw new Error(`--match expects <copilotAccountId>=<kobanAccountId>, got: ${pair}`);
+      args.forcedMatches[sourceId] = targetId;
+    } else if (argument === "--mappings") args.mappings = path.resolve(requireValue(argv, ++index, argument));
     else if (argument === "--report") args.report = path.resolve(requireValue(argv, ++index, argument));
     else if (argument === "--sqlite") args.sqlite = path.resolve(requireValue(argv, ++index, argument));
     else if (argument === "--help" || argument === "-h") {
-      console.log("Usage: node scripts/copilot-import/import.mjs [--mappings PATH] [--sqlite PATH] [--report PATH] [--apply]");
+      console.log(
+        "Usage: node scripts/copilot-import/import.mjs [--mappings PATH] [--sqlite PATH] [--report PATH] [--default-currency USD] [--match copilotId=kobanId]... [--allow-empty-balance-accounts] [--apply]"
+      );
       process.exit(0);
     } else throw new Error(`Unknown argument: ${argument}`);
   }
