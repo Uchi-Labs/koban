@@ -32,6 +32,7 @@ import { tagStyleMap } from "@/components/tag-style-map";
 import { TransactionTagPopover, type TagOption } from "@/components/transaction-tag-popover";
 import { TransactionGoalPopover, type FinancialGoal } from "@/components/transaction-goal-popover";
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import { RangeSlider } from "@/components/motion/range-slider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -435,6 +436,7 @@ function useTransactionsViewModel({
   const reviewRowsHasMore = reviewWindow.hasMore;
   const reviewRowsLoading = reviewWindow.loading;
   const reviewRowsError = reviewWindow.error;
+  const amountRangeMax = useMemo(() => p95AmountRangeMax(rows), [rows]);
   const rowsAreCurrent = !windowed || transactionWindow.filterKey === allRowsFilterKey;
   const reviewRowsAreCurrent = !windowed || reviewWindow.filterKey === reviewRowsFilterKey;
 
@@ -863,6 +865,7 @@ function useTransactionsViewModel({
   return {
     accountId,
     allReviewSelected,
+    amountRangeMax,
     bulkReviewState,
     categories,
     categoryId,
@@ -2038,6 +2041,18 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             />
           </InputGroup>
         </div>
+        <RangeSlider
+          aria-label="transaction amount range"
+          className="w-44 shrink-0"
+          max={model.amountRangeMax}
+          min={0}
+          onValueChange={([minimum, maximum]) => {
+            model.setMinAmount(minimum <= 0 ? "" : String(minimum));
+            model.setMaxAmount(maximum >= model.amountRangeMax ? "" : String(maximum));
+          }}
+          step={Math.max(1, niceAmountStep(model.amountRangeMax))}
+          value={amountRangeValue(model.minAmount, model.maxAmount, model.amountRangeMax)}
+        />
         <Select
           items={categoryFilterItems}
           onValueChange={(value) => {
@@ -3574,6 +3589,33 @@ function parseAmountFilter(value: string): number | undefined {
 
   const amount = Number(normalized);
   return Number.isFinite(amount) && amount >= 0 ? amount : undefined;
+}
+
+export function p95AmountRangeMax(rows: TransactionView[]): number {
+  if (rows.length === 0) {
+    return 100;
+  }
+
+  const magnitudes = rows.map((transaction) => Math.abs(transaction.amount)).sort((left, right) => left - right);
+  const p95 = magnitudes[Math.max(0, Math.ceil(magnitudes.length * 0.95) - 1)] ?? 100;
+  return niceAmountCeiling(Math.max(1, p95));
+}
+
+function niceAmountCeiling(value: number): number {
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return nice * magnitude;
+}
+
+function niceAmountStep(maximum: number): number {
+  return niceAmountCeiling(maximum / 100);
+}
+
+function amountRangeValue(minimum: string, maximum: string, bound: number): [number, number] {
+  const parsedMinimum = Math.min(bound, parseAmountFilter(minimum) ?? 0);
+  const parsedMaximum = Math.min(bound, parseAmountFilter(maximum) ?? bound);
+  return [Math.min(parsedMinimum, parsedMaximum), Math.max(parsedMinimum, parsedMaximum)];
 }
 
 function transactionWindowFilterKey({

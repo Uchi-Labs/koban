@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TransactionsView } from "@/components/transactions-view";
+import { TransactionsView, p95AmountRangeMax } from "@/components/transactions-view";
 import { getTransactionViews } from "@/lib/view-models";
 
 const accounts = [
@@ -240,6 +240,23 @@ describe("TransactionsView", () => {
     expect(screen.getByText("Payroll")).toBeInTheDocument();
     expect(screen.queryByText("Uber")).not.toBeInTheDocument();
     expect(screen.queryByText("Figma")).not.toBeInTheDocument();
+  });
+
+  it("keeps the p95 amount slider and numeric inputs synchronized", async () => {
+    const transactionViews = getTransactionViews(transactions, { accounts, categories });
+    expect(p95AmountRangeMax(transactionViews)).toBe(2000);
+    renderTransactions();
+
+    const maximumThumb = screen.getByRole("slider", { name: "Maximum transaction amount range" });
+    expect(maximumThumb).toHaveAttribute("aria-valuemax", "2000");
+
+    await userEvent.type(screen.getByLabelText("Maximum transaction amount"), "500");
+    expect(maximumThumb).toHaveAttribute("aria-valuenow", "500");
+
+    const minimumThumb = screen.getByRole("slider", { name: "Minimum transaction amount range" });
+    minimumThumb.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByLabelText("Minimum transaction amount")).toHaveValue("20");
   });
 
   it("filters transactions by category", async () => {
