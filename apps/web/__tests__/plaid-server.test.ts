@@ -357,6 +357,9 @@ function createFakePlaidClient(
   transactionsSync: (request: TransactionsSyncRequest) => Promise<TransactionsSyncResponse>
 ): PlaidApiClient {
   return {
+    async institutionsGetById() {
+      throw new Error("not used");
+    },
     async itemPublicTokenExchange() {
       throw new Error("not used");
     },
