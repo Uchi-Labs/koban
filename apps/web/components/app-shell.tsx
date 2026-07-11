@@ -5,10 +5,13 @@ import {
   ArrowLeftRight,
   BarChart3,
   Bot,
+  Check,
+  CircleAlert,
   CreditCard,
   Flag,
   Layers,
   LayoutDashboard,
+  LoaderCircle,
   PieChart,
   RefreshCw,
   Repeat2,
@@ -42,7 +45,8 @@ import {
 import { Dock, DockItem } from "@/components/motion/dock";
 import { SharedLayoutBg } from "@/components/ui/shared-layout-bg";
 import { SyncStatusIsland } from "@/components/ui/sync-status-island";
-import { StatefulButton } from "@/components/ui/stateful-button";
+import { ActionSwapIcon, ActionSwapText } from "@/components/ui/action-swap";
+import { Button } from "@/components/ui/button";
 import { ToastProvider, useToast } from "@/components/ui/toast";
 import { deriveSyncIslandState } from "@/lib/sync-island-state";
 import { cn } from "@/lib/utils";
@@ -386,6 +390,7 @@ function AppShellContent({
           reviewActionableCount={reviewActionableCount}
           source={source}
           syncIslandState={syncIslandState}
+          syncStatus={syncStatus}
           syncing={syncing}
           syncNow={syncNow}
           transactionCount={transactionCount}
@@ -450,6 +455,7 @@ function AppSidebarSections({
   reviewActionableCount,
   source,
   syncIslandState,
+  syncStatus,
   syncing,
   syncNow,
   transactionCount
@@ -465,10 +471,19 @@ function AppSidebarSections({
   reviewActionableCount: number;
   source: AppShellProps["source"];
   syncIslandState: ReturnType<typeof deriveSyncIslandState>;
+  syncStatus: "error" | "idle" | "success" | "syncing";
   syncing: boolean;
   syncNow: () => void;
   transactionCount: number;
 }) {
+  const syncButtonLabel = syncStatus === "syncing"
+    ? "Syncing"
+    : syncStatus === "success"
+      ? "Synced"
+      : syncStatus === "error"
+        ? "Failed"
+        : "Sync now";
+
   return (
     <>
       <SidebarHeader>
@@ -620,18 +635,30 @@ function AppSidebarSections({
               ? `${accountCount} accounts · ${transactionCount.toLocaleString()} transactions. ${formatSyncAge(lastSyncedAt)}`
               : "Connect Teller in Settings to populate accounts and transactions."}
           </p>
-          <StatefulButton
+          <Button
+            aria-label={syncButtonLabel}
             className="mt-2 w-full"
             data-sound="sync"
             disabled={syncing}
             onClick={syncNow}
             size="sm"
-            state={syncing ? "loading" : "idle"}
             variant="outline"
-            loadingText="Syncing"
           >
-            <span className="inline-flex items-center gap-1.5"><RefreshCw className={cn("size-3.5", syncing && "animate-spin")} /> Sync now</span>
-          </StatefulButton>
+            <ActionSwapIcon animation="blur" value={syncStatus}>
+              {syncStatus === "syncing" ? (
+                <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" />
+              ) : syncStatus === "success" ? (
+                <Check className="size-3.5 text-(--positive)" />
+              ) : syncStatus === "error" ? (
+                <CircleAlert className="size-3.5 text-destructive" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+            </ActionSwapIcon>
+            <ActionSwapText animation="blur" value={syncStatus}>
+              {syncButtonLabel}
+            </ActionSwapText>
+          </Button>
         </div>
       </SidebarFooter>
     </>
