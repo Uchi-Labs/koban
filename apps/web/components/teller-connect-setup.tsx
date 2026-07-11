@@ -55,6 +55,12 @@ interface TellerConnectEnrollment {
   signatures?: string[];
 }
 
+interface TellerConnectFailure {
+  type?: string;
+  code?: string;
+  message?: string;
+}
+
 interface TellerConnectOptions {
   applicationId: string;
   environment: string;
@@ -63,6 +69,7 @@ interface TellerConnectOptions {
   nonce: string;
   onSuccess(enrollment: TellerConnectEnrollment): void;
   onExit(): void;
+  onFailure(failure: TellerConnectFailure): void;
 }
 
 declare global {
@@ -284,6 +291,15 @@ export function TellerConnectSetup({ initialStatus }: { initialStatus: TellerSet
         },
         onExit: () => {
           updateState({ busy: false, message: "Teller Connect closed." });
+        },
+        onFailure: (failure) => {
+          // Surface Teller's structured error instead of losing it — the widget's own
+          // banner only ever shows a generic "unable to process your request".
+          console.error("[teller-connect] failure payload:", failure);
+          updateState({
+            busy: false,
+            error: `Teller Connect failed${failure?.type ? ` (${failure.type}${failure.code ? `/${failure.code}` : ""})` : ""}: ${failure?.message ?? "no detail provided"}. This comes from Teller's side — check the browser console for the full payload.`
+          });
         }
       });
 
