@@ -2022,7 +2022,9 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
               aria-label="Minimum transaction amount"
               className="h-8 px-2 text-sm"
               inputMode="decimal"
-              onChange={(event) => model.setMinAmount(event.target.value)}
+              onChange={(event) => model.setMinAmount(
+                clampAmountInput(event.target.value, model.maxAmount, model.amountRangeMax, "minimum")
+              )}
               placeholder="Min"
               value={model.minAmount}
             />
@@ -2035,7 +2037,9 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
               aria-label="Maximum transaction amount"
               className="h-8 px-2 text-sm"
               inputMode="decimal"
-              onChange={(event) => model.setMaxAmount(event.target.value)}
+              onChange={(event) => model.setMaxAmount(
+                clampAmountInput(event.target.value, model.minAmount, model.amountRangeMax, "maximum")
+              )}
               placeholder="Max"
               value={model.maxAmount}
             />
@@ -3616,6 +3620,29 @@ function amountRangeValue(minimum: string, maximum: string, bound: number): [num
   const parsedMinimum = Math.min(bound, parseAmountFilter(minimum) ?? 0);
   const parsedMaximum = Math.min(bound, parseAmountFilter(maximum) ?? bound);
   return [Math.min(parsedMinimum, parsedMaximum), Math.max(parsedMinimum, parsedMaximum)];
+}
+
+function clampAmountInput(
+  value: string,
+  otherValue: string,
+  bound: number,
+  edge: "maximum" | "minimum"
+): string {
+  if (value.trim().length === 0) {
+    return "";
+  }
+
+  const parsed = parseAmountFilter(value);
+  if (parsed === undefined) {
+    return value;
+  }
+
+  const other = parseAmountFilter(otherValue);
+  const clampedToBound = Math.min(bound, parsed);
+  const clamped = edge === "minimum"
+    ? Math.min(clampedToBound, other ?? bound)
+    : Math.max(clampedToBound, other ?? 0);
+  return String(clamped);
 }
 
 function transactionWindowFilterKey({

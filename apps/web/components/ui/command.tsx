@@ -67,8 +67,8 @@ function CommandDialog({
         <LazyMotion features={domAnimation}>
           <m.div
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
-            transition={reduce ? { duration: 0.12, ease: EASE_OUT } : SPRING_PANEL}
+            initial={reduce ? false : { opacity: 0, scale: 0.97, y: -8 }}
+            transition={reduce ? { duration: 0 } : SPRING_PANEL}
           >
             {children}
           </m.div>

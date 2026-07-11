@@ -23,7 +23,9 @@ export interface TextRevealProps {
   children?: ReactNode;
 }
 
-const DEFAULT_SPRING = { stiffness: 140, damping: 26, mass: 1.2 };
+// Text needs a softer landing than control motion so words remain readable as
+// they rise; this named local spring is intentionally limited to this reveal.
+const DEFAULT_SPRING = { stiffness: 180, damping: 28, mass: 0.8 };
 
 export function TextReveal({
   text,
@@ -32,7 +34,7 @@ export function TextReveal({
   split = "word",
   stagger = 0.09,
   delay = 0,
-  blur = 12,
+  blur = 8,
   yOffset = "40%",
   spring,
   once = true,
@@ -45,7 +47,7 @@ export function TextReveal({
   const shouldAnimate = whileInView ? inView : true;
 
   const lines = Array.isArray(text) ? text : [text];
-  const s = { ...DEFAULT_SPRING, ...spring };
+  const revealSpring = { ...DEFAULT_SPRING, ...spring };
 
   let unitIndex = 0;
   const lineCounts = new Map<string, number>();
@@ -62,30 +64,32 @@ export function TextReveal({
         return (
           <span key={lineKey} className="block">
             {units.map((unit, i) => {
-              const d = delay + unitIndex * stagger;
+              const unitDelay = delay + unitIndex * stagger;
               unitIndex += 1;
               const unitCount = unitCounts.get(unit) ?? 0;
               unitCounts.set(unit, unitCount + 1);
               const unitKey = `${unit}-${unitCount}`;
               const initial = reduce
-                ? { opacity: 0 }
+                ? { opacity: 1 }
                 : { y: yOffset, opacity: 0, filter: `blur(${blur}px)` };
               const animate = shouldAnimate
                 ? reduce
                   ? { opacity: 1 }
                   : { y: 0, opacity: 1, filter: "blur(0px)" }
                 : initial;
+              // Filter is the deliberate blur-reveal effect requested by this
+              // component; keep it subtle and within the UI timing budget.
               const transition: Transition = reduce
-                ? { opacity: { duration: 0.25, ease: EASE_OUT, delay: d * 0.3 } }
+                ? { duration: 0 }
                 : {
-                    y: { type: "spring" as const, ...s, delay: d },
-                    opacity: { duration: 0.7, ease: EASE_OUT, delay: d },
-                    filter: { duration: 0.9, ease: EASE_OUT, delay: d },
+                    y: { type: "spring" as const, ...revealSpring, delay: unitDelay },
+                    opacity: { duration: 0.24, ease: EASE_OUT, delay: unitDelay },
+                    filter: { duration: 0.28, ease: EASE_OUT, delay: unitDelay },
                   };
               return (
                 <motion.span
                   key={unitKey}
-                  initial={initial}
+                  initial={reduce ? false : initial}
                   animate={animate}
                   transition={transition}
                   className="inline-block will-change-transform"

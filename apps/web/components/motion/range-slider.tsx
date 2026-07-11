@@ -4,7 +4,10 @@ import { motion, useReducedMotion } from "motion/react";
 import { type KeyboardEvent, type PointerEvent, useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 
+// Slider tracking needs a critically damped local spring so thumbs follow
+// pointer input without overshooting a financial bound.
 const SPRING_GLIDE = { stiffness: 700, damping: 50, mass: 0.5 } as const;
+// The grab spring affects only thumb scale and provides tactile drag feedback.
 const SPRING_BOUNCY = { type: "spring", stiffness: 500, damping: 18, mass: 0.7 } as const;
 
 export type RangeValue = readonly [number, number];

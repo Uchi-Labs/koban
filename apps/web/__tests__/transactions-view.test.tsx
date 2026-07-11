@@ -250,10 +250,21 @@ describe("TransactionsView", () => {
     const maximumThumb = screen.getByRole("slider", { name: "Maximum transaction amount range" });
     expect(maximumThumb).toHaveAttribute("aria-valuemax", "2000");
 
+    await userEvent.type(screen.getByLabelText("Maximum transaction amount"), "9999");
+    expect(screen.getByLabelText("Maximum transaction amount")).toHaveValue("2000");
+    expect(maximumThumb).toHaveAttribute("aria-valuenow", "2000");
+
+    await userEvent.clear(screen.getByLabelText("Maximum transaction amount"));
     await userEvent.type(screen.getByLabelText("Maximum transaction amount"), "500");
     expect(maximumThumb).toHaveAttribute("aria-valuenow", "500");
 
+    await userEvent.type(screen.getByLabelText("Minimum transaction amount"), "800");
+    expect(screen.getByLabelText("Minimum transaction amount")).toHaveValue("500");
+    expect(screen.getByRole("slider", { name: "Minimum transaction amount range" })).toHaveAttribute("aria-valuenow", "500");
+
     const minimumThumb = screen.getByRole("slider", { name: "Minimum transaction amount range" });
+    await userEvent.clear(screen.getByLabelText("Minimum transaction amount"));
+    await userEvent.clear(screen.getByLabelText("Maximum transaction amount"));
     minimumThumb.focus();
     await userEvent.keyboard("{ArrowRight}");
     expect(screen.getByLabelText("Minimum transaction amount")).toHaveValue("20");

@@ -48,7 +48,9 @@ export interface BouncyAccordionProps {
 }
 
 // Local springs keep the accordion's connected groups moving together while
-// avoiding scale projection on text-heavy row contents.
+// avoiding scale projection on text-heavy row contents. Measured height is the
+// intentional exception to transform-only motion: it preserves accessible,
+// natural-flow content while the disclosure opens and closes.
 // Gap spring: must not overshoot y — positive y overshoot drifts items below
 // their mt-3 resting point and briefly overlaps the next item.
 const ROW_TRANSITION: Transition = {
