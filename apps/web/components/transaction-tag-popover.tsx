@@ -26,7 +26,7 @@ export interface TransactionTagPopoverProps {
 export function TransactionTagPopover({
   align = "end",
   children,
-  nativeButton = false,
+  nativeButton = true,
   onOpenChange,
   onToggle,
   selected,
@@ -65,9 +65,9 @@ export function TransactionTagPopover({
   );
 
   return (
-      <Popover open={open} onOpenChange={setOpenState}>
-        <PopoverTrigger nativeButton={nativeButton} render={children} />
-        <PopoverPortal>
+    <Popover open={open} onOpenChange={setOpenState}>
+      <PopoverTrigger nativeButton={nativeButton} render={children} />
+      <PopoverPortal>
         <PopoverPositioner align={align} className="isolate z-50" side={side} sideOffset={6}>
           <PopoverPopup
             data-slot="transaction-tag-popover"
@@ -143,7 +143,7 @@ export function TransactionTagPopover({
             </Link>
           </PopoverPopup>
         </PopoverPositioner>
-        </PopoverPortal>
-      </Popover>
+      </PopoverPortal>
+    </Popover>
   );
 }
