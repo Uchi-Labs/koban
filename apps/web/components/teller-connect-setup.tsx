@@ -12,7 +12,7 @@ import {
   Wallet
 } from "lucide-react";
 import Script from "next/script";
-import { useReducer, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useReducer, useRef, useState, type RefObject } from "react";
 import { ProviderConsentLine } from "@/components/provider-consent-line";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,7 +128,17 @@ function tellerConnectReducer(state: TellerConnectState, action: TellerConnectAc
   return { ...state, ...action.patch };
 }
 
-export function TellerConnectSetup({ initialStatus }: { initialStatus: TellerSetupStatus }) {
+export function TellerConnectSetup({
+  detailsOnly = false,
+  initialStatus,
+  launchRequest = 0,
+  panelTestId = "teller-setup-panel"
+}: {
+  detailsOnly?: boolean;
+  initialStatus: TellerSetupStatus;
+  launchRequest?: number;
+  panelTestId?: string;
+}) {
   const [state, dispatch] = useReducer(tellerConnectReducer, initialStatus, (status): TellerConnectState => ({
     accountTest: "",
     busy: false,
@@ -147,9 +157,10 @@ export function TellerConnectSetup({ initialStatus }: { initialStatus: TellerSet
   }
 
   const [expandedConnections, setExpandedConnections] = useState<Set<string>>(() => new Set());
-  const [credentialStatusOpen, setCredentialStatusOpen] = useState(true);
+  const [credentialStatusOpen, setCredentialStatusOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<TellerConnectionSummary | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const handledLaunchRequest = useRef(launchRequest);
 
   function toggleConnectionExpanded(id: string, open: boolean) {
     if (open) {
@@ -312,6 +323,17 @@ export function TellerConnectSetup({ initialStatus }: { initialStatus: TellerSet
     }
   }
 
+  const launchTellerConnect = useEffectEvent(openTellerConnect);
+
+  useEffect(() => {
+    if (launchRequest <= handledLaunchRequest.current) {
+      return;
+    }
+
+    handledLaunchRequest.current = launchRequest;
+    void launchTellerConnect();
+  }, [launchRequest]);
+
   async function testAccounts() {
     updateState({
       accountTest: "",
@@ -379,24 +401,27 @@ export function TellerConnectSetup({ initialStatus }: { initialStatus: TellerSet
   const hasConnection = status.enrollmentCount > 0;
 
   return (
-    <Card size="sm" data-testid="teller-setup-panel">
+    <Card size="sm" data-testid={panelTestId}>
       <TellerConnectScript setScriptReady={setScriptReady} updateState={updateState} />
       <TellerConnectHeader
         busy={busy}
         canOpenConnect={canOpenConnect}
         hasConnection={hasConnection}
         openTellerConnect={openTellerConnect}
+        showConnectAction={!detailsOnly}
       />
 
       <CardContent className="flex flex-col gap-4">
-        <TellerConnectionSection
-          deletingId={deletingId}
-          expandedConnections={expandedConnections}
-          hasConnection={hasConnection}
-          setPendingDelete={setPendingDelete}
-          status={status}
-          toggleConnectionExpanded={toggleConnectionExpanded}
-        />
+        {!detailsOnly ? (
+          <TellerConnectionSection
+            deletingId={deletingId}
+            expandedConnections={expandedConnections}
+            hasConnection={hasConnection}
+            setPendingDelete={setPendingDelete}
+            status={status}
+            toggleConnectionExpanded={toggleConnectionExpanded}
+          />
+        ) : null}
         <TellerActions
           canSync={canSync}
           canTestAccounts={canTestAccounts}
@@ -420,12 +445,14 @@ export function TellerConnectSetup({ initialStatus }: { initialStatus: TellerSet
         />
       </CardContent>
 
-      <DeleteConnectionDialog
-        confirmDeleteConnection={confirmDeleteConnection}
-        deletingId={deletingId}
-        pendingDelete={pendingDelete}
-        setPendingDelete={setPendingDelete}
-      />
+      {!detailsOnly ? (
+        <DeleteConnectionDialog
+          confirmDeleteConnection={confirmDeleteConnection}
+          deletingId={deletingId}
+          pendingDelete={pendingDelete}
+          setPendingDelete={setPendingDelete}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -451,12 +478,14 @@ function TellerConnectHeader({
   busy,
   canOpenConnect,
   hasConnection,
-  openTellerConnect
+  openTellerConnect,
+  showConnectAction
 }: {
   busy: boolean;
   canOpenConnect: boolean;
   hasConnection: boolean;
   openTellerConnect: () => Promise<void>;
+  showConnectAction: boolean;
 }) {
   return (
     <CardHeader className="flex flex-row items-start justify-between gap-3 border-b pb-4">
@@ -466,12 +495,14 @@ function TellerConnectHeader({
           Link a bank with Teller Connect to load accounts and transactions into the app.
         </p>
       </div>
-      <div className="flex max-w-sm flex-col items-end gap-2">
-        <Button variant="tonal" disabled={!canOpenConnect} onClick={openTellerConnect} type="button">
-          {busy ? "Working..." : hasConnection ? "Add another bank account" : "Connect bank account"}
-        </Button>
-        <ProviderConsentLine className="text-right" />
-      </div>
+      {showConnectAction ? (
+        <div className="flex max-w-sm flex-col items-end gap-2">
+          <Button variant="tonal" disabled={!canOpenConnect} onClick={openTellerConnect} type="button">
+            {busy ? "Working..." : hasConnection ? "Add another bank account" : "Connect bank account"}
+          </Button>
+          <ProviderConsentLine className="text-right" />
+        </div>
+      ) : null}
     </CardHeader>
   );
 }

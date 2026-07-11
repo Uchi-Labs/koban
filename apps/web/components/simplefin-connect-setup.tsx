@@ -67,7 +67,13 @@ function simpleFinConnectReducer(
   return { ...state, ...action.patch };
 }
 
-export function SimpleFinConnectSetup({ initialStatus }: { initialStatus: SimpleFinSetupStatus }) {
+export function SimpleFinConnectSetup({
+  detailsOnly = false,
+  initialStatus
+}: {
+  detailsOnly?: boolean;
+  initialStatus: SimpleFinSetupStatus;
+}) {
   const [state, dispatch] = useReducer(simpleFinConnectReducer, initialStatus, (status): SimpleFinConnectState => ({
     busy: false,
     error: "",
@@ -157,7 +163,7 @@ export function SimpleFinConnectSetup({ initialStatus }: { initialStatus: Simple
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {hasConnections ? (
+        {!detailsOnly && hasConnections ? (
           <div className="flex flex-col gap-2" aria-label="SimpleFIN institutions">
             {status.connections.map((connection) => (
               <SimpleFinConnectionRow connection={connection} key={connection.id} />
@@ -167,7 +173,7 @@ export function SimpleFinConnectSetup({ initialStatus }: { initialStatus: Simple
               {status.storedTransactionCount.toLocaleString()} transactions.
             </p>
           </div>
-        ) : (
+        ) : !detailsOnly ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center">
             <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <WalletCards className="size-5" aria-hidden />
@@ -179,7 +185,7 @@ export function SimpleFinConnectSetup({ initialStatus }: { initialStatus: Simple
                 : "Add SIMPLEFIN_ACCESS_URL to your ignored .env to enable SimpleFIN."}
             </p>
           </div>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="SimpleFIN setup status">
           <CredentialTile label="Access URL" ready={status.accessUrlConfigured} />

@@ -78,10 +78,14 @@ function readPlaidLinkSessionValue(autoOpen: boolean) {
 
 export function PlaidConnectSetup({
   autoOpen = false,
-  initialStatus
+  detailsOnly = false,
+  initialStatus,
+  launchRequest = 0
 }: {
   autoOpen?: boolean;
+  detailsOnly?: boolean;
   initialStatus: PlaidSetupStatus;
+  launchRequest?: number;
 }) {
   const [state, dispatch] = useReducer(plaidConnectReducer, initialStatus, (status): PlaidConnectState => ({
     busy: false,
@@ -92,6 +96,7 @@ export function PlaidConnectSetup({
   }));
   const [linkToken, setLinkToken] = useState<string | null>(() => readPlaidLinkSessionValue(autoOpen));
   const openWhenReadyRef = useRef(Boolean(autoOpen && linkToken));
+  const handledLaunchRequest = useRef(launchRequest);
   const receivedRedirectUri = autoOpen && typeof window !== "undefined" ? window.location.href : undefined;
   const { busy, error, message, status, syncSummary } = state;
   const hasItems = status.items.length > 0;
@@ -222,6 +227,17 @@ export function PlaidConnectSetup({
     await prepareLinkToken({ openWhenReady: true });
   }
 
+  const launchPlaidLink = useEffectEvent(linkAccount);
+
+  useEffect(() => {
+    if (launchRequest <= handledLaunchRequest.current) {
+      return;
+    }
+
+    handledLaunchRequest.current = launchRequest;
+    void launchPlaidLink();
+  }, [launchRequest]);
+
   async function syncPlaid() {
     updateState({
       busy: true,
@@ -282,10 +298,12 @@ export function PlaidConnectSetup({
         </div>
         <div className="flex max-w-sm flex-col items-end gap-2">
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="tonal" disabled={!status.readyForLink || busy} onClick={linkAccount} type="button">
-              <LinkIcon className="size-4" aria-hidden />
-              {hasItems ? "Link account" : "Link first account"}
-            </Button>
+            {!detailsOnly ? (
+              <Button variant="tonal" disabled={!status.readyForLink || busy} onClick={linkAccount} type="button">
+                <LinkIcon className="size-4" aria-hidden />
+                {hasItems ? "Link account" : "Link first account"}
+              </Button>
+            ) : null}
             <Button variant="outline" disabled={!status.readyForSync || busy} onClick={syncPlaid} type="button">
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
               {busy ? "Syncing..." : "Sync Plaid"}
@@ -296,7 +314,7 @@ export function PlaidConnectSetup({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {hasItems ? (
+        {!detailsOnly && hasItems ? (
           <div className="flex flex-col gap-2" aria-label="Plaid items">
             {status.items.map((item) => (
               <PlaidItemRow item={item} key={item.id} />
@@ -306,7 +324,7 @@ export function PlaidConnectSetup({
               {status.storedTransactionCount.toLocaleString()} transactions.
             </p>
           </div>
-        ) : (
+        ) : !detailsOnly ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center">
             <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <Landmark className="size-5" aria-hidden />
@@ -318,7 +336,7 @@ export function PlaidConnectSetup({
                 : "Add PLAID_CLIENT_ID and PLAID_SECRET to your ignored .env to enable Plaid."}
             </p>
           </div>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Plaid setup status">
           <CredentialTile label="Client ID" ready={status.clientIdConfigured} />
