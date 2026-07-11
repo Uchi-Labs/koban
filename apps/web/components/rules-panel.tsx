@@ -1,10 +1,11 @@
 "use client";
 
 import type { Category, TagStyle, TransactionRuleMatchOperator } from "@ai-finances/schema";
-import { Check, Play, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Pause, Play, Plus, Sparkles, Trash2, X } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { BouncyAccordion } from "@/components/motion/bouncy-accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
@@ -821,6 +822,51 @@ function SuggestionRow({
 }
 
 function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
+  const enabledRules = model.rules.filter((rule) => rule.enabled);
+  const pausedRules = model.rules.filter((rule) => !rule.enabled);
+  const accordionItems = [
+    {
+      description: (
+        <div className="flex flex-col gap-2">
+          {enabledRules.map((rule) => (
+            <RuleRow
+              category={rule.categoryId ? model.categoryById.get(rule.categoryId) : undefined}
+              key={rule.id}
+              onDelete={model.deleteRule}
+              onToggle={model.toggleRule}
+              rule={rule}
+              tagStyleByName={model.tagStyleByName}
+            />
+          ))}
+        </div>
+      ),
+      disabled: enabledRules.length === 0,
+      icon: <Check className="size-4" />,
+      id: "enabled",
+      title: `Enabled rules (${enabledRules.length.toLocaleString()})`
+    },
+    {
+      description: (
+        <div className="flex flex-col gap-2">
+          {pausedRules.map((rule) => (
+            <RuleRow
+              category={rule.categoryId ? model.categoryById.get(rule.categoryId) : undefined}
+              key={rule.id}
+              onDelete={model.deleteRule}
+              onToggle={model.toggleRule}
+              rule={rule}
+              tagStyleByName={model.tagStyleByName}
+            />
+          ))}
+        </div>
+      ),
+      disabled: pausedRules.length === 0,
+      icon: <Pause className="size-4" />,
+      id: "paused",
+      title: `Paused rules (${pausedRules.length.toLocaleString()})`
+    }
+  ];
+
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-4">
@@ -838,19 +884,16 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
 
       <CardContent className="flex flex-col gap-4">
         <RuleForm model={model} />
-        <div className="flex flex-col gap-2">
-          {model.rules.map((rule) => (
-            <RuleRow
-              category={rule.categoryId ? model.categoryById.get(rule.categoryId) : undefined}
-              key={rule.id}
-              onDelete={model.deleteRule}
-              onToggle={model.toggleRule}
-              rule={rule}
-              tagStyleByName={model.tagStyleByName}
-            />
-          ))}
-          {model.rules.length === 0 ? <p className="text-sm text-muted-foreground">No local transaction rules yet.</p> : null}
-        </div>
+        {model.rules.length > 0 ? (
+          <BouncyAccordion
+            className="rounded-[28px] border border-border bg-muted/30 p-1"
+            classNames={{ description: "text-foreground", item: "border border-transparent", trigger: "px-4" }}
+            defaultValue={enabledRules.length > 0 ? "enabled" : "paused"}
+            items={accordionItems}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">No local transaction rules yet.</p>
+        )}
 
         {model.message ? <p className="text-sm text-muted-foreground">{model.message}</p> : null}
       </CardContent>

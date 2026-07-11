@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
+import { TextReveal } from "@/components/motion/text-reveal";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
 import { getFinanceData, type FinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
@@ -57,7 +58,14 @@ export default async function DashboardPage() {
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="dashboard-page">
       <div className="mb-5 flex items-center gap-3">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">Dashboard</h1>
+        <TextReveal
+          as="h1"
+          blur={4}
+          className="text-lg font-semibold tracking-tight text-foreground"
+          stagger={0}
+          text="Dashboard"
+          yOffset={6}
+        />
         {source === "teller" ? (
           <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
             Synced Teller data

@@ -11,6 +11,7 @@ import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
 import { SoundSettingsPanel } from "@/components/sound-settings-panel";
 import { SyncEverythingPanel } from "@/components/sync-everything-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import { isDemoModeEnabled } from "@/lib/demo-mode";
@@ -246,11 +247,19 @@ export default async function SettingsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 sm:p-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Connect banks and context sources, control syncing, and manage local data.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Connect banks and context sources, control syncing, and manage local data.
+          </p>
+        </div>
+        <ThemeToggle
+          className="size-8 shrink-0 rounded-full border border-border bg-card text-foreground shadow-xs transition-colors hover:bg-muted motion-reduce:transition-none"
+          iconClassName="size-4"
+          start="top-right"
+          variant="circle-blur"
+        />
       </header>
 
       <Tabs defaultValue="connections" className="gap-5">

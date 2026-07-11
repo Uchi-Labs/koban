@@ -37,6 +37,8 @@
   --sidebar: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --muted: oklch(0.97 0 0);
+  --positive: oklch(0.5 0.14 165);
+  --negative: oklch(0.58 0.2 15);
 }
 
 @theme inline {

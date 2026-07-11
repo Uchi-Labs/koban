@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { AgentationDev } from "@/components/agentation-dev";
 import { AppShell } from "@/components/app-shell";
 import { PwaServiceWorker } from "@/components/pwa-service-worker";
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "dark",
+  colorScheme: "light dark",
   initialScale: 1,
   themeColor: pwaThemeColor,
   viewportFit: "cover",
@@ -42,11 +42,12 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const theme = (await cookies()).get("koban_theme")?.value === "light" ? "light" : "dark";
   const shouldRenderShell = await isShellRequestAuthenticated();
 
   if (!shouldRenderShell) {
     return (
-      <html lang="en" className={cn("dark font-sans", inter.variable)}>
+      <html lang="en" className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}>
         <body>
           <PwaServiceWorker />
           {children}
@@ -60,7 +61,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const shellData = await getShellData();
 
   return (
-    <html lang="en" className={cn("dark font-sans", inter.variable)}>
+    <html lang="en" className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}>
       <body>
         <PwaServiceWorker />
         <AppShell
