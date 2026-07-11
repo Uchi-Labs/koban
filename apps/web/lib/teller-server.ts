@@ -412,6 +412,52 @@ export async function testTellerAccounts() {
   };
 }
 
+export interface TellerAccountDetails {
+  accountNumber?: string;
+  routingNumbers: Record<string, string>;
+}
+
+/**
+ * Live fetch of an account's full account/routing numbers from Teller.
+ * Deliberately never persisted — callers gate this behind a fresh 2FA
+ * challenge and every reveal round-trips to Teller.
+ */
+export async function getTellerAccountDetails(
+  storedAccountId: string,
+  providerConnectionId: string
+): Promise<TellerAccountDetails> {
+  const env = readWorkspaceEnv();
+  const credentials = getTellerMtlsCredentials(env);
+
+  if (!credentials) {
+    throw new TellerSetupError("Teller certificate/private-key paths are missing or unreadable.");
+  }
+
+  const enrollmentId = providerConnectionId.replace(/^provider_teller_/, "");
+  const enrollment = getStoredTellerEnrollments(env).find((candidate) => candidate.enrollmentId === enrollmentId);
+
+  if (!enrollment) {
+    throw new TellerSetupError(`No stored Teller enrollment matches ${enrollmentId}.`, 404);
+  }
+
+  const tellerAccountId = storedAccountId.replace(/^teller_/, "");
+  const details = await tellerRequestJson<{
+    account_number?: string;
+    routing_numbers?: Record<string, string>;
+  }>({
+    pathName: `/accounts/${encodeURIComponent(tellerAccountId)}/details`,
+    accessToken: enrollment.accessToken,
+    cert: credentials.cert,
+    key: credentials.key,
+    apiVersion: env.TELLER_API_VERSION || "2020-10-12"
+  });
+
+  return {
+    accountNumber: typeof details.account_number === "string" ? details.account_number : undefined,
+    routingNumbers: details.routing_numbers ?? {}
+  };
+}
+
 export interface TellerSyncResult {
   accountCount: number;
   enrollmentCount: number;
