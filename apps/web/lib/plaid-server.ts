@@ -7,6 +7,8 @@ import {
   PlaidEnvironments,
   Products,
   type AccountBase,
+  type InstitutionsGetByIdRequest,
+  type InstitutionsGetByIdResponse,
   type ItemPublicTokenExchangeRequest,
   type ItemPublicTokenExchangeResponse,
   type LinkTokenCreateRequest,
@@ -113,9 +115,39 @@ export interface PlaidSyncResult {
 }
 
 export interface PlaidApiClient {
+  institutionsGetById(request: InstitutionsGetByIdRequest): Promise<{ data: InstitutionsGetByIdResponse }>;
   itemPublicTokenExchange(request: ItemPublicTokenExchangeRequest): Promise<{ data: ItemPublicTokenExchangeResponse }>;
   linkTokenCreate(request: LinkTokenCreateRequest): Promise<{ data: LinkTokenCreateResponse }>;
   transactionsSync(request: TransactionsSyncRequest): Promise<{ data: TransactionsSyncResponse }>;
+}
+
+/**
+ * Resolve an institution's display name: the hardcoded map first (no network for
+ * the common ones), then Plaid's institutions/get_by_id for anything else, so a
+ * newly linked bank never shows its raw `ins_*` id. Falls back to the id on error.
+ */
+async function resolvePlaidInstitutionName(
+  client: PlaidApiClient,
+  institutionId: string | undefined
+): Promise<string> {
+  if (!institutionId) {
+    return "Plaid institution";
+  }
+
+  const mapped = plaidInstitutionName(institutionId);
+  if (mapped !== institutionId) {
+    return mapped;
+  }
+
+  try {
+    const response = await client.institutionsGetById({
+      country_codes: [CountryCode.Us],
+      institution_id: institutionId
+    });
+    return cleanString(response.data.institution?.name) ?? institutionId;
+  } catch {
+    return institutionId;
+  }
 }
 
 interface PlaidConfig {
@@ -490,7 +522,12 @@ async function syncPlaidDataInternal(client: PlaidApiClient = createPlaidClient(
   const nextItems: StoredPlaidItem[] = [];
 
   for (const item of items) {
-    const institutionName = item.institutionName ?? plaidInstitutionName(item.institutionId);
+    // Prefer a stored name, but if it's missing or is just the raw ins_* id
+    // (e.g. CLI-imported items), resolve the real name from Plaid once.
+    const institutionName =
+      item.institutionName && item.institutionName !== item.institutionId
+        ? item.institutionName
+        : await resolvePlaidInstitutionName(client, item.institutionId);
     const providerConnectionId = providerConnectionIdForPlaid(item.itemId);
 
     try {
