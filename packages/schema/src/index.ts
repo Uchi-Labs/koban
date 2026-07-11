@@ -1,6 +1,6 @@
 export type CurrencyCode = string;
 
-export type ProviderId = "teller" | "snaptrade" | "simplefin" | "plaid" | "financekit" | "manual";
+export type ProviderId = "teller" | "snaptrade" | "simplefin" | "plaid" | "financekit" | "copilot" | "manual";
 
 export type ProviderStatus =
   | "not_configured"

@@ -253,12 +253,18 @@ describe("finance db", () => {
       ["simplefin", "plaid", "teller", "snaptrade", "financekit"].map((name) => upsertTagStyle(name))
     );
     const namespaced = await upsertTagStyle("teller:card_payment");
+    const copilotTags = await Promise.all(
+      ["copilot:cat:Restaurants", "copilot:tag:Sapiex", "copilot:amazon"].map((name) => upsertTagStyle(name))
+    );
     const humanTags = await Promise.all(["Boston Trip", "Sapiex", "uncategorized"].map((name) => upsertTagStyle(name)));
 
     for (const style of bareAdapterNames) {
       expect(style).toMatchObject({ kind: "source" });
     }
     expect(namespaced).toMatchObject({ kind: "source", name: "teller:card_payment" });
+    for (const style of copilotTags) {
+      expect(style).toMatchObject({ kind: "source" });
+    }
     for (const style of humanTags) {
       expect(style).toMatchObject({ kind: "user" });
     }
