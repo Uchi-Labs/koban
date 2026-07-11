@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, CircleAlert, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { useState } from "react";
@@ -8,8 +8,9 @@ import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { FinanceStatItem, FinanceStatStrip } from "@/components/money-hero";
 import { Badge } from "@/components/ui/badge";
+import { ActionSwapIcon, ActionSwapText } from "@/components/ui/action-swap";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/card";
-import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
 import { useToast } from "@/components/ui/toast";
 import { formatCurrency } from "@/lib/format";
 import type { TransactionView } from "@/lib/view-models";
@@ -18,6 +19,8 @@ const lastSyncedFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   month: "short"
 });
+
+type ReviewButtonState = "error" | "idle" | "loading" | "success";
 
 export function DashboardReviewCard({
   currency,
@@ -37,13 +40,21 @@ export function DashboardReviewCard({
   const [rows, setRows] = useState(initialRows);
   const [reviewedCount, setReviewedCount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [buttonState, setButtonState] = useState<ButtonState>("idle");
+  const [buttonState, setButtonState] = useState<ReviewButtonState>("idle");
   const [message, setMessage] = useState("");
   const remainingCount = Math.max(0, totalToReview - reviewedCount);
   const rowsToMark = rows.slice(0, 10);
   const displayRows = rows.slice(0, 5);
   const displayCurrency = currency ?? rows[0]?.currency ?? initialRows[0]?.currency ?? "USD";
   const reviewTotalAmount = rows.reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
+  const displayedButtonState: ReviewButtonState = rowsToMark.length === 0 ? "idle" : buttonState;
+  const reviewButtonLabel = displayedButtonState === "loading"
+    ? "Marking"
+    : displayedButtonState === "success"
+      ? "Reviewed"
+      : displayedButtonState === "error"
+        ? "Failed"
+        : `Mark ${rowsToMark.length.toLocaleString()} as reviewed`;
 
   async function markRowsReviewed() {
     if (rowsToMark.length === 0 || busy) {
@@ -160,21 +171,28 @@ export function DashboardReviewCard({
             ? `1 - ${Math.min(10, remainingCount).toLocaleString()} of ${remainingCount.toLocaleString()}`
             : "0 to review"}
         </span>
-        <StatefulButton
+        <Button
+          aria-label={reviewButtonLabel}
           className="ml-auto"
           disabled={busy || rowsToMark.length === 0}
           onClick={markRowsReviewed}
-          loadingText="Marking"
-          state={rowsToMark.length === 0 ? "idle" : buttonState}
-          successText="Reviewed"
-          errorText="Failed"
           size="sm"
           type="button"
           variant="secondary"
-          icon={<Check className="size-4" />}
         >
-          Mark {rowsToMark.length.toLocaleString()} as reviewed
-        </StatefulButton>
+          <ActionSwapIcon animation="blur" value={displayedButtonState}>
+            {displayedButtonState === "loading" ? (
+              <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
+            ) : displayedButtonState === "error" ? (
+              <CircleAlert className="size-4 text-destructive" />
+            ) : (
+              <Check className={displayedButtonState === "success" ? "size-4 text-(--positive)" : "size-4"} />
+            )}
+          </ActionSwapIcon>
+          <ActionSwapText animation="blur" value={displayedButtonState}>
+            {reviewButtonLabel}
+          </ActionSwapText>
+        </Button>
       </div>
       {message ? (
         <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
