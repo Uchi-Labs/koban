@@ -189,7 +189,9 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
     const plaidResult = normalizePlaidStep(
       options.includePlaid && isPlaidConfigured()
         ? yield* runSyncStepEffect(syncPlaidDataEffect(), {
-            timeout: "2 minutes",
+            // First sync of a new item pulls up to 24 months of history — far
+            // more than the steady-state cursor delta the old 2m budget assumed.
+            timeout: "10 minutes",
             timeoutError: () => new PlaidSyncError({ message: "Plaid sync timed out." })
           })
         : {
@@ -200,7 +202,7 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
     const simpleFinResult = normalizeSimpleFinStep(
       options.includeSimpleFin && isSimpleFinConfigured()
         ? yield* runSyncStepEffect(syncSimpleFinDataEffect(), {
-            timeout: "2 minutes",
+            timeout: "10 minutes",
             timeoutError: () => new SimpleFinSyncError({ message: "SimpleFIN sync timed out." })
           })
         : {
