@@ -13,6 +13,7 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { cn } from "@/lib/utils";
 
 const REVEAL_TTL_MS = 60_000;
@@ -166,50 +167,54 @@ export function AccountCardDialog({ accountId, institutionName, mask, name }: {
         ) : null}
 
         {phase === "challenge" || phase === "pending" ? (
-          <form
-            className="flex flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (/^\d{6}$/.test(code)) {
-                void reveal();
-              }
-            }}
-          >
-            <label className="text-sm text-muted-foreground" htmlFor="account-details-totp">
-              Enter the 6-digit code from your authenticator app
-            </label>
-            <div className="flex gap-2">
-              <Input
-                autoComplete="one-time-code"
-                autoFocus
-                className="tabular-nums tracking-[0.3em]"
-                id="account-details-totp"
-                inputMode="numeric"
-                maxLength={6}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-                pattern="\d{6}"
-                placeholder="••••••"
-                value={code}
-              />
-              <Button disabled={phase === "pending" || !/^\d{6}$/.test(code)} type="submit">
-                {phase === "pending" ? "Verifying…" : "Verify"}
-              </Button>
-            </div>
-            {error ? (
-              <p className="text-sm text-[var(--negative)]">
-                {error.message}{" "}
-                {error.kind === "two_factor_not_enrolled" ? (
-                  <Link className="underline underline-offset-4" href="/settings">
-                    Open Settings
-                  </Link>
+          <IconiqCard className="rounded-xl border-border/60 bg-card/95 py-0 shadow-[var(--ic-card-rest-shadow)]">
+            <IconiqCardContent className="px-4 py-4">
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (/^\d{6}$/.test(code)) {
+                    void reveal();
+                  }
+                }}
+              >
+                <label className="text-sm text-muted-foreground" htmlFor="account-details-totp">
+                  Enter the 6-digit code from your authenticator app
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    autoComplete="one-time-code"
+                    autoFocus
+                    className="tabular-nums tracking-[0.3em]"
+                    id="account-details-totp"
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                    pattern="\d{6}"
+                    placeholder="••••••"
+                    value={code}
+                  />
+                  <Button disabled={phase === "pending" || !/^\d{6}$/.test(code)} type="submit">
+                    {phase === "pending" ? "Verifying…" : "Verify"}
+                  </Button>
+                </div>
+                {error ? (
+                  <p className="text-sm text-[var(--negative)]">
+                    {error.message}{" "}
+                    {error.kind === "two_factor_not_enrolled" ? (
+                      <Link className="underline underline-offset-4" href="/settings">
+                        Open Settings
+                      </Link>
+                    ) : null}
+                  </p>
                 ) : null}
-              </p>
-            ) : null}
-          </form>
+              </form>
+            </IconiqCardContent>
+          </IconiqCard>
         ) : null}
 
         {revealed ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             Numbers hide automatically in 60 seconds. They are fetched live and never stored.
           </p>
         ) : null}
