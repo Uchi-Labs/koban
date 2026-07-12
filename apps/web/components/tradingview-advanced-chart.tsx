@@ -68,9 +68,9 @@ export function TradingViewAdvancedChart({
 
   return (
     <div
-      className="tradingview-widget-container overflow-hidden rounded-xl border border-border"
+      className="tradingview-widget-container resize-y overflow-hidden rounded-xl border border-border"
       ref={containerRef}
-      style={{ height }}
+      style={{ height, maxHeight: 720, minHeight: 228 }}
     />
   );
 }
