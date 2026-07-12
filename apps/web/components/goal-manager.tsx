@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, EmptyState } from "@/components/ui/card";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { Input } from "@/components/ui/input";
+import { RollingDigits } from "@/components/ui/rolling-digits";
 import { financeEmojiOptions } from "@/lib/category-style";
 import { formatCurrency } from "@/lib/format";
+import { ROLLING_DIGITS_HERO } from "@/lib/motion";
 
 export interface GoalView {
   emoji: string | null;
@@ -224,9 +227,14 @@ function GoalRow({ goal }: { goal: GoalView }) {
     }
   }
 
+  // FinancialGoal carries no per-goal color today (packages/schema), so this always
+  // resolves to the --positive fallback -- kept as a named value (not a hardcoded
+  // class) so a future per-goal color field is a one-line change, not a rewrite.
+  const goalColor = "var(--positive)";
+
   return (
-    <Card data-state={goal.state}>
-      <CardContent className="flex flex-col gap-3">
+    <IconiqCard className="rounded-xl border-border/60 bg-card/95 py-4 shadow-[var(--ic-card-rest-shadow)]" data-state={goal.state} interactive>
+      <IconiqCardContent className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <span
             aria-hidden="true"
@@ -249,7 +257,21 @@ function GoalRow({ goal }: { goal: GoalView }) {
           </div>
 
           <div className="flex flex-col items-end gap-0.5">
-            <b className="text-sm font-semibold tabular-nums">{formatCurrency(saved)}</b>
+            <b className="inline-flex items-baseline text-sm font-semibold tabular-nums">
+              $
+              <RollingDigits
+                animationDelay={ROLLING_DIGITS_HERO.animationDelay}
+                coalesceUpdates
+                direction="dynamic"
+                enterDamping={ROLLING_DIGITS_HERO.enterDamping}
+                enterStiffness={ROLLING_DIGITS_HERO.enterStiffness}
+                enterY={ROLLING_DIGITS_HERO.enterY}
+                format={(value) => Math.round(value).toLocaleString("en-US")}
+                gap={0}
+                startOnView={false}
+                value={saved}
+              />
+            </b>
             {target !== null ? (
               <span className="text-xs text-muted-foreground tabular-nums">of {formatCurrency(target)}</span>
             ) : (
@@ -296,10 +318,13 @@ function GoalRow({ goal }: { goal: GoalView }) {
 
         {percent !== null ? (
           <div className="flex flex-col gap-1">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full"
+              style={{ backgroundColor: `color-mix(in oklab, ${goalColor} 14%, transparent)` }}
+            >
               <span
-                className="block h-full rounded-full bg-[var(--positive)] transition-[width] duration-500 motion-reduce:transition-none"
-                style={{ width: `${percent}%` }}
+                className="block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
+                style={{ backgroundColor: goalColor, width: `${percent}%` }}
               />
             </div>
             <small className="text-xs text-muted-foreground tabular-nums">{percent}% of target</small>
@@ -311,7 +336,7 @@ function GoalRow({ goal }: { goal: GoalView }) {
             {message}
           </p>
         ) : null}
-      </CardContent>
-    </Card>
+      </IconiqCardContent>
+    </IconiqCard>
   );
 }

@@ -122,7 +122,7 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
   const showBreakdown = view === "breakdown" && segments.length > 0;
 
   return (
-    <section aria-label="Recurring calendar" className="relative flex flex-col items-center gap-5 rounded-2xl border border-border bg-card px-5 py-6">
+    <section aria-label="Recurring calendar" className="iconiq-theme relative flex flex-col items-center gap-5 rounded-2xl border border-border/70 bg-card/95 px-5 py-6 shadow-[var(--ic-card-rest-shadow)]">
       {segments.length > 0 ? (
         <Button
           aria-label={showBreakdown ? "Show calendar" : "Show category breakdown"}
@@ -282,7 +282,7 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
   const [tooltipOpen, setTooltipOpen] = useState(false);
 
   const shared = cn(
-    "relative flex h-12 items-center justify-center rounded-xl bg-muted/40",
+    "relative flex h-12 items-center justify-center rounded-xl border border-border/40 bg-muted/40",
     isToday && "ring-1 ring-ring/60"
   );
   const dayLabel = (

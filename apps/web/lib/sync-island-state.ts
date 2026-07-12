@@ -23,10 +23,15 @@ export interface SyncIslandState {
 const SYNC_ISLAND_PHASES = ["Teller", "sources", "evidence", "AI enrichment", "finishing up"];
 export const SYNC_ISLAND_PHASE_COUNT = SYNC_ISLAND_PHASES.length;
 
-const syncTimeFormatter = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit"
-});
+const relativeTimeFormatter = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
+
+const RELATIVE_TIME_UNITS: Array<{ unit: Intl.RelativeTimeFormatUnit; seconds: number }> = [
+  { seconds: 31_536_000, unit: "year" },
+  { seconds: 2_592_000, unit: "month" },
+  { seconds: 86_400, unit: "day" },
+  { seconds: 3_600, unit: "hour" },
+  { seconds: 60, unit: "minute" }
+];
 
 export function deriveSyncIslandState({
   accountCount,
@@ -36,7 +41,7 @@ export function deriveSyncIslandState({
   status,
   transactionCount
 }: SyncIslandStateInput): SyncIslandState {
-  const syncedLabel = source === "teller" ? `Synced - ${formatSyncTime(lastSyncedAt)}` : "No Teller data";
+  const syncedLabel = source === "teller" ? `Synced ${formatRelativeSyncTime(lastSyncedAt)}` : "No Teller data";
   const detail =
     source === "teller"
       ? `${accountCount.toLocaleString()} accounts, ${transactionCount.toLocaleString()} transactions`
@@ -83,16 +88,29 @@ export function deriveSyncIslandState({
   };
 }
 
-function formatSyncTime(lastSyncedAt?: string) {
+/** Relative time (e.g. "3 min ago", "just now") for the idle sync pill -- computed at render time. */
+function formatRelativeSyncTime(lastSyncedAt?: string) {
   if (!lastSyncedAt) {
-    return "unknown";
+    return "at an unknown time";
   }
 
   const date = new Date(lastSyncedAt);
 
   if (Number.isNaN(date.getTime())) {
-    return "unknown";
+    return "at an unknown time";
   }
 
-  return syncTimeFormatter.format(date);
+  const elapsedSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+
+  if (Math.abs(elapsedSeconds) < 45) {
+    return "just now";
+  }
+
+  for (const { seconds, unit } of RELATIVE_TIME_UNITS) {
+    if (Math.abs(elapsedSeconds) >= seconds) {
+      return relativeTimeFormatter.format(Math.round(elapsedSeconds / seconds), unit);
+    }
+  }
+
+  return relativeTimeFormatter.format(Math.round(elapsedSeconds / 60), "minute");
 }

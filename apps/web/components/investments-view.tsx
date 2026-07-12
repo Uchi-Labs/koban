@@ -5,15 +5,20 @@ import { ArrowDownUp, ArrowDown, ArrowUp, ChevronRight, Copy, TrendingUp } from 
 import { useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import React from "react";
+import { AccountFaviconBadge } from "@/components/account-favicon-badge";
 import { DashboardCard } from "@/components/dashboard-card";
 import { LivelineChart } from "@/components/liveline-chart";
 import { MoneyHero } from "@/components/money-hero";
 import { TradingViewAdvancedChart } from "@/components/tradingview-advanced-chart";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { normalizeProviderCurrencyCode } from "@/lib/currency";
 import { formatCurrency } from "@/lib/format";
 import type { HoldingView, InvestmentsData } from "@/lib/investments";
 import { cn } from "@/lib/utils";
+
+/** Matches the accounts-page investment group accent so this page reads as one system. */
+const INVESTMENT_GROUP_ACCENT = "--chart-4";
 
 type SortKey = "symbol" | "account" | "units" | "price" | "marketValue" | "gain" | "weight";
 type SortDir = "asc" | "desc";
@@ -85,7 +90,10 @@ function MoneyFlow({
     <NumberFlow
       className={cn("tabular-nums", className)}
       format={{
-        currency: currency || "USD",
+        // Some synced accounts carry a non-ISO ticker (e.g. a crypto token) as their
+        // "currency" -- Intl.NumberFormat throws on those, so fall back to USD display
+        // rather than crashing the page. The underlying value/account labels stay honest.
+        currency: normalizeProviderCurrencyCode(currency),
         maximumFractionDigits,
         minimumFractionDigits: maximumFractionDigits,
         style: "currency"
@@ -155,7 +163,7 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
         data={data}
         historySpan={historySpan}
       />
-      <InvestmentAccountsSection accounts={data.accounts} />
+      <InvestmentAccountsSection accounts={data.accounts} currency={data.currency} totalMarketValue={data.totalMarketValue} />
       <NetWorthMixSection accounts={data.accounts} totalMarketValue={data.totalMarketValue} />
       <HoldingsSection
         expandedId={expandedId}
@@ -216,14 +224,11 @@ function InvestmentTotalsSection({
             ) : null}
           </div>
           {change ? (
-            <Badge
-              className="border-transparent font-medium tabular-nums"
-              variant={changePositive ? "under-budget" : "over-budget"}
-            >
+            <GainLossPill className="text-sm" positive={changePositive}>
               {changePositive ? "+" : "−"}
               {formatCurrency(Math.abs(change.amount), data.currency)} ({changePositive ? "+" : ""}
               {change.percent.toFixed(2)}%)
-            </Badge>
+            </GainLossPill>
           ) : (
             <Badge className="font-normal" variant="outline">
               Awaiting more snapshots
@@ -256,10 +261,39 @@ function InvestmentTotalsSection({
   );
 }
 
-function InvestmentAccountsSection({ accounts }: { accounts: InvestmentsData["accounts"] }) {
+function InvestmentAccountsSection({
+  accounts,
+  currency,
+  totalMarketValue
+}: {
+  accounts: InvestmentsData["accounts"];
+  currency: string;
+  totalMarketValue: number;
+}) {
   return (
     <section className="mt-4" aria-label="Investment accounts">
-      <h2 className="card-label mb-2 px-1">Synced investment accounts</h2>
+      {/* Group-header pill matches the accounts page's group-header idiom (icon badge +
+          name + count, tinted with the shared investment accent, total right-aligned). */}
+      <div
+        className="mb-2 flex items-center justify-between rounded-lg px-3 py-1.5"
+        style={{ backgroundColor: `color-mix(in oklab, var(${INVESTMENT_GROUP_ACCENT}) 8%, transparent)` }}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full"
+            style={{
+              backgroundColor: `color-mix(in oklab, var(${INVESTMENT_GROUP_ACCENT}) 18%, transparent)`,
+              color: `var(${INVESTMENT_GROUP_ACCENT})`
+            }}
+          >
+            <TrendingUp size={13} />
+          </span>
+          <h2 className="text-sm font-semibold">Synced investment accounts</h2>
+          <span className="text-xs text-muted-foreground">{accounts.length.toLocaleString()} accounts</span>
+        </div>
+        <strong className="text-sm font-semibold tabular-nums">{formatCurrency(totalMarketValue, currency)}</strong>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {accounts.map((account) => {
           const accent = accentVar(`${account.institutionName} ${account.name}`);
@@ -270,15 +304,11 @@ function InvestmentAccountsSection({ accounts }: { accounts: InvestmentsData["ac
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <span
-                    className="flex size-8 shrink-0 items-center justify-center rounded-xl text-xs font-semibold"
-                    style={{
-                      background: `color-mix(in oklab, var(${accent}) 18%, transparent)`,
-                      color: `var(${accent})`
-                    }}
-                  >
-                    {account.institutionName.slice(0, 2).toUpperCase()}
-                  </span>
+                  <AccountFaviconBadge
+                    accentColorVar={accent}
+                    fallbackIcon={<TrendingUp size={13} />}
+                    institutionName={account.institutionName}
+                  />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-foreground">{account.name}</div>
                     <div className="truncate text-xs text-muted-foreground">
@@ -647,14 +677,37 @@ function GainDisplay({ holding }: { holding: HoldingView }) {
 
   const positive = holding.unrealizedPnl >= 0;
   return (
-    <span className={cn("tabular-nums", positive ? "text-(--positive)" : "text-(--negative)")}>
+    <GainLossPill positive={positive}>
       {formatSignedCurrency(holding.unrealizedPnl, holding.currency)}
       {holding.unrealizedPnlPercent !== undefined ? (
-        <span className="ml-1 text-[11px] opacity-80">
+        <span className="ml-1 opacity-80">
           ({positive ? "+" : "−"}
           {Math.abs(holding.unrealizedPnlPercent).toFixed(1)}%)
         </span>
       ) : null}
+    </GainLossPill>
+  );
+}
+
+/** Gain/loss tint at low alpha bg -- --positive/--negative only, the app's sole money semantic colors. */
+function GainLossPill({
+  children,
+  className,
+  positive
+}: {
+  children: React.ReactNode;
+  className?: string;
+  positive: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 font-medium tabular-nums",
+        positive ? "bg-(--positive)/10 text-(--positive)" : "bg-(--negative)/10 text-(--negative)",
+        className
+      )}
+    >
+      {children}
     </span>
   );
 }

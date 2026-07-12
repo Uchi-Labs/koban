@@ -32,6 +32,9 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { FaviconBadge } from "@/components/ui/favicon-badge";
+import { StatusDot, type StatusDotTone } from "@/components/ui/status-dot";
+import { merchantDomain } from "@/lib/merchant-domain";
 import { playError, playSuccess } from "@/lib/ui-sound";
 import type { FinanceKitSetupStatus } from "@/lib/financekit-server";
 import type { PlaidSetupStatus } from "@/lib/plaid-server";
@@ -381,9 +384,7 @@ function ConnectionRow({
   return (
     <article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/20 motion-reduce:transition-none md:grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)]">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-4" aria-hidden />
-        </span>
+        <ConnectionAvatar icon={Icon} name={row.name} />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{row.name}</span>
           {row.errorMessage ? <span className="block truncate text-xs text-destructive">{row.errorMessage}</span> : null}
@@ -401,7 +402,7 @@ function ConnectionRow({
       </div>
       <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-12 md:contents">
         <Badge className="font-normal" variant="outline">{providerLabels[row.provider]}</Badge>
-        <ConnectionStatusBadge status={row.status} />
+        <ConnectionStatusDot status={row.status} />
         <span className="text-xs text-muted-foreground md:text-sm md:text-foreground tabular-nums">
           <span className="md:hidden">Accounts </span>{row.accountCount.toLocaleString()}
         </span>
@@ -454,35 +455,57 @@ function RowActions({
   );
 }
 
-function ConnectionStatusBadge({ status }: { status: ProviderStatus }) {
-  const labels: Record<ProviderStatus, string> = {
-    connected: "Connected",
-    error: "Error",
-    not_configured: "Not set up",
-    stale: "Needs sync",
-    syncing: "Syncing"
-  };
+/**
+ * Institution favicon when the connection name resolves to a real domain; otherwise the
+ * provider's own icon in its tinted circle -- same graceful-fallback shape as
+ * AccountFaviconBadge, never a fabricated logo.
+ */
+function ConnectionAvatar({ icon: Icon, name }: { icon: typeof Landmark; name: string }) {
+  const domain = merchantDomain(name);
 
+  if (!domain) {
+    return (
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="size-4" aria-hidden />
+      </span>
+    );
+  }
+
+  return <FaviconBadge badgeClassName="size-9 rounded-lg" website={domain} />;
+}
+
+const CONNECTION_STATUS_TONE: Record<ProviderStatus, StatusDotTone> = {
+  connected: "success",
+  error: "error",
+  not_configured: "neutral",
+  stale: "neutral",
+  syncing: "active"
+};
+
+const CONNECTION_STATUS_LABEL: Record<ProviderStatus, string> = {
+  connected: "Connected",
+  error: "Error",
+  not_configured: "Not set up",
+  stale: "Needs sync",
+  syncing: "Syncing"
+};
+
+/**
+ * connected = --positive dot, error = --negative, not-yet-configured/needs-sync = muted
+ * with no pulse; only an active sync gets the ripple.
+ */
+function ConnectionStatusDot({ status }: { status: ProviderStatus }) {
   return (
-    <Badge
+    <span
       className={cn(
-        "gap-1.5 font-normal",
+        "inline-flex h-5 items-center gap-1.5 rounded-2xl border border-border px-2 text-xs font-normal text-foreground",
         status === "error" && "border-destructive/30 text-destructive",
         status === "connected" && "border-(--positive)/25 text-(--positive)"
       )}
-      variant="outline"
     >
-      <span
-        aria-hidden
-        className={cn(
-          "size-1.5 rounded-full bg-muted-foreground",
-          status === "connected" && "bg-(--positive)",
-          status === "error" && "bg-destructive",
-          status === "syncing" && "animate-pulse motion-reduce:animate-none"
-        )}
-      />
-      {labels[status]}
-    </Badge>
+      <StatusDot inline size="sm" tone={CONNECTION_STATUS_TONE[status]} />
+      {CONNECTION_STATUS_LABEL[status]}
+    </span>
   );
 }
 

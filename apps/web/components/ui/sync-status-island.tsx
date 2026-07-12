@@ -1,17 +1,25 @@
 "use client";
 
-import { Check, CircleAlert, Cloud, RefreshCw } from "lucide-react";
+import { Check, CircleAlert } from "lucide-react";
 import * as React from "react";
 import { DynamicIsland, DynamicIslandView } from "@/components/ui/dynamic-island";
 import { Loader } from "@/components/ui/loader";
+import { StatusDot, type StatusDotTone } from "@/components/ui/status-dot";
 import type { SyncIslandState } from "@/lib/sync-island-state";
 import { cn } from "@/lib/utils";
+
+const SYNC_STATUS_DOT_TONE: Record<SyncIslandState["tone"], StatusDotTone> = {
+  error: "error",
+  idle: "neutral",
+  success: "success",
+  syncing: "active"
+};
 
 export function SyncStatusIsland({ state }: { state: SyncIslandState }) {
   const compact = React.useMemo(
     () => (
       <>
-        <SyncIslandIcon tone={state.tone} />
+        <StatusDot inline size="sm" tone={SYNC_STATUS_DOT_TONE[state.tone]} />
         <span className="truncate">{state.compactLabel}</span>
       </>
     ),
@@ -52,20 +60,4 @@ export function SyncStatusIsland({ state }: { state: SyncIslandState }) {
       </DynamicIslandView>
     </DynamicIsland>
   );
-}
-
-function SyncIslandIcon({ tone }: { tone: SyncIslandState["tone"] }) {
-  if (tone === "syncing") {
-    return <RefreshCw className="size-3.5 animate-spin" />;
-  }
-
-  if (tone === "success") {
-    return <Check className="size-3.5" />;
-  }
-
-  if (tone === "error") {
-    return <CircleAlert className="size-3.5" />;
-  }
-
-  return <Cloud className="size-3.5" />;
 }

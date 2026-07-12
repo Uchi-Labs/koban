@@ -2,8 +2,8 @@
 
 import { useReducedMotion } from "motion/react";
 import React from "react";
-import { Bar, BarChart, CartesianGrid, Cell, Line, ReferenceLine, XAxis, YAxis } from "recharts";
-import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import { BarChart, CartesianGrid, Cell, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { ChartBar, ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/charts";
 import { formatMonthLong } from "@/lib/cashflow";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -160,7 +160,7 @@ export function CashflowChartRenderer({
         <ReferenceLine stroke={colors.grid} strokeOpacity={0.9} y={0} />
 
         {variant === "net" ? (
-          <Bar dataKey="net" isAnimationActive={!reduce} maxBarSize={26} radius={[3, 3, 0, 0]}>
+          <ChartBar dataKey="net" isAnimationActive={!reduce} maxBarSize={26} radius={[3, 3, 0, 0]}>
             {data.map((row) => (
               <Cell
                 fill={row.net >= 0 ? colors.positive : colors.negative}
@@ -168,26 +168,27 @@ export function CashflowChartRenderer({
                 key={row.month}
               />
             ))}
-          </Bar>
+          </ChartBar>
         ) : null}
 
         {variant === "income" ? (
-          <Bar dataKey="income" isAnimationActive={!reduce} maxBarSize={26} radius={[3, 3, 0, 0]}>
+          <ChartBar dataKey="income" isAnimationActive={!reduce} maxBarSize={26} radius={[3, 3, 0, 0]}>
             {data.map((row) => (
               <Cell fill={colors.income} fillOpacity={row.isFuture ? 0.25 : 1} key={row.month} />
             ))}
-          </Bar>
+          </ChartBar>
         ) : null}
 
         {variant === "spend"
           ? categories.map((category, index) => (
-              <Bar
+              <ChartBar
                 dataKey={category.id}
                 fill={category.color}
                 isAnimationActive={!reduce}
                 key={category.id}
                 maxBarSize={26}
                 radius={index === categories.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+                seriesIndex={index}
                 stackId="spend"
               />
             ))

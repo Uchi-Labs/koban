@@ -9,10 +9,12 @@ import {
   type CashflowChartRow,
   type CashflowChartVariant
 } from "@/components/cashflow-chart";
-import { Card, EmptyState } from "@/components/ui/card";
-import { AnimatedNumber } from "@/components/ui/animated-number";
+import { EmptyState } from "@/components/ui/card";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
+import { RollingDigits } from "@/components/ui/rolling-digits";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ROLLING_DIGITS_HERO } from "@/lib/motion";
 import {
   buildMonthlySeries,
   comparisonOffsetMonths,
@@ -210,12 +212,10 @@ export function CashflowView({
       </header>
 
       {isEmpty ? (
-        <Card>
-          <EmptyState
-            description="Sync a Teller connection or import historical transactions to see your monthly income, spend, and net cash flow."
-            title="No cash flow yet"
-          />
-        </Card>
+        <EmptyState
+          description="Sync a Teller connection or import historical transactions to see your monthly income, spend, and net cash flow."
+          title="No cash flow yet"
+        />
       ) : (
         <div className="grid gap-4">
           <CashflowCard
@@ -302,10 +302,12 @@ function CashflowCard({
       : figureTone === "negative"
         ? "text-[var(--negative)]"
         : "text-foreground";
+  const currencySymbol = currency === "USD" ? "$" : `${currency} `;
+  const figureNegative = figure < 0;
 
   return (
-    <Card className="gap-4">
-      <div className="flex items-start justify-between gap-3 px-(--card-spacing)">
+    <IconiqCard className="gap-4 rounded-xl border-border/60 bg-card/95 py-4 shadow-[var(--ic-card-rest-shadow)]" interactive>
+      <IconiqCardContent className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-base font-medium text-foreground">{title}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{rangeLabel}</p>
@@ -317,23 +319,33 @@ function CashflowCard({
           View more
           <ArrowUpRight className="size-3.5" />
         </Link>
-      </div>
+      </IconiqCardContent>
 
-      <div className="px-(--card-spacing)">
-        <AnimatedNumber
-          className={cn("text-3xl font-semibold tabular-nums", figureColor)}
-          format={(value) => formatCurrency(value, currency)}
-          startOnView={false}
-          value={figure}
-        />
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      <IconiqCardContent className="flex flex-col gap-1.5">
+        <span className={cn("inline-flex items-baseline text-3xl font-semibold tabular-nums", figureColor)}>
+          {figureNegative ? "−" : ""}
+          {currencySymbol}
+          <RollingDigits
+            animationDelay={ROLLING_DIGITS_HERO.animationDelay}
+            coalesceUpdates
+            direction="dynamic"
+            enterDamping={ROLLING_DIGITS_HERO.enterDamping}
+            enterStiffness={ROLLING_DIGITS_HERO.enterStiffness}
+            enterY={ROLLING_DIGITS_HERO.enterY}
+            format={(value) => Math.round(Math.abs(value)).toLocaleString("en-US")}
+            gap={0}
+            startOnView={false}
+            value={figure}
+          />
+        </span>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <DeltaPill delta={delta} metric={deltaMetric} />
           <span className="text-muted-foreground">
             vs <span className="font-medium tabular-nums text-foreground/80">{formatCurrency(delta.previous, currency)}</span> in{" "}
             <span className="tabular-nums">{comparisonRangeLabel}</span>
           </span>
         </div>
-      </div>
+      </IconiqCardContent>
 
       <CashflowChart
         categories={categories}
@@ -343,7 +355,7 @@ function CashflowCard({
         nowMonthLabel={nowMonthLabel}
         variant={variant}
       />
-    </Card>
+    </IconiqCard>
   );
 }
 
