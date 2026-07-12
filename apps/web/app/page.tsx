@@ -162,46 +162,67 @@ export default async function DashboardPage() {
 
         <div className="grid content-start gap-3">
           <DashboardCard title="Top categories" action={{ label: "View all", href: "/categories" }} surface="iconiq">
-            <div className="grid gap-3">
-              {dashboardSummary.topCategories.map((summary) => {
-                const category = categoryById.get(summary.categoryId);
-                const amount = Math.abs(summary.amount);
-                const budget = summary.budgetAmount ?? amount;
-                const remaining = Math.max(0, budget - amount);
+            {(() => {
+              const spendingIds = new Set(dashboardSummary.topCategories.map((summary) => summary.categoryId));
+              const cells = [
+                ...dashboardSummary.topCategories.map((summary) => ({
+                  amount: Math.abs(summary.amount),
+                  budget: summary.budgetAmount ?? Math.abs(summary.amount),
+                  categoryId: summary.categoryId
+                })),
+                // Budgeted-but-unspent categories fill the grid with real budgets.
+                ...categories
+                  .filter(
+                    (category) =>
+                      (category.budgetAmount ?? 0) > 0 &&
+                      !spendingIds.has(category.id) &&
+                      category.id !== "cat_income" &&
+                      category.id !== "cat_transfer"
+                  )
+                  .map((category) => ({ amount: 0, budget: category.budgetAmount ?? 0, categoryId: category.id }))
+              ].slice(0, 6);
 
-                return (
-                  <div className="grid gap-1.5" key={summary.categoryId}>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 min-[390px]:grid-cols-[minmax(0,1fr)_auto_auto]">
-                      {category ? (
-                        <CategoryPill className="max-w-full justify-self-start" category={category} />
-                      ) : (
-                        <span className="pill-tint justify-self-start">🏷️ Other</span>
-                      )}
-                      <span className="text-sm font-medium tabular-nums text-foreground">
-                        {formatCurrency(amount, dashboardSummary.currency)}
-                      </span>
-                      <span className="col-start-1 text-xs whitespace-nowrap tabular-nums text-muted-foreground min-[390px]:col-start-auto min-[390px]:w-24 min-[390px]:text-right">
-                        {formatCurrency(remaining, dashboardSummary.currency)} left
-                      </span>
-                    </div>
-                    <span
-                      className="block h-1.5 overflow-hidden rounded-full"
-                      style={{
-                        background: `color-mix(in oklab, ${category?.color ?? "var(--muted-foreground)"} 14%, transparent)`
-                      }}
-                    >
-                      <span
-                        className="block h-full rounded-full"
-                        style={{
-                          background: category?.color ?? "var(--muted-foreground)",
-                          width: `${Math.min(100, (amount / budget) * 100)}%`
-                        }}
-                      />
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+              return (
+                <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                  {cells.map((cell) => {
+                    const category = categoryById.get(cell.categoryId);
+                    const remaining = Math.max(0, cell.budget - cell.amount);
+
+                    return (
+                      <div className="grid gap-1.5" key={cell.categoryId}>
+                        <div className="flex items-center justify-between gap-2">
+                          {category ? (
+                            <CategoryPill className="min-w-0 max-w-full" category={category} />
+                          ) : (
+                            <span className="pill-tint">🏷️ Other</span>
+                          )}
+                          <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+                            {formatCurrency(cell.amount, dashboardSummary.currency)}
+                          </span>
+                        </div>
+                        <span
+                          className="block h-1.5 overflow-hidden rounded-full"
+                          style={{
+                            background: `color-mix(in oklab, ${category?.color ?? "var(--muted-foreground)"} 14%, transparent)`
+                          }}
+                        >
+                          <span
+                            className="block h-full rounded-full"
+                            style={{
+                              background: category?.color ?? "var(--muted-foreground)",
+                              width: `${cell.budget > 0 ? Math.min(100, (cell.amount / cell.budget) * 100) : 0}%`
+                            }}
+                          />
+                        </span>
+                        <span className="text-right text-xs tabular-nums text-muted-foreground">
+                          {formatCurrency(remaining, dashboardSummary.currency)} left
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </DashboardCard>
 
           <DashboardCard title="Next two weeks" action={{ label: "Recurrings", href: "/recurrings" }} surface="iconiq">
