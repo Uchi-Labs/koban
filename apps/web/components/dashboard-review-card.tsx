@@ -13,9 +13,7 @@ import { ActionSwapIcon, ActionSwapText } from "@/components/ui/action-swap";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/card";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
-import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { useToast } from "@/components/ui/toast";
-import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
 import type { TransactionView } from "@/lib/view-models";
 
@@ -152,8 +150,10 @@ export function DashboardReviewCard({
 
           return (
             <Link href="/transactions?review=actionable" key={transaction.id}>
-              <IconiqCard interactive className="gap-0 rounded-xl border-border/50 bg-background/45 py-0">
-                <IconiqCardContent className="flex items-center gap-3 px-3 py-2.5">
+              {/* ponytail: plain div, not IconiqCard interactive — 10 spring-hover
+                  cards with backdrop-blur made dashboard hover visibly laggy */}
+              <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
+                <div className="flex items-center gap-3 px-3 py-2.5">
                   {domain ? (
                     <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} />
                   ) : (
@@ -170,8 +170,8 @@ export function DashboardReviewCard({
                   </div>
                   {transaction.category ? <CategoryPill category={transaction.category} /> : null}
                   <Amount amount={transaction.amount} className="min-w-[5.5rem] text-right" currency={transaction.currency} />
-                </IconiqCardContent>
-              </IconiqCard>
+                </div>
+              </div>
             </Link>
           );
         })}

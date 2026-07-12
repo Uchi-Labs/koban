@@ -287,6 +287,7 @@ export function ConnectionsSettings({
             aria-label="Connect bank account"
             className="shrink-0"
             onClick={() => setAddDialogOpen(true)}
+            size="sm"
             type="button"
             variant="tonal"
           >
