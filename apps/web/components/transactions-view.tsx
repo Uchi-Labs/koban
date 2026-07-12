@@ -1330,7 +1330,6 @@ function useTransactionsViewModel({
       return;
     }
 
-    const selectedIds = new Set(ids);
     const availableRowsById = new Map([...rows, ...reviewRows].map((transaction) => [transaction.id, transaction]));
     const selectedRows = ids.flatMap((id) => {
       const transaction = availableRowsById.get(id);
@@ -2515,6 +2514,14 @@ function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }
     count: items.length,
     estimateSize: (index) => (items[index]?.type === "header" ? 32 : 56),
     getScrollElement: () => parentRef.current,
+    // virtual-core measures the scroll element's rect via ResizeObserver, which
+    // hasn't reported yet on first paint -- it defaults to {width:0, height:0}
+    // (no rows considered visible) until the observer fires, then re-renders
+    // with the real size. That extra settle pass is the same class of bug as an
+    // unseeded recharts ResponsiveContainer, and on this list it was part of
+    // what widened the 390px "duplicate testid" e2e flake. A seed matching the
+    // list's typical viewport renders real rows on the first pass.
+    initialRect: { height: 600, width: 390 },
     onChange: (instance) => {
       const lastVirtualIndex = instance.getVirtualItems().at(-1)?.index ?? -1;
 

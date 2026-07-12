@@ -38,6 +38,17 @@ const compactCurrency = new Intl.NumberFormat("en-US", {
   style: "currency"
 });
 
+// recharts' ResponsiveContainer measures its own box via ResizeObserver, which
+// hasn't fired yet on first paint -- without a seed it reports width/height as
+// -1 (a console warning on every mount) and re-renders once the real size
+// lands. That extra settle pass widens the window during which the streamed
+// page content and the client-hydrated tree can coexist in the DOM, which is
+// exactly what trips the 390px "duplicate testid" e2e flake on narrow
+// viewports. A conservative non-zero seed (matches the card's typical mobile
+// width and the chart's fixed h-32 height) renders true dimensions on the
+// first pass; the ResizeObserver still corrects it on real resize.
+const CHART_INITIAL_DIMENSION = { width: 300, height: 128 };
+
 const AreaChart = dynamic(() => import("recharts").then((module) => module.AreaChart), { ssr: false });
 const CartesianGrid = dynamic(() => import("recharts").then((module) => module.CartesianGrid), { ssr: false });
 const ReferenceLine = dynamic(() => import("recharts").then((module) => module.ReferenceLine), { ssr: false });
@@ -88,7 +99,11 @@ export function MiniLineChart({
   }
 
   return (
-    <ChartContainer className={cn("min-h-0 aspect-[3/1] w-full", className)} config={spendingConfig}>
+    <ChartContainer
+      className={cn("min-h-0 aspect-[3/1] w-full", className)}
+      config={spendingConfig}
+      initialDimension={CHART_INITIAL_DIMENSION}
+    >
       <AreaChart data={chartPoints} margin={{ bottom: 0, left: 4, right: 12, top: 8 }}>
         <defs>
           <linearGradient id="spendingFill" x1="0" x2="0" y1="0" y2="1">
@@ -170,7 +185,11 @@ export function NetWorthChart({
   } satisfies ChartConfig;
 
   return (
-    <ChartContainer className={cn("min-h-0 aspect-[3/1] w-full", className)} config={netWorthConfig}>
+    <ChartContainer
+      className={cn("min-h-0 aspect-[3/1] w-full", className)}
+      config={netWorthConfig}
+      initialDimension={CHART_INITIAL_DIMENSION}
+    >
       <AreaChart data={points} margin={{ bottom: 0, left: 4, right: 12, top: 8 }}>
         <defs>
           <linearGradient id="networthFill" x1="0" x2="0" y1="0" y2="1">
