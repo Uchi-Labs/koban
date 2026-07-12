@@ -131,28 +131,16 @@ function SuccessCheckIcon() {
 
 function TextSlot({ children, value }: { children: ReactNode; value: string }) {
   const reduce = useReducedMotion();
-  const measureRef = useRef<HTMLSpanElement>(null);
-  const [width, setWidth] = useState<number>();
-
-  useLayoutEffect(() => {
-    const nextWidth = measureRef.current?.offsetWidth;
-
-    if (!nextWidth) {
-      return;
-    }
-
-    setWidth((currentWidth) => (currentWidth === nextWidth ? currentWidth : nextWidth));
-  }, [children]);
 
   return (
     <m.span
-      animate={{ width }}
-      className="relative inline-block overflow-hidden whitespace-nowrap align-bottom"
+      className="relative inline-grid overflow-hidden whitespace-nowrap align-bottom"
       initial={false}
+      layout="size"
       transition={reduce ? { duration: 0 } : SPRING_SWAP}
     >
       <span className="sr-only">{children}</span>
-      <span aria-hidden className="invisible inline-block whitespace-nowrap" ref={measureRef}>
+      <span aria-hidden className="invisible col-start-1 row-start-1 inline-block whitespace-nowrap">
         {children}
       </span>
 

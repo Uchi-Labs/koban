@@ -112,7 +112,7 @@ function ScrollBar({ className, orientation = "vertical", ref, ...props }: Scrol
       // out, waiting out the thumb shrink before the fade so it visibly narrows.
       className={cn(
         "group/scrollbar absolute z-20 flex touch-none select-none",
-        "opacity-0 transition-opacity duration-120 ease-out delay-160",
+        "opacity-0 transition-opacity duration-120 ease-[var(--ease-strong-out)] delay-160",
         "data-[hovering]:duration-160 data-[scrolling]:duration-160",
         "data-[hovering]:opacity-100 data-[scrolling]:opacity-100",
         "data-[hovering]:delay-0 data-[scrolling]:delay-0",
@@ -125,7 +125,7 @@ function ScrollBar({ className, orientation = "vertical", ref, ...props }: Scrol
       <ScrollAreaPrimitive.Thumb
         data-slot="scroll-area-thumb"
         className={cn(
-          "relative rounded-full bg-foreground/25 transition-[background-color,width,height] duration-160 ease-in-out",
+          "relative rounded-full bg-foreground/25 transition-[background-color,width,height] duration-160 ease-[var(--ease-strong-in-out)]",
           "group-hover/scrollbar:bg-foreground/45 active:!bg-foreground/60",
           orientation === "vertical" &&
             "mx-auto my-1 h-[var(--scroll-area-thumb-height)] w-1 group-hover/scrollbar:w-1.5",

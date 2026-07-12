@@ -342,7 +342,7 @@ export function PlaidConnectSetup({
               </Button>
             ) : null}
             <Button variant="outline" disabled={!status.readyForSync || busy} onClick={syncPlaid} type="button">
-              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
+              {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
               {busy ? "Syncing..." : "Sync Plaid"}
             </Button>
           </div>

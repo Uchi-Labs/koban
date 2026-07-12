@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
+import { EASE_OUT, SPRING_PRESS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useHoverCapable } from "@/lib/hooks/use-hover-capable";
 

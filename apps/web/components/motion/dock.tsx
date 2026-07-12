@@ -1,7 +1,7 @@
 "use client";
 // beui.dev/components/motion/dock
 
-import { motion, useReducedMotion } from "motion/react";
+import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { createContext, useContext, useId, useMemo, type ReactNode } from "react";
 import { SPRING_LAYOUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -63,11 +63,13 @@ export function DockItem({
   const pillLayoutId = dock?.pillLayoutId ?? "dock-pill";
 
   const pill = active ? (
-    <motion.span
-      layoutId={pillLayoutId}
-      transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-      className="absolute inset-0.5 -z-10 rounded-xl bg-primary/5"
-    />
+    <LazyMotion features={domAnimation}>
+      <m.span
+        className="absolute inset-0.5 -z-10 rounded-xl bg-primary/5"
+        layoutId={pillLayoutId}
+        transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+      />
+    </LazyMotion>
   ) : null;
   const sharedStyle = { width: size, height: size };
   const sharedClass = cn(

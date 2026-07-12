@@ -124,6 +124,12 @@ export function applyAvatarGroupShift(root: HTMLElement | null, activeIndex: num
     return;
   }
 
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    delete root.dataset.animating;
+  } else {
+    root.dataset.animating = "true";
+  }
+
   const avatars = Array.from(root.querySelectorAll<HTMLElement>(".t-avatar"));
   const styles = getComputedStyle(document.documentElement);
   const readNumber = (name: string, fallback: number) => {

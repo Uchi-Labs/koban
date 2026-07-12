@@ -2548,14 +2548,38 @@ function TransactionListLoadingState({ model }: { model: TransactionsViewModel }
 
 function TransactionInspector({ model }: { model: TransactionsViewModel }) {
   const transaction = model.selectedTransaction;
+  const [panelAnimating, setPanelAnimating] = useState(false);
+  const panelMotionMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!panelMotionMountedRef.current) {
+      panelMotionMountedRef.current = true;
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setPanelAnimating(false);
+      return;
+    }
+
+    setPanelAnimating(true);
+  }, [model.inspectorOpen]);
+
+  const finishPanelTransition = (event: React.TransitionEvent<HTMLElement>) => {
+    if (event.currentTarget === event.target) {
+      setPanelAnimating(false);
+    }
+  };
 
   if (!transaction) {
     return (
       <aside
         aria-label="Selected transaction inspector"
         className="t-panel-slide hidden flex-col border-l border-border bg-card p-6 lg:flex [--panel-translate-y:24px]"
+        data-animating={panelAnimating ? "true" : undefined}
         data-open="false"
         data-testid="empty-inspector"
+        onTransitionEnd={finishPanelTransition}
       >
         <EmptyState
           actions={
@@ -2583,7 +2607,9 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
     <aside
       aria-label="Selected transaction inspector"
       className="t-panel-slide hidden min-h-0 flex-col overflow-y-auto border-l border-border bg-card lg:flex [--panel-translate-y:24px]"
+      data-animating={panelAnimating ? "true" : undefined}
       data-open={model.inspectorOpen ? "true" : "false"}
+      onTransitionEnd={finishPanelTransition}
     >
       <header className="flex items-center justify-between border-b border-border px-5 py-3">
         <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -3061,7 +3087,7 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
           actions={<Badge variant="synced">Review clear</Badge>}
           className="mx-auto max-w-xl"
           description="Every transaction matching the current filters has been reviewed."
-          icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200" />}
+          icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none" />}
           title="Nothing left to review"
         />
       </div>
@@ -3107,7 +3133,7 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
       {model.reviewMessage ? (
         <p aria-live="polite" className="inline-flex items-center gap-1.5 px-6 pb-4 text-xs text-muted-foreground">
           {isReviewSuccessMessage(model.reviewMessage) ? (
-            <Check className="size-3.5 animate-in fade-in zoom-in-95 text-(--positive) duration-200" />
+            <Check className="size-3.5 animate-in fade-in zoom-in-95 text-(--positive) duration-200 motion-reduce:animate-none" />
           ) : null}
           {model.reviewMessage}
         </p>

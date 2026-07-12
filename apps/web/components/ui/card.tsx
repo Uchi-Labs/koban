@@ -117,7 +117,7 @@ function EmptyState({
       data-slot="empty-state"
       data-size={size}
       className={cn(
-        "flex w-full flex-col items-center rounded-2xl border border-border bg-muted/25 text-center text-foreground",
+        "empty-state-enter flex w-full flex-col items-center rounded-2xl border border-border bg-muted/25 text-center text-foreground",
         "data-[size=sm]:gap-3 data-[size=sm]:px-6 data-[size=sm]:py-8",
         "data-[size=default]:gap-4 data-[size=default]:px-8 data-[size=default]:py-12",
         "data-[size=lg]:gap-5 data-[size=lg]:px-10 data-[size=lg]:py-16",

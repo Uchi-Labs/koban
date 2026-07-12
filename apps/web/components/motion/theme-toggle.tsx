@@ -46,11 +46,11 @@ html[data-beui-vt="circle-blur"]::view-transition-old(root) {
 }
 html[data-beui-vt="circle"]::view-transition-new(root) {
   mix-blend-mode: normal;
-  animation: beui-circle-reveal 300ms var(--ease-in-out);
+  animation: beui-circle-reveal 300ms var(--ease-strong-in-out);
 }
 html[data-beui-vt="circle-blur"]::view-transition-new(root) {
   mix-blend-mode: normal;
-  animation: beui-circle-blur-reveal 300ms var(--ease-in-out);
+  animation: beui-circle-blur-reveal 300ms var(--ease-strong-in-out);
 }
 @keyframes beui-rect-reveal {
   from { clip-path: var(--beui-vt-from, inset(100% 0 0 0)); }

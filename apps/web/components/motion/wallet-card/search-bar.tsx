@@ -8,7 +8,7 @@ import {
   useReducedMotion,
 } from "motion/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { EASE_OUT } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { ITEM, LIST, MORPH } from "./constants";
 import { useDismiss } from "./use-dismiss";

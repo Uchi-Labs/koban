@@ -7,6 +7,7 @@ import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "mo
 import * as React from "react";
 import { NewCategoryDialog } from "@/components/new-category-dialog";
 import { filterCategories } from "@/lib/rule-match";
+import { SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 // Opacity/scale/y only — no `filter` or `[data-slot]` CSS transitions on this
@@ -16,13 +17,6 @@ const PANEL_VARIANTS: Variants = {
   closed: { opacity: 0, scale: 0.96, y: -4 },
   open: { opacity: 1, scale: 1, y: 0 }
 };
-
-const PANEL_TRANSITION = {
-  damping: 32,
-  mass: 0.85,
-  stiffness: 420,
-  type: "spring"
-} as const;
 
 const EMPTY_MERCHANTS: string[] = [];
 
@@ -142,7 +136,7 @@ export function CategoryPicker({
               <m.div
                 animate={reduce ? { opacity: 1, scale: 1, y: 0 } : "open"}
                 initial={reduce ? false : "closed"}
-                transition={reduce ? { duration: 0 } : PANEL_TRANSITION}
+                transition={reduce ? { duration: 0 } : SPRING_PANEL}
                 variants={reduce ? undefined : PANEL_VARIANTS}
               />
             }

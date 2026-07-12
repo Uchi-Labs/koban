@@ -9,7 +9,7 @@ import { AvatarHoverGroup, AvatarHoverItem } from "@/components/ui/motion-recipe
 import { StatefulButton } from "@/components/ui/stateful-button";
 import { Textarea } from "@/components/ui/textarea";
 import type { AgentStreamControls } from "@/lib/hooks/use-agent-stream";
-import { SPRING_PANEL } from "@/lib/motion";
+import { EASE_SMOOTH_OUT, SPRING_PANEL } from "@/lib/motion";
 import { playClose, playOpen } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 
@@ -160,10 +160,10 @@ export function AgentPanel({
               animate={{ opacity: 1 }}
               className="fixed inset-0 z-40 bg-background/35"
               data-sound="none"
-              exit={{ opacity: 0, transition: { duration: 0.15 } }}
+              exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.15 } }}
               initial={{ opacity: 0 }}
               onClick={onCloseAction}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              transition={reduce ? { duration: 0 } : { duration: 0.25, ease: EASE_SMOOTH_OUT }}
               type="button"
             />
             <button

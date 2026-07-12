@@ -367,7 +367,7 @@ function PasskeySettingsSection({
           />
         </div>
         <Button disabled={addingPasskey} type="submit">
-          {addingPasskey ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <KeyRound className="size-4" aria-hidden="true" />}
+          {addingPasskey ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <KeyRound className="size-4" aria-hidden="true" />}
           Add passkey
         </Button>
       </form>
@@ -400,7 +400,7 @@ function PasskeySettingsSection({
                 variant="outline"
               >
                 {deletingPasskeyId === passkey.id ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 ) : (
                   <Trash2 className="size-4" aria-hidden="true" />
                 )}
@@ -472,7 +472,7 @@ function TotpSettingsSection({
             />
           </div>
           <Button disabled={totpBusy} type="submit" variant="outline">
-            {totpBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Smartphone className="size-4" aria-hidden="true" />}
+            {totpBusy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Smartphone className="size-4" aria-hidden="true" />}
             Disable TOTP
           </Button>
         </form>
@@ -492,7 +492,7 @@ function TotpSettingsSection({
             </p>
           </div>
           <Button disabled={totpBusy} type="submit" variant="outline">
-            {totpBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Smartphone className="size-4" aria-hidden="true" />}
+            {totpBusy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Smartphone className="size-4" aria-hidden="true" />}
             Set up TOTP
           </Button>
         </form>
@@ -570,7 +570,7 @@ function TotpEnrollmentPanel({
           />
         </div>
         <Button disabled={totpBusy || normalizeTotpCode(totpCode).length < 6} type="submit">
-          {totpBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Check className="size-4" aria-hidden="true" />}
+          {totpBusy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Check className="size-4" aria-hidden="true" />}
           Verify TOTP
         </Button>
       </form>

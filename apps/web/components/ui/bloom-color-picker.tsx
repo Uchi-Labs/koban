@@ -9,6 +9,7 @@
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { Check, Pencil } from "lucide-react";
 import React from "react";
+import { EASE_SMOOTH_OUT } from "@/lib/motion";
 import {
   ARC_END_DEG,
   ARC_START_DEG,
@@ -487,7 +488,7 @@ function BloomPanel({
         }}
         ref={panelRef}
         role="dialog"
-        transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.16, ease: EASE_SMOOTH_OUT }}
       >
         <div className="relative" style={{ width: PANEL_W, height: PANEL_H }}>
           <m.div

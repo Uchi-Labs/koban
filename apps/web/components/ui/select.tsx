@@ -6,7 +6,7 @@ import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "mo
 
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
-import { EASE_OUT } from "@/lib/motion"
+import { EASE_OUT, SPRING_PANEL, SPRING_PRESS } from "@/lib/motion"
 
 const Select = SelectPrimitive.Root
 
@@ -25,13 +25,6 @@ const SELECT_PANEL_VARIANTS: Variants = {
     y: 0
   }
 }
-
-const SELECT_PANEL_TRANSITION = {
-  damping: 32,
-  mass: 0.85,
-  stiffness: 420,
-  type: "spring"
-} as const
 
 const SELECT_LIST_VARIANTS: Variants = {
   closed: {},
@@ -90,7 +83,7 @@ function SelectTrigger({
             <m.span
               aria-hidden
               className="pointer-events-none inline-flex size-4 items-center justify-center text-muted-foreground transition-transform data-[popup-open]:rotate-180"
-              transition={reduce ? { duration: 0 } : { bounce: 0.3, duration: 0.4, type: "spring" }}
+              transition={reduce ? { duration: 0 } : SPRING_PRESS}
             >
               <ChevronDownIcon className="size-4" />
             </m.span>
@@ -139,7 +132,7 @@ function SelectContent({
             <m.div
               animate={reduce ? { opacity: 1, scale: 1, y: 0 } : "open"}
               initial={reduce ? false : "closed"}
-              transition={reduce ? { duration: 0 } : SELECT_PANEL_TRANSITION}
+              transition={reduce ? { duration: 0 } : SPRING_PANEL}
               variants={reduce ? undefined : SELECT_PANEL_VARIANTS}
             />
           }

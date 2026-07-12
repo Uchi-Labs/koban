@@ -22,13 +22,13 @@ const IslandContext = createContext<IslandContextValue | null>(null);
 
 const SHELL_SPRING = {
   bounce: 0.2,
-  duration: 0.8,
+  duration: 0.4,
   type: "spring"
 } as const;
 
 const CONTENT_SPRING = {
-  bounce: 0.35,
-  duration: 0.8,
+  bounce: 0.2,
+  duration: 0.4,
   type: "spring"
 } as const;
 
