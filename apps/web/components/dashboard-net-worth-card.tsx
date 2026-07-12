@@ -45,10 +45,10 @@ export function DashboardNetWorthCard({
   const { ref: rangeListRef, isOverflowing } = useHorizontalOverflow();
 
   return (
-    <DashboardCard title="Net worth" action={{ label: "Accounts", href: "/accounts" }}>
+    <DashboardCard title="Net worth" action={{ label: "Accounts", href: "/accounts" }} surface="iconiq">
       <div className="flex items-end justify-between gap-3" data-testid="net-worth-card" data-range={activeRange}>
         <div>
-          <MoneyHero amount={currentNetWorth} currency={currency} />
+          <MoneyHero amount={currentNetWorth} currency={currency} rolling />
           <div className="mt-1 text-xs text-muted-foreground">Net worth</div>
         </div>
         <div className="flex items-center gap-1">

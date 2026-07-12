@@ -9,11 +9,14 @@ import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
+import { FaviconBadge } from "@/components/ui/favicon-badge";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
 import { TextReveal } from "@/components/motion/text-reveal";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
 import { getFinanceData, type FinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
+import { merchantDomain } from "@/lib/merchant-domain";
 import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
 import { isReviewActionableTransaction, isSpendingTransaction } from "@/lib/transaction-classification";
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
@@ -77,10 +80,10 @@ export default async function DashboardPage() {
           viewport clears ~1024px (md's 768px leaves cards ~250px wide with the sidebar
           open) -- below that, cards stack single-column instead of cramming. */}
       <section className="grid gap-3 lg:grid-cols-2" aria-label="Dashboard overview">
-        <DashboardCard title="Monthly spending" action={{ label: "Transactions", href: "/transactions" }}>
+        <DashboardCard title="Monthly spending" action={{ label: "Transactions", href: "/transactions" }} surface="iconiq">
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
-              <MoneyHero amount={monthlySpending} currency={dashboardSummary.currency} />
+              <MoneyHero amount={monthlySpending} currency={dashboardSummary.currency} rolling />
               <div className="mt-1 text-xs text-muted-foreground">
                 of {formatCurrency(monthlyBudget, dashboardSummary.currency)} budgeted
               </div>
@@ -148,7 +151,7 @@ export default async function DashboardPage() {
           trends={netWorthTrends}
         />
 
-        <DashboardCard title="Transactions to review" action={{ label: "View all", href: "/transactions?review=actionable" }}>
+        <DashboardCard title="Transactions to review" action={{ label: "View all", href: "/transactions?review=actionable" }} surface="iconiq">
           <DashboardReviewCard
             initialRows={reviewRows}
             lastSyncedAt={dashboardSummary.asOf}
@@ -158,7 +161,7 @@ export default async function DashboardPage() {
         </DashboardCard>
 
         <div className="grid content-start gap-3">
-          <DashboardCard title="Top categories" action={{ label: "View all", href: "/categories" }}>
+          <DashboardCard title="Top categories" action={{ label: "View all", href: "/categories" }} surface="iconiq">
             <div className="grid gap-3">
               {dashboardSummary.topCategories.map((summary) => {
                 const category = categoryById.get(summary.categoryId);
@@ -168,20 +171,25 @@ export default async function DashboardPage() {
 
                 return (
                   <div className="grid gap-1.5" key={summary.categoryId}>
-                    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 min-[390px]:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
-                      <span
-                        className="size-2 shrink-0 rounded-[3px]"
-                        style={{ background: category?.color ?? "var(--muted-foreground)" }}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">{category?.name ?? "Other"}</span>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 min-[390px]:grid-cols-[minmax(0,1fr)_auto_auto]">
+                      {category ? (
+                        <CategoryPill className="max-w-full justify-self-start" category={category} />
+                      ) : (
+                        <span className="pill-tint justify-self-start">🏷️ Other</span>
+                      )}
                       <span className="text-sm font-medium tabular-nums text-foreground">
                         {formatCurrency(amount, dashboardSummary.currency)}
                       </span>
-                      <span className="col-start-2 text-xs whitespace-nowrap tabular-nums text-muted-foreground min-[390px]:col-start-auto min-[390px]:w-24 min-[390px]:text-right">
+                      <span className="col-start-1 text-xs whitespace-nowrap tabular-nums text-muted-foreground min-[390px]:col-start-auto min-[390px]:w-24 min-[390px]:text-right">
                         {formatCurrency(remaining, dashboardSummary.currency)} left
                       </span>
                     </div>
-                    <span className="block h-1 overflow-hidden rounded-full bg-muted">
+                    <span
+                      className="block h-1.5 overflow-hidden rounded-full"
+                      style={{
+                        background: `color-mix(in oklab, ${category?.color ?? "var(--muted-foreground)"} 14%, transparent)`
+                      }}
+                    >
                       <span
                         className="block h-full rounded-full"
                         style={{
@@ -196,25 +204,34 @@ export default async function DashboardPage() {
             </div>
           </DashboardCard>
 
-          <DashboardCard title="Next two weeks" action={{ label: "Recurrings", href: "/recurrings" }}>
+          <DashboardCard title="Next two weeks" action={{ label: "Recurrings", href: "/recurrings" }} surface="iconiq">
             {recurringViews.length > 0 ? (
-              <div className="divide-y divide-border">
-                {recurringViews.slice(0, 2).map((item) => (
-                  <div className="flex items-center gap-3 py-2" key={item.id}>
-                    <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-medium text-foreground">{item.merchant}</span>
-                      <span className="truncate text-xs text-muted-foreground">{item.frequency}</span>
-                    </div>
-                    <Badge appearance="dot" className="hidden font-normal sm:inline-flex" dotColor="muted" variant="recurring">
-                      Recurring
-                    </Badge>
-                    <CategoryPill className="hidden min-[390px]:inline-flex" category={item.category} />
-                    <span className="min-w-[5rem] text-right text-sm font-medium tabular-nums text-foreground">
-                      {formatCurrency(Math.abs(item.amount), item.currency)}
-                    </span>
-                  </div>
-                ))}
+              <div className="grid gap-2">
+                {recurringViews.slice(0, 2).map((item) => {
+                  const domain = merchantDomain(item.merchant);
+
+                  return (
+                    <Link href="/recurrings" key={item.id}>
+                      <IconiqCard interactive className="gap-0 rounded-xl border-border/50 bg-background/45 py-0">
+                        <IconiqCardContent className="flex items-center gap-3 px-3 py-2.5">
+                          <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
+                          {domain ? <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} /> : null}
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm font-medium text-foreground">{item.merchant}</span>
+                            <span className="truncate text-xs text-muted-foreground">{item.frequency}</span>
+                          </div>
+                          <Badge appearance="dot" className="hidden font-normal sm:inline-flex" dotColor="muted" variant="recurring">
+                            Recurring
+                          </Badge>
+                          <CategoryPill className="hidden min-[390px]:inline-flex" category={item.category} />
+                          <span className="min-w-[5rem] text-right text-sm font-medium tabular-nums text-foreground">
+                            {formatCurrency(Math.abs(item.amount), item.currency)}
+                          </span>
+                        </IconiqCardContent>
+                      </IconiqCard>
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
               <p className="py-4 text-sm text-muted-foreground">Sync more account history to infer recurring charges.</p>
@@ -229,7 +246,7 @@ export default async function DashboardPage() {
           connect-an-account affordance on an empty dashboard. */}
       {accountGroups.length === 0 ? (
         <section className="mt-4" aria-label="Account summary">
-          <DashboardCard title="Account summary" action={{ label: "Settings", href: "/settings" }}>
+          <DashboardCard title="Account summary" action={{ label: "Settings", href: "/settings" }} surface="iconiq">
             <EmptyState
               actions={
                 <>

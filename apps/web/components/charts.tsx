@@ -3,12 +3,14 @@
 import dynamic from "next/dynamic";
 import React from "react";
 import {
+  ChartArea,
   ChartContainer,
+  ChartLine,
   ChartTooltip,
   ChartTooltipContent,
-  ChartWaveLoader,
   type ChartConfig
-} from "@/components/ui/chart";
+} from "@/components/ui/charts";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export interface SpendingTrendPoint {
@@ -29,18 +31,6 @@ export interface NetWorthTrendPoint {
   value: number;
 }
 
-const spendingConfig = {
-  projectedSpending: {
-    color: "var(--chart-2)",
-    label: "Projected month-end"
-  },
-  // Brand rule: the primary spending trend is always mint.
-  spending: {
-    color: "var(--positive)",
-    label: "Actual spending"
-  }
-} satisfies ChartConfig;
-
 const compactCurrency = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 1,
@@ -48,10 +38,8 @@ const compactCurrency = new Intl.NumberFormat("en-US", {
   style: "currency"
 });
 
-const Area = dynamic(() => import("recharts").then((module) => module.Area), { ssr: false });
 const AreaChart = dynamic(() => import("recharts").then((module) => module.AreaChart), { ssr: false });
 const CartesianGrid = dynamic(() => import("recharts").then((module) => module.CartesianGrid), { ssr: false });
-const Line = dynamic(() => import("recharts").then((module) => module.Line), { ssr: false });
 const ReferenceLine = dynamic(() => import("recharts").then((module) => module.ReferenceLine), { ssr: false });
 const XAxis = dynamic(() => import("recharts").then((module) => module.XAxis), { ssr: false });
 const YAxis = dynamic(() => import("recharts").then((module) => module.YAxis), { ssr: false });
@@ -75,17 +63,37 @@ export function MiniLineChart({
   const chartPoints = React.useMemo(() => {
     return createSpendingChartPoints(points, projection);
   }, [points, projection]);
+  const lastSpending = points.at(-1)?.spending ?? 0;
+  // This series is cumulative, so its raw slope is not a useful health signal.
+  // Color the actual and projected paths by whether the month is on track.
+  const spendingPositive = budget > 0
+    ? (projection?.amount ?? lastSpending) <= budget
+    : true;
+  const projectionPositive = projection && budget > 0
+    ? projection.amount <= budget
+    : spendingPositive;
+  const spendingConfig = {
+    projectedSpending: {
+      color: projectionPositive ? "var(--positive)" : "var(--negative)",
+      label: "Projected month-end"
+    },
+    spending: {
+      color: spendingPositive ? "var(--positive)" : "var(--negative)",
+      label: "Actual spending"
+    }
+  } satisfies ChartConfig;
 
   if (loading) {
-    return <ChartWaveLoader className={cn("aspect-[3/1] w-full", className)} label="Loading spending chart" />;
+    return <Skeleton aria-label="Loading spending chart" className={cn("aspect-[3/1] w-full", className)} />;
   }
 
   return (
-    <ChartContainer className={cn("aspect-[3/1] w-full", className)} config={spendingConfig}>
+    <ChartContainer className={cn("min-h-0 aspect-[3/1] w-full", className)} config={spendingConfig}>
       <AreaChart data={chartPoints} margin={{ bottom: 0, left: 4, right: 12, top: 8 }}>
         <defs>
           <linearGradient id="spendingFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="var(--color-spending)" stopOpacity={0.28} />
+            <stop offset="0" stopColor="var(--color-spending)" stopOpacity={0.38} />
+            <stop offset="0.58" stopColor="var(--color-spending)" stopOpacity={0.1} />
             <stop offset="1" stopColor="var(--color-spending)" stopOpacity={0} />
           </linearGradient>
         </defs>
@@ -118,16 +126,16 @@ export function MiniLineChart({
             y={budget}
           />
         ) : null}
-        <Area
+        <ChartArea
           dataKey="spending"
           dot={false}
           fill="url(#spendingFill)"
           stroke="var(--color-spending)"
-          strokeWidth={1.5}
+          strokeWidth={2}
           type="monotone"
         />
         {projection ? (
-          <Line
+          <ChartLine
             connectNulls
             dataKey="projectedSpending"
             dot={false}
@@ -135,7 +143,7 @@ export function MiniLineChart({
             stroke="var(--color-projectedSpending)"
             strokeDasharray="4 5"
             strokeLinecap="round"
-            strokeWidth={1.5}
+            strokeWidth={1.75}
             type="monotone"
           />
         ) : null}
@@ -162,11 +170,12 @@ export function NetWorthChart({
   } satisfies ChartConfig;
 
   return (
-    <ChartContainer className={cn("aspect-[3/1] w-full", className)} config={netWorthConfig}>
+    <ChartContainer className={cn("min-h-0 aspect-[3/1] w-full", className)} config={netWorthConfig}>
       <AreaChart data={points} margin={{ bottom: 0, left: 4, right: 12, top: 8 }}>
         <defs>
           <linearGradient id="networthFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="var(--color-value)" stopOpacity={0.18} />
+            <stop offset="0" stopColor="var(--color-value)" stopOpacity={0.34} />
+            <stop offset="0.58" stopColor="var(--color-value)" stopOpacity={0.09} />
             <stop offset="1" stopColor="var(--color-value)" stopOpacity={0} />
           </linearGradient>
         </defs>
@@ -192,12 +201,12 @@ export function NetWorthChart({
           content={<ChartTooltipContent formatter={tooltipCurrency} indicator="line" />}
           cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "3 3", strokeOpacity: 0.4 }}
         />
-        <Area
+        <ChartArea
           dataKey="value"
           dot={false}
           fill="url(#networthFill)"
           stroke="var(--color-value)"
-          strokeWidth={1.5}
+          strokeWidth={2}
           style={{ filter: "drop-shadow(0 0 5px color-mix(in oklab, var(--color-value) 45%, transparent))" }}
           type="monotone"
         />
@@ -272,7 +281,7 @@ function SpendingTooltipContent({
 
       return [
         {
-          color: item.color ?? (key === "projectedSpending" ? "var(--chart-5)" : "var(--chart-2)"),
+          color: item.color ?? (key === "projectedSpending" ? "var(--negative)" : "var(--positive)"),
           label: key === "projectedSpending" ? (point?.projectionLabel ?? "Projected month-end") : "Actual spending",
           value
         }
