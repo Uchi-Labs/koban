@@ -1,21 +1,35 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
 import { ArrowDownUp, ArrowDown, ArrowUp, ChevronRight, Copy, TrendingUp } from "lucide-react";
 import { useReducedMotion } from "motion/react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import React from "react";
 import { AccountFaviconBadge } from "@/components/account-favicon-badge";
 import { DashboardCard } from "@/components/dashboard-card";
 import { LivelineChart } from "@/components/liveline-chart";
 import { MoneyHero } from "@/components/money-hero";
-import { TradingViewAdvancedChart } from "@/components/tradingview-advanced-chart";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeProviderCurrencyCode } from "@/lib/currency";
 import { formatCurrency } from "@/lib/format";
 import type { HoldingView, InvestmentsData } from "@/lib/investments";
 import { cn } from "@/lib/utils";
+
+// Only ever mounts once a holding row is expanded, and it injects a third-party
+// script tag itself -- code-split it out of the initial /investments bundle
+// instead of shipping it (and its parse/eval cost) on first paint. Loading it
+// eagerly was inflating the client chunk this whole page ships before it can
+// hydrate, which widened the window in which the streamed page-shell and the
+// hydrated tree could transiently coexist in the DOM (the 390px "duplicate
+// testid" e2e flake).
+const TradingViewAdvancedChart = dynamic(
+  () => import("@/components/tradingview-advanced-chart").then((module) => module.TradingViewAdvancedChart),
+  {
+    loading: () => <Skeleton className="w-full rounded-xl" style={{ height: 228 }} />,
+    ssr: false
+  }
+);
 
 /** Matches the accounts-page investment group accent so this page reads as one system. */
 const INVESTMENT_GROUP_ACCENT = "--chart-4";
@@ -73,35 +87,6 @@ function subscribeThemeSnapshot(onStoreChange: () => void) {
 
 function useAppTheme(): "light" | "dark" {
   return React.useSyncExternalStore(subscribeThemeSnapshot, getThemeSnapshot, () => "dark");
-}
-
-function MoneyFlow({
-  value,
-  currency,
-  className,
-  maximumFractionDigits = 2
-}: {
-  value: number;
-  currency: string;
-  className?: string;
-  maximumFractionDigits?: number;
-}) {
-  return (
-    <NumberFlow
-      className={cn("tabular-nums", className)}
-      format={{
-        // Some synced accounts carry a non-ISO ticker (e.g. a crypto token) as their
-        // "currency" -- Intl.NumberFormat throws on those, so fall back to USD display
-        // rather than crashing the page. The underlying value/account labels stay honest.
-        currency: normalizeProviderCurrencyCode(currency),
-        maximumFractionDigits,
-        minimumFractionDigits: maximumFractionDigits,
-        style: "currency"
-      }}
-      value={value}
-      willChange
-    />
-  );
 }
 
 export function InvestmentsView({ data }: { data: InvestmentsData }) {
@@ -194,7 +179,7 @@ function InvestmentTotalsSection({
       <DashboardCard title="Portfolio value" action={{ label: "Accounts", href: "/accounts" }}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <MoneyHero amount={data.totalMarketValue} currency={data.currency} />
+            <MoneyHero amount={data.totalMarketValue} currency={data.currency} rolling />
             <div className="mt-1 text-xs text-muted-foreground">Total across investment accounts</div>
             {data.totalUnrealizedPnl !== undefined ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -275,10 +260,10 @@ function InvestmentAccountsSection({
       {/* Group-header pill matches the accounts page's group-header idiom (icon badge +
           name + count, tinted with the shared investment accent, total right-aligned). */}
       <div
-        className="mb-2 flex items-center justify-between rounded-lg px-3 py-1.5"
+        className="mb-2 flex items-center justify-between gap-2 rounded-lg px-3 py-1.5"
         style={{ backgroundColor: `color-mix(in oklab, var(${INVESTMENT_GROUP_ACCENT}) 8%, transparent)` }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             aria-hidden="true"
             className="flex size-6 shrink-0 items-center justify-center rounded-full"
@@ -289,10 +274,10 @@ function InvestmentAccountsSection({
           >
             <TrendingUp size={13} />
           </span>
-          <h2 className="text-sm font-semibold">Synced investment accounts</h2>
-          <span className="text-xs text-muted-foreground">{accounts.length.toLocaleString()} accounts</span>
+          <h2 className="truncate text-sm font-semibold">Synced investment accounts</h2>
+          <span className="shrink-0 text-xs text-muted-foreground">{accounts.length.toLocaleString()} accounts</span>
         </div>
-        <strong className="text-sm font-semibold tabular-nums">{formatCurrency(totalMarketValue, currency)}</strong>
+        <strong className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(totalMarketValue, currency)}</strong>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {accounts.map((account) => {
@@ -317,8 +302,8 @@ function InvestmentAccountsSection({
                     </div>
                   </div>
                 </div>
-                <div className="shrink-0 text-right text-sm font-semibold text-foreground">
-                  <MoneyFlow currency={account.currency} value={account.balance} />
+                <div className="shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
+                  {formatCurrency(account.balance, normalizeProviderCurrencyCode(account.currency))}
                 </div>
               </div>
               <LivelineChart className="mt-1" height={44} points={account.history} sparkline emptyText="No history yet" />
@@ -397,7 +382,7 @@ function HoldingsSection({
             No positions synced yet. Connect a brokerage in Settings to populate holdings.
           </p>
         ) : (
-          <ScrollArea orientation="horizontal" viewportClassName="scroll-fade-x">
+          <div className="scroll-fade-x overflow-x-auto">
             <table className="w-full border-collapse text-sm lg:min-w-[760px]">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
@@ -430,7 +415,7 @@ function HoldingsSection({
                 })}
               </tbody>
             </table>
-          </ScrollArea>
+          </div>
         )}
       </DashboardCard>
     </section>
