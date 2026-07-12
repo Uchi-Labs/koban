@@ -4,9 +4,11 @@ import { CalendarClock, RefreshCw, Repeat2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
+import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { RecurringCalendar, type CalendarRecurring, type RecurringDonutSegment } from "@/components/recurring-calendar";
 import { formatCurrency } from "@/lib/format";
 import { getFinanceData } from "@/lib/finance-data";
+import { merchantDomain } from "@/lib/merchant-domain";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { getAccountName, getUpcomingRecurringViews } from "@/lib/view-models";
 
@@ -16,7 +18,33 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", mo
 // every column edge lands on the same x regardless of that row's content (fixed px tracks
 // only — an `auto`-sized last column would resize per row and cascade misalignment into
 // every fr-based column before it).
-const RECURRING_ROW_GRID = "grid grid-cols-[minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3";
+const RECURRING_ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3";
+
+/**
+ * Merchant favicon when the merchant name resolves to a real domain (rare for bank-derived
+ * merchant strings); otherwise an honest tinted-initial fallback in the row's category color
+ * -- mirrors the AccountFaviconBadge pattern, never a fabricated logo.
+ */
+function MerchantAvatar({ color, merchant }: { color: string; merchant: string }) {
+  const domain = merchantDomain(merchant);
+
+  if (!domain) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+        style={{
+          backgroundColor: `color-mix(in oklab, ${color} 18%, transparent)`,
+          color
+        }}
+      >
+        {merchant.trim().charAt(0).toUpperCase() || "?"}
+      </span>
+    );
+  }
+
+  return <FaviconBadge size="sm" website={domain} />;
+}
 
 export default async function RecurringsPage() {
   const { accounts, categories, recurringItems, transactions } = await getFinanceData();
@@ -92,6 +120,7 @@ export default async function RecurringsPage() {
           <CardContent className="flex flex-col gap-0.5">
             {candidateRows.length > 0 ? (
               <div className={`${RECURRING_ROW_GRID} px-3 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase`}>
+                <span aria-hidden="true" />
                 <span>Merchant</span>
                 <span className="text-right">Amount</span>
                 <span className="text-right">Next expected</span>
@@ -107,6 +136,7 @@ export default async function RecurringsPage() {
                 href={recurringTransactionHref(candidate)}
                 key={candidate.id}
               >
+                <MerchantAvatar color={candidate.category.color} merchant={candidate.merchant} />
                 <div className="min-w-0">
                   <p className="truncate font-medium">{candidate.merchant}</p>
                   <p className="truncate text-xs text-muted-foreground">{candidate.accountName}</p>

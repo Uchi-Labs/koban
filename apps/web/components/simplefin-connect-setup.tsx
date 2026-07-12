@@ -5,6 +5,7 @@ import { useReducer } from "react";
 import { ProviderConsentLine } from "@/components/provider-consent-line";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Badge } from "@/components/ui/badge";
+import { Banner } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -197,7 +198,9 @@ export function SimpleFinConnectSetup({
         <Separator />
 
         {!status.readyForSync ? (
-          <p className="text-sm text-destructive">Add `SIMPLEFIN_ACCESS_URL` to ignored `.env` first.</p>
+          <Banner dismissible={false} variant="info">
+            Add `SIMPLEFIN_ACCESS_URL` to ignored `.env` first.
+          </Banner>
         ) : null}
         {status.latestBalanceAsOf ? (
           <p className="text-sm text-muted-foreground">
@@ -276,15 +279,17 @@ function SimpleFinConnectionRow({ connection }: { connection: SimpleFinConnectio
 
 function SimpleFinErrors({ errors }: { errors: unknown[] }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
-      <p className="text-sm font-medium text-destructive">SimpleFIN reported issues</p>
-      <ul className="flex flex-col gap-1 text-xs text-destructive">
-        {errors.map((item) => {
-          const message = formatSimpleFinError(item);
-          return <li key={message}>{message}</li>;
-        })}
-      </ul>
-    </div>
+    <Banner dismissible={false} variant="error">
+      <span className="flex flex-col gap-1">
+        <span className="font-medium">SimpleFIN reported issues</span>
+        <span className="flex flex-col gap-0.5 font-normal text-xs">
+          {errors.map((item) => {
+            const message = formatSimpleFinError(item);
+            return <span key={message}>{message}</span>;
+          })}
+        </span>
+      </span>
+    </Banner>
   );
 }
 

@@ -16,6 +16,15 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import {
+  SetupChecklist,
+  SetupChecklistCard,
+  SetupChecklistDescription,
+  SetupChecklistHeader,
+  SetupChecklistItem,
+  SetupChecklistList,
+  SetupChecklistTitle
+} from "@/components/ui/setup-checklist";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { normalizeCurrencyCode } from "@/lib/currency";
@@ -731,57 +740,61 @@ function SourceSummaryActions({ model }: { model: SourceAdaptersModel }) {
   );
 }
 
+/**
+ * Blocked adapters render as an iconiq setup-checklist -- but honesty first: `completedIds`
+ * is permanently empty, so no item ever shows a fake-green checkmark. These adapters really
+ * are unauthenticated right now; clicking a row copies its real setup command instead of
+ * toggling a completion state that would misrepresent readiness.
+ */
 function SourceSetupChecklist({ model }: { model: SourceAdaptersModel }) {
   if (model.blockedAdapters.length === 0) {
     return null;
   }
 
   return (
-    <section
-      className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3"
-      aria-label="Source setup checklist"
-    >
-      <header className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">Source setup checklist</h2>
-        <span className="text-xs text-muted-foreground">{model.blockedAdapters.length.toLocaleString()} blocked</span>
-      </header>
-      <div className="flex flex-col gap-2">
-        {model.blockedAdapters.map((adapter) => {
-          const command = nextSetupCommand(adapter);
+    <section aria-label="Source setup checklist">
+    <SetupChecklist completedIds={[]}>
+      <SetupChecklistCard className="rounded-lg border-border bg-muted/20 p-3 sm:p-4">
+        <SetupChecklistHeader>
+          <div className="flex items-center justify-between gap-3">
+            <SetupChecklistTitle className="text-sm">Source setup checklist</SetupChecklistTitle>
+            <span className="text-xs text-muted-foreground">{model.blockedAdapters.length.toLocaleString()} blocked</span>
+          </div>
+          <SetupChecklistDescription>
+            Not yet authenticated -- tap a source to copy its real setup command.
+          </SetupChecklistDescription>
+        </SetupChecklistHeader>
+        <SetupChecklistList className="mt-3 gap-2">
+          {model.blockedAdapters.map((adapter) => {
+            const command = nextSetupCommand(adapter);
+            const copied = command !== "" && model.copiedCommand === command;
+            const missingExtra = adapter.setup.missing.filter((step) => step !== adapter.setup.nextAction);
 
-          return (
-            <article
-              className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
-              key={adapter.id}
-            >
-              <div className="flex min-w-0 flex-col gap-1">
-                <strong className="text-sm font-medium">{adapter.displayName}</strong>
-                <span className="text-xs text-muted-foreground">{adapter.setup.nextAction}</span>
-                {/* `missing` often repeats nextAction verbatim — only show what it adds. */}
-                {adapter.setup.missing.some((step) => step !== adapter.setup.nextAction) ? (
-                  <p className="text-xs text-muted-foreground">
-                    {adapter.setup.missing.filter((step) => step !== adapter.setup.nextAction).join(" ")}
-                  </p>
-                ) : null}
-                {command ? <CodeLine>{command}</CodeLine> : null}
-              </div>
-              {command ? (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => {
+            return (
+              <SetupChecklistItem
+                description={
+                  <span className="flex flex-col gap-1">
+                    <span>{adapter.setup.nextAction}</span>
+                    {/* `missing` often repeats nextAction verbatim — only show what it adds. */}
+                    {missingExtra.length > 0 ? <span>{missingExtra.join(" ")}</span> : null}
+                    {command ? <CodeLine>{command}</CodeLine> : null}
+                  </span>
+                }
+                icon={command ? copied ? <CopyCheck className="size-5" /> : <Copy className="size-5" /> : undefined}
+                id={adapter.id}
+                key={adapter.id}
+                onClick={() => {
+                  if (command) {
                     void model.copySetupCommand(command);
-                  }}
-                  type="button"
-                >
-                  <CopySwapIcon copied={model.copiedCommand === command} />
-                  <CopySwapText copied={model.copiedCommand === command}>Copy</CopySwapText>
-                </Button>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
+                  }
+                }}
+                title={adapter.displayName}
+              />
+            );
+          })}
+        </SetupChecklistList>
+      </SetupChecklistCard>
+    </SetupChecklist>
     </section>
   );
 }
