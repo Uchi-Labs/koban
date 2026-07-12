@@ -32,6 +32,7 @@ import {
   neutralCategoryEmoji
 } from "@/lib/category-style";
 import { normalizeCurrencyCode } from "@/lib/currency";
+import { runInDbWriteScope } from "@/lib/db/db-write-context";
 import type { FinanceDbDriver } from "@/lib/db/finance-db-driver";
 import { PgFinanceDbDriver } from "@/lib/db/pg-driver";
 import {
@@ -4510,7 +4511,8 @@ export async function deleteSyncStateValue(key: string): Promise<void> {
 
 function enqueueDbWrite<T>(operation: () => Promise<T>): Promise<T> {
   const state = getFinanceDbState();
-  const nextOperation = state.writeQueue.then(operation, operation);
+  const scopedOperation = () => runInDbWriteScope(operation);
+  const nextOperation = state.writeQueue.then(scopedOperation, scopedOperation);
   state.writeQueue = nextOperation.then(
     () => undefined,
     () => undefined

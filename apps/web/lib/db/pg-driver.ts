@@ -1,10 +1,15 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { isInDbWriteScope } from "@/lib/db/db-write-context";
 import type { FinanceDbDriver, FinanceDbQueryResult } from "@/lib/db/finance-db-driver";
 
 export class PgFinanceDbDriver implements FinanceDbDriver {
   readonly dialect = "postgres" as const;
 
   private transactionClient: PoolClient | null = null;
+  // Transactions opened outside the write queue (none known today) keep the
+  // legacy route-everything-to-the-client behavior so we never strand their
+  // statements on the pool.
+  private transactionOutsideWriteScope = false;
 
   constructor(private readonly pool: Pool) {}
 
@@ -15,6 +20,7 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   async close(): Promise<void> {
     const client = this.transactionClient;
     this.transactionClient = null;
+    this.transactionOutsideWriteScope = false;
 
     if (client) {
       try {
@@ -34,11 +40,22 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   }
 
   async query<T>(sql: string, params?: readonly unknown[]): Promise<FinanceDbQueryResult<T>> {
-    const result = this.transactionClient
-      ? await this.transactionClient.query<QueryResultRow>(sql, params ? [...params] : undefined)
+    const result = this.shouldUseTransactionClient()
+      ? await this.transactionClient!.query<QueryResultRow>(sql, params ? [...params] : undefined)
       : await this.pool.query<QueryResultRow>(sql, params ? [...params] : undefined);
 
     return { rows: result.rows as T[] };
+  }
+
+  // A query rides the open transaction only when it comes from the write
+  // queue that owns it; concurrent page reads go to the pool so they neither
+  // pipeline on one client (pg deprecation) nor serialize behind sync writes.
+  private shouldUseTransactionClient(): boolean {
+    if (!this.transactionClient) {
+      return false;
+    }
+
+    return this.transactionOutsideWriteScope || isInDbWriteScope();
   }
 
   private async execStatement(sql: string): Promise<void> {
@@ -53,6 +70,10 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
       try {
         await client.query(sql);
         this.transactionClient = client;
+        this.transactionOutsideWriteScope = !isInDbWriteScope();
+        if (this.transactionOutsideWriteScope) {
+          console.warn("[pg-driver] BEGIN outside the DB write queue; falling back to legacy shared-client routing.");
+        }
       } catch (error) {
         client.release();
         throw error;
@@ -72,13 +93,14 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
         await client.query(sql);
       } finally {
         this.transactionClient = null;
+        this.transactionOutsideWriteScope = false;
         client.release();
       }
       return;
     }
 
-    if (this.transactionClient) {
-      await this.transactionClient.query(sql);
+    if (this.shouldUseTransactionClient()) {
+      await this.transactionClient!.query(sql);
       return;
     }
 
