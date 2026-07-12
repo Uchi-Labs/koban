@@ -316,7 +316,7 @@ function AppShellContent({
   async function syncNow() {
     setSyncing(true);
     setSyncStatus("syncing");
-    const loadingDescription = "Teller, sources, semantic updates, and AI enrichment are running.";
+    const loadingDescription = "Connected accounts, sources, semantic updates, and AI enrichment are running.";
     const toastId = showToast({
       description: (
         <span className="t-shimmer" data-text={loadingDescription}>
@@ -640,7 +640,7 @@ function AppSidebarSections({
           <p className="mt-2 text-sidebar-foreground/60">
             {source === "teller"
               ? `${accountCount} accounts · ${transactionCount.toLocaleString()} transactions. ${formatSyncAge(lastSyncedAt)}`
-              : "Connect Teller in Settings to populate accounts and transactions."}
+              : "Connect an account in Settings to populate accounts and transactions."}
           </p>
           <Button
             aria-label={syncButtonLabel}

@@ -1,20 +1,45 @@
 import type { Category } from "@ai-finances/schema";
-import React from "react";
-import { Badge } from "@/components/ui/badge";
+import { ArrowDownLeft, Car, Circle, Home, Laptop, Plane, Repeat2, ShoppingBag, Utensils } from "lucide-react";
+import type { CSSProperties, ComponentType } from "react";
+import { isValidCssColor, neutralCategoryColor } from "@/lib/category-style";
 import { cn } from "@/lib/utils";
 
+const categoryIcons: Record<string, ComponentType<{ className?: string }>> = {
+  "arrow-down-left": ArrowDownLeft,
+  car: Car,
+  circle: Circle,
+  home: Home,
+  laptop: Laptop,
+  plane: Plane,
+  repeat: Repeat2,
+  "shopping-bag": ShoppingBag,
+  utensils: Utensils
+};
+
+type PillStyle = CSSProperties & { "--pill-color": string };
+
 export function CategoryPill({ category, className }: { category: Category; className?: string }) {
+  const color = category.id === "cat_transfer"
+    ? "var(--chart-1)"
+    : isValidCssColor(category.color)
+      ? category.color
+      : neutralCategoryColor;
+  const emoji = category.emoji?.trim();
+  const CategoryIcon = categoryIcons[category.icon];
+
   return (
-    <Badge
-      className={cn("border-transparent font-medium", className)}
-      style={{
-        backgroundColor: `color-mix(in oklab, ${category.color} 12%, transparent)`,
-        color: `color-mix(in oklab, ${category.color} 72%, var(--foreground))`
-      }}
-      variant="outline"
+    <span
+      className={cn(
+        "pill-tint inline-flex h-5 min-w-0 items-center gap-1 rounded-full border px-2 text-[11px] font-medium leading-none whitespace-nowrap",
+        className
+      )}
+      data-transfer={category.id === "cat_transfer" ? "true" : undefined}
+      style={{ "--pill-color": color } as PillStyle}
     >
-      <span aria-hidden="true">{category.emoji ?? "🏷️"}</span>
-      {category.name}
-    </Badge>
+      <span aria-hidden="true" className="inline-flex shrink-0 items-center justify-center">
+        {emoji ? emoji : CategoryIcon ? <CategoryIcon className="size-3" /> : category.name.trim().charAt(0).toUpperCase() || "?"}
+      </span>
+      <span className="truncate">{category.name}</span>
+    </span>
   );
 }

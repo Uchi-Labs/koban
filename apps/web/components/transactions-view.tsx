@@ -2755,14 +2755,7 @@ function TransactionInspectorCategory({ model, transaction }: { model: Transacti
           >
             <span className="flex min-w-0 items-center gap-2">
               {transaction.category ? (
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="size-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: transaction.category.color }}
-                  />
-                  <span className="truncate">{transaction.category.name}</span>
-                </>
+                <CategoryPill className="max-w-full" category={transaction.category} />
               ) : (
                 <span className="text-muted-foreground">Choose category</span>
               )}

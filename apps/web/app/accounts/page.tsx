@@ -129,12 +129,12 @@ export default async function AccountsPage() {
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <section>
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Teller account ledger</p>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Synced accounts</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Balance by account</h1>
           <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
             {accounts.length > 0
-              ? `${accounts.length.toLocaleString()} accounts synced from Teller. Last sync ${formatDateTime(tellerLedger?.lastSyncedAt)}.`
-              : "No Teller accounts have been synced into the local database yet."}
+              ? `${accounts.length.toLocaleString()} synced accounts · last sync ${formatDateTime(tellerLedger?.lastSyncedAt)}`
+              : "No accounts have been synced into the local database yet."}
           </p>
         </section>
 
@@ -153,7 +153,7 @@ export default async function AccountsPage() {
         <Card>
           <CardHeader>
             <h2 className="text-base font-medium">Accounts</h2>
-            <p className="text-sm text-muted-foreground">Balances are raw Teller account balances; net-worth contribution subtracts liabilities.</p>
+            <p className="text-sm text-muted-foreground">Balances reflect the latest synced provider values; net-worth contribution subtracts liabilities.</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
             {accountGroups.map((group) => {
@@ -262,7 +262,7 @@ export default async function AccountsPage() {
               );
             })}
             {accounts.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">Use Settings to run Teller sync before this view has account rows.</p>
+              <p className="px-1 text-sm text-muted-foreground">Use Settings to sync an account before this view has account rows.</p>
             ) : null}
           </CardContent>
         </Card>
@@ -270,7 +270,7 @@ export default async function AccountsPage() {
         <Card>
           <CardHeader>
             <h2 className="text-base font-medium">Recent account activity</h2>
-            <p className="text-sm text-muted-foreground">Latest Teller transaction per account, useful for spotting stale connections.</p>
+            <p className="text-sm text-muted-foreground">Latest synced transaction per account, useful for spotting stale connections.</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-0.5">
             {accountRows.map((row) => {

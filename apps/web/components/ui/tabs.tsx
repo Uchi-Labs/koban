@@ -17,7 +17,7 @@ const TabsMotionContext = React.createContext<{
   value: TabsValue
 } | null>(null)
 
-const TabsListVariantContext = React.createContext<"default" | "line">("default")
+const TabsListVariantContext = React.createContext<"default" | "line" | "buttons">("default")
 const subscribeHydration = (_onStoreChange: () => void) => () => undefined
 const getHydratedSnapshot = () => true
 const getServerHydratedSnapshot = () => false
@@ -79,6 +79,7 @@ const tabsListVariants = cva(
       variant: {
         default: "bg-muted",
         line: "gap-1 bg-transparent",
+        buttons: "gap-1.5 bg-transparent p-0 group-data-horizontal/tabs:h-auto",
       },
     },
     defaultVariants: {
@@ -131,6 +132,7 @@ function TabsTrigger({ className, disabled, onClick, ...props }: TabsPrimitive.T
       className={cn(
         "relative isolate inline-flex h-[calc(100%-1px)] shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-2xl border border-transparent! px-3 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-colors group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start group-data-vertical/tabs:px-3 group-data-vertical/tabs:py-0.5 hover:text-foreground focus-visible:ring-[1.5px] focus-visible:ring-ring/45 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
+        "group-data-[variant=buttons]/tabs-list:h-8 group-data-[variant=buttons]/tabs-list:rounded-full group-data-[variant=buttons]/tabs-list:border-border/50! group-data-[variant=buttons]/tabs-list:px-3.5 group-data-[variant=buttons]/tabs-list:hover:bg-muted/40 group-data-[variant=buttons]/tabs-list:data-active:border-border! group-data-[variant=buttons]/tabs-list:data-active:hover:bg-transparent",
         "z-[1] data-active:text-foreground dark:data-active:text-foreground",
         "group-data-[variant=line]/tabs-list:overflow-visible",
         className
@@ -150,6 +152,14 @@ function TabsTrigger({ className, disabled, onClick, ...props }: TabsPrimitive.T
         <m.span
           aria-hidden="true"
           className="absolute inset-0 z-0 rounded-2xl border border-border/60 bg-background shadow-xs"
+          data-slot="tabs-indicator"
+          layoutId={indicatorLayoutId}
+        />
+      ) : null}
+      {active && listVariant === "buttons" ? (
+        <m.span
+          aria-hidden="true"
+          className="absolute inset-0 z-0 rounded-full bg-muted"
           data-slot="tabs-indicator"
           layoutId={indicatorLayoutId}
         />

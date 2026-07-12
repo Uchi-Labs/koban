@@ -124,6 +124,55 @@
   --negative: oklch(0.68 0.18 15);
 }
 
+/* Iconiq registry components inherit Koban's theme instead of carrying a
+   second light/dark token system. Keep these aliases centralized here so
+   future registry updates can stay source-compatible. */
+.iconiq-theme {
+  --ic-background: var(--background);
+  --ic-foreground: var(--foreground);
+  --ic-primary: var(--primary);
+  --ic-secondary: var(--secondary);
+  --ic-surface-border: var(--border);
+  --ic-border: var(--border);
+  --ic-card: var(--card);
+  --ic-card-foreground: var(--card-foreground);
+  --ic-muted: var(--muted);
+  --ic-muted-foreground: var(--muted-foreground);
+  --ic-accent: var(--accent);
+  --ic-accent-foreground: var(--accent-foreground);
+  --ic-input: var(--input);
+  --ic-ring: var(--ring);
+  --ic-destructive: var(--destructive);
+  --ic-paper: var(--card);
+  --ic-popover-foreground: var(--popover-foreground);
+  --ic-brand: var(--primary);
+  --ic-brand-soft: color-mix(in oklab, var(--primary) 16%, transparent);
+  --ic-shadow-soft: 0 18px 38px -24px color-mix(in oklab, var(--foreground) 24%, transparent);
+  --ic-card-rest-shadow: 0 1px 0 color-mix(in oklab, var(--foreground) 2%, transparent), 0 0 0 1px color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ic-card-hover-shadow: 0 20px 42px -30px color-mix(in oklab, var(--foreground) 22%, transparent), 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
+  --ic-chart-1: var(--chart-1);
+  --ic-chart-2: var(--chart-2);
+  --ic-chart-3: var(--chart-3);
+  --ic-chart-4: var(--chart-4);
+  --ic-chart-5: var(--chart-5);
+  --status-dot-neutral: var(--muted-foreground);
+  --status-dot-queued: var(--muted-foreground);
+  --status-dot-canceled: var(--muted-foreground);
+  --status-dot-active: var(--primary);
+  --status-dot-success: var(--positive);
+  --status-dot-warning: var(--chart-2);
+  --status-dot-error: var(--negative);
+}
+
+/* Semantic tint primitive for category/status pills. Consumers set
+   --pill-color to any trusted CSS color; the fallback stays theme-aware. */
+.pill-tint {
+  --pill-color: var(--muted-foreground);
+  border-color: color-mix(in oklab, var(--pill-color) 25%, transparent);
+  background-color: color-mix(in oklab, var(--pill-color) 14%, transparent);
+  color: var(--pill-color);
+}
+
 /* ── Motion tokens (transitions.dev scale + Emil's curves) ─────────── */
 :root {
   --duration-stagger: 40ms;
