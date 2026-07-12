@@ -161,7 +161,7 @@ export function CategoryEditDialog({
                   <button
                     aria-label={`Use color ${swatch}`}
                     aria-pressed={swatch === color}
-                    className="grid h-7 flex-1 place-items-center rounded-md transition-transform hover:scale-110 motion-reduce:hover:scale-100"
+                    className="grid h-7 flex-1 place-items-center rounded-full transition-transform hover:scale-110 motion-reduce:hover:scale-100"
                     key={swatch}
                     onClick={() => setColorDraft(swatch)}
                     style={{ backgroundColor: swatch }}

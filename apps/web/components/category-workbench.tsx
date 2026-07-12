@@ -8,9 +8,10 @@ import { CategoryEditDialog } from "@/components/category-manager";
 import { CategoryPill } from "@/components/category-pill";
 import { NewCategoryDialog } from "@/components/new-category-dialog";
 import { Button } from "@/components/ui/button";
-import { AnimatedNumber } from "@/components/ui/animated-number";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
+import { RollingDigits } from "@/components/ui/rolling-digits";
 import { formatCurrency } from "@/lib/format";
-import { EASE_OUT } from "@/lib/motion";
+import { EASE_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export interface MonthPoint {
@@ -173,26 +174,26 @@ function SummaryCard({
   return (
     <button
       className={cn(
-        "flex w-full items-center justify-around gap-8 rounded-2xl border bg-card px-8 py-5 text-left transition-colors",
-        selectedAll ? "border-ring/50 ring-1 ring-ring/30" : "border-border hover:border-border/80 hover:bg-muted/30"
+        "iconiq-theme flex w-full items-center justify-around gap-8 rounded-lg border bg-card/95 px-8 py-5 text-left shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color,box-shadow] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        selectedAll ? "border-ring/50 ring-1 ring-ring/30" : "border-border/70 hover:border-foreground/11 hover:bg-card hover:shadow-[var(--ic-card-hover-shadow)]"
       )}
       onClick={onSelectAll}
       type="button"
     >
       <div className="flex flex-col gap-0.5">
-        <AnimatedNumber className="text-2xl font-semibold tabular-nums" format={formatWhole} value={spent} />
+        <MoneyRollingWhole className="text-2xl" value={spent} />
         <span className="text-xs text-muted-foreground">spent in {monthLabel.split(" ")[0]}</span>
       </div>
-      <SpendDonut summaries={summaries} total={spent} />
+      <SpendDonut budget={budget} summaries={summaries} total={spent} />
       <div className="flex flex-col items-end gap-0.5">
-        <AnimatedNumber className="text-2xl font-semibold tabular-nums" format={formatWhole} value={budget} />
+        <MoneyRollingWhole className="text-2xl" value={budget} />
         <span className="text-xs text-muted-foreground">total budget</span>
       </div>
     </button>
   );
 }
 
-function SpendDonut({ summaries, total }: { summaries: CategorySummary[]; total: number }) {
+function SpendDonut({ budget, summaries, total }: { budget: number; summaries: CategorySummary[]; total: number }) {
   const segments = useMemo(() => {
     const spenders = summaries
       .filter(
@@ -214,28 +215,74 @@ function SpendDonut({ summaries, total }: { summaries: CategorySummary[]; total:
     });
   }, [summaries]);
 
-  const radius = 26;
+  const radius = 32;
   const circumference = 2 * Math.PI * radius;
+  const usedPct = budget > 0 ? Math.round((total / budget) * 100) : null;
 
   return (
-    <svg aria-hidden="true" className="size-[68px] shrink-0 -rotate-90" viewBox="0 0 68 68">
-      <circle cx="34" cy="34" fill="none" r={radius} stroke="var(--muted)" strokeWidth="9" />
-      {total > 0
-        ? segments.map((segment, index) => (
-            <circle
-              cx="34"
-              cy="34"
-              fill="none"
-              key={index}
-              r={radius}
-              stroke={segment.color}
-              strokeDasharray={`${segment.fraction * circumference} ${circumference}`}
-              strokeDashoffset={-segment.offset * circumference}
-              strokeWidth="9"
+    <div className="relative flex size-20 shrink-0 items-center justify-center">
+      <svg aria-hidden="true" className="size-20 -rotate-90" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" fill="none" r={radius} stroke="var(--muted)" strokeWidth="8" />
+        {total > 0
+          ? segments.map((segment, index) => (
+              <circle
+                cx="40"
+                cy="40"
+                fill="none"
+                key={index}
+                r={radius}
+                stroke={segment.color}
+                strokeDasharray={`${segment.fraction * circumference} ${circumference}`}
+                strokeDashoffset={-segment.offset * circumference}
+                strokeLinecap="round"
+                strokeWidth="8"
+              />
+            ))
+          : null}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center leading-none">
+        {usedPct === null ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          <span className="text-sm font-semibold tabular-nums">
+            <RollingDigits
+              animationDelay={ROLLING_DIGITS_HERO.animationDelay}
+              coalesceUpdates
+              direction="dynamic"
+              enterDamping={ROLLING_DIGITS_HERO.enterDamping}
+              enterStiffness={ROLLING_DIGITS_HERO.enterStiffness}
+              enterY={ROLLING_DIGITS_HERO.enterY}
+              format={(value) => `${Math.round(value)}%`}
+              gap={0}
+              startOnView={false}
+              value={usedPct}
             />
-          ))
-        : null}
-    </svg>
+          </span>
+        )}
+        <span className="text-[9px] text-muted-foreground">used</span>
+      </div>
+    </div>
+  );
+}
+
+/** Hero money figure with no cents, rolling on change -- same idiom as MoneyHero (dashboard hero cards). */
+function MoneyRollingWhole({ className, value }: { className?: string; value: number }) {
+  return (
+    <span className={cn("money-hero text-foreground", className)}>
+      <span className="money-symbol">$</span>
+      <RollingDigits
+        animationDelay={ROLLING_DIGITS_HERO.animationDelay}
+        coalesceUpdates
+        direction="dynamic"
+        enterDamping={ROLLING_DIGITS_HERO.enterDamping}
+        enterStiffness={ROLLING_DIGITS_HERO.enterStiffness}
+        enterY={ROLLING_DIGITS_HERO.enterY}
+        format={(rounded) => Math.round(rounded).toLocaleString("en-US")}
+        gap={0}
+        startOnView={false}
+        value={value}
+      />
+    </span>
   );
 }
 
@@ -261,7 +308,10 @@ function CategoryTable({
   summaries: CategorySummary[];
 }) {
   return (
-    <section aria-label="Regular categories" className="rounded-2xl border border-border bg-card">
+    <section
+      aria-label="Regular categories"
+      className="iconiq-theme rounded-lg border border-border/70 bg-card/95 shadow-[var(--ic-card-rest-shadow)]"
+    >
       <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2.5">
         <div className="flex min-w-0 flex-col">
           <h2 className="text-sm font-semibold tracking-tight">Regular Categories</h2>
@@ -347,7 +397,7 @@ function CategoryTableRow({
       </span>
       <div className="hidden sm:block">
         {summary.budgetAmount ? (
-          <BudgetBar pct={pct} />
+          <BudgetBar color={summary.color} pct={pct} />
         ) : (
           <span className="block text-[11px] text-muted-foreground">No budget</span>
         )}
@@ -385,11 +435,19 @@ function CategoryTableRow({
   );
 }
 
-function BudgetBar({ pct }: { pct: number }) {
+/** Category-color fill on a low-alpha track of the same color; over-budget switches the fill to --negative. */
+function BudgetBar({ color, pct }: { color: string; pct: number }) {
   const clamped = Math.min(100, Math.max(pct > 0 ? 4 : 0, pct));
+  const overBudget = pct >= 100;
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-      <span className="block h-full rounded-full transition-[width]" style={{ backgroundColor: budgetHealthColor(pct), width: `${clamped}%` }} />
+    <div
+      className="h-1.5 w-full overflow-hidden rounded-full"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)` }}
+    >
+      <span
+        className="block h-full rounded-full transition-[width]"
+        style={{ backgroundColor: overBudget ? "var(--negative)" : color, width: `${clamped}%` }}
+      />
     </div>
   );
 }
@@ -425,7 +483,7 @@ function DetailPane({
     <m.section
       animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
       aria-label="Category detail"
-      className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-5"
+      className="iconiq-theme flex flex-col gap-5 rounded-lg border border-border/70 bg-card/95 p-5 shadow-[var(--ic-card-rest-shadow)]"
       exit={reduce ? { opacity: 0 } : { opacity: 0, filter: "blur(2px)", y: -4 }}
       initial={reduce ? { opacity: 0 } : { opacity: 0, filter: "blur(2px)", y: 4 }}
       key={detail.id}
@@ -468,7 +526,7 @@ function DetailPane({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
           <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Spent in {monthLabel.split(" ")[0]}</span>
-          <AnimatedNumber className="text-2xl font-semibold tabular-nums" format={formatWhole} value={detail.spentThisMonth} />
+          <MoneyRollingWhole className="text-2xl" value={detail.spentThisMonth} />
           {remaining !== undefined ? (
             <span className={cn("text-xs tabular-nums", remaining < 0 ? "text-[var(--negative)]" : "text-muted-foreground")}>
               {remaining < 0 ? `${formatCurrency(Math.abs(remaining))} over` : `${formatCurrency(remaining)} left`}
@@ -488,6 +546,7 @@ function DetailPane({
       )}
 
       <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
+      <AllCategoriesList onSelect={onSelect} selectedId={selectedId} summaries={summaries} />
     </m.section>
       </AnimatePresence>
     </LazyMotion>
@@ -524,34 +583,36 @@ function SpendTimeline({ detail }: { detail: CategoryDetail }) {
   const monthlyBudget = detail.budgetAmount;
 
   return (
-    <div className="rounded-xl border border-border/70 bg-background/40 p-4">
-      <div className="flex h-32 items-end gap-[3px]">
-        {detail.monthly.map((point) => {
-          const height = (point.spent / max) * 100;
-          const overBudget = monthlyBudget !== undefined && point.spent > monthlyBudget;
-          return (
-            <div
-              className="group/bar relative flex h-full flex-1 items-end"
-              key={point.month}
-              title={`${formatMonthShort(point.month)}: ${formatCurrency(point.spent)}`}
-            >
-              <span
-                className="w-full rounded-sm transition-[height]"
-                style={{
-                  backgroundColor: point.spent === 0 ? "var(--muted)" : overBudget ? "var(--negative)" : "var(--positive)",
-                  height: `${Math.max(point.spent > 0 ? 3 : 1.5, height)}%`,
-                  opacity: point.spent === 0 ? 0.4 : 1
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-2 flex justify-between text-[10px] tracking-wide text-muted-foreground tabular-nums">
-        <span>{formatMonthShort(detail.monthly[0]?.month ?? "")}</span>
-        <span>{formatMonthShort(detail.monthly.at(-1)?.month ?? "")}</span>
-      </div>
-    </div>
+    <IconiqCard className="rounded-lg border-border/70 bg-card/60">
+      <IconiqCardContent className="flex flex-col gap-2">
+        <div className="flex h-32 items-end gap-[3px]">
+          {detail.monthly.map((point) => {
+            const height = (point.spent / max) * 100;
+            const overBudget = monthlyBudget !== undefined && point.spent > monthlyBudget;
+            return (
+              <div
+                className="group/bar relative flex h-full flex-1 items-end"
+                key={point.month}
+                title={`${formatMonthShort(point.month)}: ${formatCurrency(point.spent)}`}
+              >
+                <span
+                  className="w-full rounded-sm transition-[height]"
+                  style={{
+                    backgroundColor: point.spent === 0 ? "var(--muted)" : overBudget ? "var(--negative)" : "var(--positive)",
+                    height: `${Math.max(point.spent > 0 ? 3 : 1.5, height)}%`,
+                    opacity: point.spent === 0 ? 0.4 : 1
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-between text-[10px] tracking-wide text-muted-foreground tabular-nums">
+          <span>{formatMonthShort(detail.monthly[0]?.month ?? "")}</span>
+          <span>{formatMonthShort(detail.monthly.at(-1)?.month ?? "")}</span>
+        </div>
+      </IconiqCardContent>
+    </IconiqCard>
   );
 }
 
@@ -561,41 +622,99 @@ function KeyMetrics({ detail, transactionsToReview }: { detail: CategoryDetail; 
   }
 
   return (
-    <div className="flex w-full flex-col gap-1">
-      <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 px-1 pb-1.5">
-        <span className="text-sm font-semibold tracking-tight">Key metrics</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent / year</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Avg / month</span>
-      </div>
-      {detail.yearly.map((row) => (
-        <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-muted/40" key={row.year}>
-          <span className="text-sm text-muted-foreground tabular-nums">{row.year}</span>
-          <span className="text-right text-sm tabular-nums">{formatCurrency(row.spent)}</span>
-          <span className="text-right text-sm tabular-nums">{formatCurrency(row.avgMonthly)}</span>
+    <IconiqCard className="rounded-lg border-border/70 bg-card/60">
+      <IconiqCardContent className="flex w-full flex-col gap-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 px-1 pb-1.5">
+          <span className="text-sm font-semibold tracking-tight">Key metrics</span>
+          <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent / year</span>
+          <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Avg / month</span>
         </div>
-      ))}
-      {detail.id === "__all__" && transactionsToReview > 0 ? (
-        <p className="px-1 pt-1 text-xs text-muted-foreground">{transactionsToReview.toLocaleString()} transactions still to review.</p>
-      ) : null}
-    </div>
+        {detail.yearly.map((row) => (
+          <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-muted/40" key={row.year}>
+            <span className="text-sm text-muted-foreground tabular-nums">{row.year}</span>
+            <span className="text-right text-sm tabular-nums">{formatCurrency(row.spent)}</span>
+            <span className="text-right text-sm tabular-nums">{formatCurrency(row.avgMonthly)}</span>
+          </div>
+        ))}
+        {detail.id === "__all__" && transactionsToReview > 0 ? (
+          <p className="px-1 pt-1 text-xs text-muted-foreground">{transactionsToReview.toLocaleString()} transactions still to review.</p>
+        ) : null}
+      </IconiqCardContent>
+    </IconiqCard>
+  );
+}
+
+/** Compact all-categories recap (name, spent, budget, left) inside the detail pane, per the Copilot reference's right-panel list. Always shows every category, independent of the current selection. */
+function AllCategoriesList({
+  onSelect,
+  selectedId,
+  summaries
+}: {
+  onSelect: (id: string | null) => void;
+  selectedId: string | null;
+  summaries: CategorySummary[];
+}) {
+  if (summaries.length === 0) {
+    return null;
+  }
+
+  return (
+    <IconiqCard className="rounded-lg border-border/70 bg-card/60">
+      <IconiqCardContent className="flex w-full flex-col gap-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 px-1 pb-1.5">
+        <span className="text-sm font-semibold tracking-tight">All categories</span>
+        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
+        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
+        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
+      </div>
+      <div className="scroll-fade-sm flex max-h-64 flex-col overflow-y-auto">
+        {summaries.map((summary) => {
+          const remaining = summary.budgetAmount === undefined ? undefined : summary.budgetAmount - summary.spentThisMonth;
+          const category: Category = {
+            archived: false,
+            color: summary.color,
+            emoji: summary.emoji,
+            icon: "circle",
+            id: summary.id,
+            name: summary.name,
+            sortOrder: 0
+          };
+
+          return (
+            <button
+              className={cn(
+                "grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+                selectedId === summary.id ? "bg-accent" : "hover:bg-muted/40"
+              )}
+              key={summary.id}
+              onClick={() => onSelect(summary.id === selectedId ? null : summary.id)}
+              type="button"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <CategoryPill category={category} className="max-w-full" />
+              </span>
+              <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
+              <span className="text-right text-sm tabular-nums text-muted-foreground">
+                {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
+              </span>
+              <span
+                className={cn(
+                  "text-right text-sm tabular-nums",
+                  remaining === undefined ? "text-muted-foreground" : remaining < 0 ? "text-(--negative)" : "text-(--positive)"
+                )}
+              >
+                {remaining === undefined ? "—" : formatCurrency(remaining)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      </IconiqCardContent>
+    </IconiqCard>
   );
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function budgetHealthColor(pct: number): string {
-  if (pct >= 100) {
-    return "var(--negative)";
-  }
-  if (pct >= 75) {
-    return "oklch(0.78 0.15 72)";
-  }
-  return "var(--positive)";
-}
-
-function formatWhole(value: number): string {
-  return formatCurrency(Math.round(value));
-}
 
 function formatMonthShort(month: string): string {
   if (!month) {

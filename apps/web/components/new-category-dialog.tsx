@@ -248,7 +248,7 @@ export function NewCategoryDialog({
                   <button
                     aria-label={`Use color ${swatch}`}
                     aria-pressed={selected}
-                    className="grid h-7 flex-1 place-items-center rounded-md transition-transform hover:scale-110 motion-reduce:hover:scale-100"
+                    className="grid h-7 flex-1 place-items-center rounded-full transition-transform hover:scale-110 motion-reduce:hover:scale-100"
                     key={swatch}
                     onClick={() => updateState({ color: swatch })}
                     style={{ backgroundColor: swatch }}
@@ -264,7 +264,7 @@ export function NewCategoryDialog({
           </div>
 
           <button
-            className="h-11 w-full rounded-xl text-sm font-semibold tracking-wide uppercase transition-[filter] hover:brightness-110 disabled:opacity-60"
+            className="h-11 w-full rounded-2xl text-sm font-semibold tracking-wide uppercase shadow-[var(--ic-card-rest-shadow)] transition-[filter] hover:brightness-110 disabled:opacity-60"
             disabled={busy === "save"}
             style={{ backgroundColor: color, color: saveTextColor }}
             type="submit"

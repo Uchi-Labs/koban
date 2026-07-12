@@ -1,23 +1,27 @@
 import type { Account, Transaction } from "@ai-finances/schema";
-import type React from "react";
 import { ArrowRight, Banknote, CreditCard, Landmark, TrendingUp, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { AccountCardDialog } from "@/components/account-card-dialog";
+import { AccountFaviconBadge } from "@/components/account-favicon-badge";
+import { AccountsNetWorthCard } from "@/components/accounts-net-worth-card";
+import { AccountsSummaryStrip, type AccountsSummaryStat } from "@/components/accounts-summary-strip";
+import { LivelineChart } from "@/components/liveline-chart";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { formatCurrency } from "@/lib/format";
-import { getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
+import { type AccountBalanceSnapshot, getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
+import { accountHistory, computePortfolioChange, type PortfolioPoint } from "@/lib/investments";
+import { buildNetWorthRangeTrends } from "@/lib/net-worth-trend";
 import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
-import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { cn } from "@/lib/utils";
 
-const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
 const shortDateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   hour: "numeric",
   minute: "2-digit",
   month: "short"
 });
+const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
 
 /*
  * Each account group (Cash / Credit cards / Investments / Other) gets a fixed hue drawn from the
@@ -31,50 +35,34 @@ type GroupAccent = { colorVar: string; hoverClassName: string; icon: typeof Land
 const GROUP_ACCENTS: Record<string, GroupAccent> = {
   group_cash: {
     colorVar: "--chart-5",
-    hoverClassName: "hover:bg-[color-mix(in_oklab,var(--chart-5)_10%,var(--muted))]",
+    hoverClassName: "hover:border-[color-mix(in_oklab,var(--chart-5)_22%,var(--border))]",
     icon: Landmark
   },
   group_credit: {
     colorVar: "--chart-2",
-    hoverClassName: "hover:bg-[color-mix(in_oklab,var(--chart-2)_10%,var(--muted))]",
+    hoverClassName: "hover:border-[color-mix(in_oklab,var(--chart-2)_22%,var(--border))]",
     icon: CreditCard
   },
   group_investments: {
     colorVar: "--chart-4",
-    hoverClassName: "hover:bg-[color-mix(in_oklab,var(--chart-4)_10%,var(--muted))]",
+    hoverClassName: "hover:border-[color-mix(in_oklab,var(--chart-4)_22%,var(--border))]",
     icon: TrendingUp
   },
   group_other: {
     colorVar: "--chart-1",
-    hoverClassName: "hover:bg-[color-mix(in_oklab,var(--chart-1)_10%,var(--muted))]",
+    hoverClassName: "hover:border-[color-mix(in_oklab,var(--chart-1)_22%,var(--border))]",
     icon: Banknote
   }
 };
 
 const DEFAULT_GROUP_ACCENT: GroupAccent = {
   colorVar: "--chart-3",
-  hoverClassName: "hover:bg-[color-mix(in_oklab,var(--chart-3)_10%,var(--muted))]",
+  hoverClassName: "hover:border-[color-mix(in_oklab,var(--chart-3)_22%,var(--border))]",
   icon: WalletCards
 };
 
 function accentForGroup(groupId: string): GroupAccent {
   return GROUP_ACCENTS[groupId] ?? DEFAULT_GROUP_ACCENT;
-}
-
-function hashSeed(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-/** Stable per-account tonal step within a group's hue, hashed from a seed (institution name, falling back to account id). */
-function accountDotColor(colorVar: string, seed: string): string {
-  // color-mix() percentages must stay <= 100 -- anything higher is invalid CSS and resolves to transparent.
-  const steps = [58, 72, 86, 100];
-  const mixPercent = steps[hashSeed(seed) % steps.length];
-  return `color-mix(in oklab, var(${colorVar}) ${mixPercent}%, var(--background))`;
 }
 
 /** Credit cards / loans carry a balance that represents money owed; a nonzero balance reads as a negative signal regardless of stored sign, a zero balance is neutral (nothing owed). */
@@ -104,8 +92,8 @@ function toneClassName(tone: "negative" | "neutral" | "positive") {
 
 export default async function AccountsPage() {
   const { accountGroups, accounts, dashboardSummary, tellerLedger, transactions } = await getFinanceData();
-  const latestTransactionDate = getLatestTransactionDate(transactions);
-  const accountRows = accounts.map((account) => createAccountRow(account, transactions, latestTransactionDate));
+  const balanceSnapshots = tellerLedger?.balanceSnapshots ?? [];
+  const accountRows = accounts.map((account) => createAccountRow(account, transactions, balanceSnapshots));
   const accountRowsByGroup = new Map(accountGroups.map((group) => [
     group.id,
     accountRows.filter((row) => group.accountIds.includes(row.account.id))
@@ -119,12 +107,25 @@ export default async function AccountsPage() {
   const liabilities = accountRows
     .filter((row) => row.netWorthContribution < 0)
     .reduce((total, row) => total + Math.abs(row.netWorthContribution), 0);
+  const netWorthTrends = buildNetWorthRangeTrends(dashboardSummary.netWorth, transactions);
+
+  const summaryStats: AccountsSummaryStat[] = [
+    {
+      currency: "USD",
+      icon: <WalletCards size={14} />,
+      label: "Net worth",
+      tone: signTone(dashboardSummary.netWorth),
+      value: dashboardSummary.netWorth
+    },
+    { currency: "USD", icon: <Landmark size={14} />, label: "Assets", tone: "positive", value: assets },
+    { currency: "USD", icon: <CreditCard size={14} />, label: "Liabilities", tone: "negative", value: liabilities },
+    { label: "Synced accounts", value: accounts.length }
+  ];
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="accounts-page">
       <header className="flex items-center justify-between gap-3 border-b border-border px-6 py-3.5">
         <span className="text-[13px] font-semibold tracking-tight">Accounts</span>
-        <NetWorthAccountsDialog groups={buildNetWorthToggleGroups(accounts)} />
       </header>
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
@@ -138,17 +139,14 @@ export default async function AccountsPage() {
           </p>
         </section>
 
-        <section aria-label="Account totals" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <MetricCard
-            icon={<WalletCards size={16} />}
-            label="Net worth"
-            tone={signTone(dashboardSummary.netWorth)}
-            value={formatCurrency(dashboardSummary.netWorth)}
-          />
-          <MetricCard icon={<Landmark size={16} />} label="Assets" tone="positive" value={formatCurrency(assets)} />
-          <MetricCard icon={<CreditCard size={16} />} label="Liabilities" tone="negative" value={formatCurrency(liabilities)} />
-          <MetricCard label="Synced accounts" value={accounts.length.toLocaleString()} />
-        </section>
+        <AccountsNetWorthCard
+          currency={dashboardSummary.currency}
+          currentNetWorth={dashboardSummary.netWorth}
+          settingsSlot={<NetWorthAccountsDialog groups={buildNetWorthToggleGroups(accounts)} />}
+          trends={netWorthTrends}
+        />
+
+        <AccountsSummaryStrip stats={summaryStats} />
 
         <Card>
           <CardHeader>
@@ -164,10 +162,10 @@ export default async function AccountsPage() {
               const GroupIcon = accent.icon;
 
               return (
-                <div className="flex flex-col gap-1" key={group.id}>
+                <div className="flex flex-col gap-1.5" key={group.id}>
                   <div
-                    className="flex items-center justify-between rounded-lg px-3 py-1"
-                    style={{ backgroundColor: `color-mix(in oklab, var(${accent.colorVar}) 7%, transparent)` }}
+                    className="flex items-center justify-between rounded-lg px-3 py-1.5"
+                    style={{ backgroundColor: `color-mix(in oklab, var(${accent.colorVar}) 8%, transparent)` }}
                   >
                     <div className="flex items-center gap-2">
                       <span
@@ -183,24 +181,21 @@ export default async function AccountsPage() {
                       <h3 className="text-sm font-semibold">{group.name}</h3>
                       <span className="text-xs text-muted-foreground">{groupRows.length.toLocaleString()} accounts</span>
                     </div>
-                    {/* Trailing spacers mirror each row's card-button + arrow columns (gap-3 each)
-                        so the group subtotal right-aligns with the per-row Net-worth impact figures. */}
-                    <div className="flex items-center gap-3">
-                      <strong className="text-sm font-semibold tabular-nums">{formatCurrency(groupContribution, groupCurrency)}</strong>
-                      <span aria-hidden="true" className="size-7 shrink-0" />
-                      <span aria-hidden="true" className="size-4 shrink-0" />
-                    </div>
+                    <strong className="text-sm font-semibold tabular-nums">{formatCurrency(groupContribution, groupCurrency)}</strong>
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col gap-1">
                     {groupRows.map((row) => {
                       const supportsDetails =
                         row.account.id.startsWith("teller_") &&
                         (row.account.type === "checking" || row.account.type === "savings" || row.account.type === "cash");
+                      const change = computePortfolioChange(row.history);
+                      const changePositive = change !== null && change.amount >= 0;
 
                       return (
                         <div
                           className={cn(
-                            "group relative grid grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto_auto] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
+                            "group relative flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm transition-[background-color,border-color] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                            "hover:border-border/60 hover:bg-card",
                             accent.hoverClassName
                           )}
                           key={row.account.id}
@@ -212,38 +207,40 @@ export default async function AccountsPage() {
                             className="absolute inset-0 rounded-xl"
                             href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
                           />
-                          <div className="flex min-w-0 items-start gap-2">
-                            <span
-                              aria-hidden="true"
-                              className="mt-1.5 size-2 shrink-0 rounded-full"
-                              style={{
-                                backgroundColor: accountDotColor(accent.colorVar, row.account.institutionName || row.account.id)
-                              }}
-                            />
-                            <div className="min-w-0">
-                              <p className="truncate font-medium">{row.account.name}</p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {row.account.institutionName}
-                                {row.account.mask ? ` ${row.account.mask}` : ""}
-                              </p>
-                            </div>
+                          <AccountFaviconBadge
+                            accentColorVar={accent.colorVar}
+                            fallbackIcon={<accent.icon size={13} />}
+                            institutionName={row.account.institutionName}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium">{row.account.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {row.account.institutionName}
+                              {row.account.mask ? ` ····${row.account.mask}` : ""}
+                            </p>
                           </div>
-                          <RowStat
-                            label="Current"
-                            tone={currentBalanceTone(row.account)}
-                            value={formatCurrency(row.account.currentBalance, row.account.currency)}
-                          />
-                          <RowStat
-                            label="Available"
-                            value={row.account.availableBalance === undefined ? "N/A" : formatCurrency(row.account.availableBalance, row.account.currency)}
-                          />
-                          <RowStat label="30 day spend" value={formatCurrency(row.thirtyDaySpending, row.account.currency)} />
-                          <RowStat
-                            label="Net-worth impact"
-                            tone={signTone(row.netWorthContribution)}
-                            value={formatSignedCurrency(row.netWorthContribution, row.account.currency)}
-                          />
-                          <span className="relative z-10 flex size-7 items-center justify-center">
+                          {row.history.length >= 2 ? (
+                            <div className="relative z-10 hidden w-20 shrink-0 sm:block">
+                              <LivelineChart height={28} points={row.history} sparkline />
+                            </div>
+                          ) : null}
+                          {change !== null ? (
+                            <span
+                              className={cn(
+                                "hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums sm:inline-flex",
+                                changePositive ? "bg-(--positive)/10 text-(--positive)" : "bg-destructive/10 text-destructive"
+                              )}
+                            >
+                              {changePositive ? "+" : ""}
+                              {change.percent.toFixed(2)}%
+                            </span>
+                          ) : null}
+                          <span
+                            className={cn("min-w-[6rem] shrink-0 text-right font-medium tabular-nums", toneClassName(currentBalanceTone(row.account)))}
+                          >
+                            {formatCurrency(row.account.currentBalance, row.account.currency)}
+                          </span>
+                          <span className="relative z-10 flex size-7 shrink-0 items-center justify-center">
                             {supportsDetails ? (
                               <AccountCardDialog
                                 accountId={row.account.id}
@@ -253,7 +250,7 @@ export default async function AccountsPage() {
                               />
                             ) : null}
                           </span>
-                          <ArrowRight className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                          <ArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                         </div>
                       );
                     })}
@@ -279,10 +276,7 @@ export default async function AccountsPage() {
               return (
                 <Link
                   aria-label={`View recent transactions for ${row.account.name}`}
-                  className={cn(
-                    "group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors",
-                    accent.hoverClassName
-                  )}
+                  className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50"
                   href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
                   key={`${row.account.id}-activity`}
                 >
@@ -290,9 +284,7 @@ export default async function AccountsPage() {
                     <span
                       aria-hidden="true"
                       className="mt-1.5 size-2 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor: accountDotColor(accent.colorVar, row.account.institutionName || row.account.id)
-                      }}
+                      style={{ backgroundColor: `var(${accent.colorVar})` }}
                     />
                     <div className="min-w-0">
                       <p className="truncate font-medium">{row.account.name}</p>
@@ -314,92 +306,44 @@ export default async function AccountsPage() {
   );
 }
 
-function MetricCard({
-  icon,
-  label,
-  tone = "neutral",
-  value
-}: {
-  icon?: React.ReactNode;
-  label: string;
-  tone?: "negative" | "neutral" | "positive";
-  value: string;
-}) {
-  return (
-    <Card size="sm">
-      <CardContent className="flex flex-col gap-1.5">
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {icon ? (
-            <span
-              aria-hidden="true"
-              className={cn(
-                "flex size-5 items-center justify-center rounded-md",
-                tone === "negative" && "bg-(--negative)/12 text-(--negative)",
-                tone === "positive" && "bg-(--positive)/12 text-(--positive)",
-                tone === "neutral" && "text-muted-foreground"
-              )}
-            >
-              {icon}
-            </span>
-          ) : null}
-          {label}
-        </span>
-        <strong className={cn("text-lg font-semibold tabular-nums", toneClassName(tone))}>{value}</strong>
-      </CardContent>
-    </Card>
-  );
-}
-
-function RowStat({
-  label,
-  tone = "neutral",
-  value
-}: {
-  label: string;
-  tone?: "negative" | "neutral" | "positive";
-  value: string;
-}) {
+function RowStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 text-right">
       <p className="truncate text-[11px] text-muted-foreground">{label}</p>
-      <p className={cn("truncate text-sm font-medium tabular-nums", toneClassName(tone))}>{value}</p>
+      <p className="truncate text-sm font-medium tabular-nums">{value}</p>
     </div>
   );
 }
 
-function createAccountRow(account: Account, transactions: Transaction[], latestTransactionDate?: string) {
+const ROW_HISTORY_WINDOW_DAYS = 90;
+
+function createAccountRow(account: Account, transactions: Transaction[], balanceSnapshots: AccountBalanceSnapshot[]) {
   const accountTransactions = transactions
     .filter((transaction) => transaction.accountId === account.id)
     .sort((left, right) => right.date.localeCompare(left.date));
   const latestTransaction = accountTransactions[0];
-  const thirtyDaySpending = accountTransactions
-    .filter((transaction) => isSpendingTransaction(transaction) && isWithinDays(transaction.date, latestTransactionDate, 30))
-    .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
 
   return {
     account,
+    // Row sparkline/delta are a recent-trend glance, not the full multi-year
+    // history -- an account's whole lifetime first-to-last delta (e.g. a credit
+    // card opened at $0, now carrying a balance) reads as a meaningless four-digit
+    // percentage. Bounding to the trailing window keeps it honest and legible.
+    history: recentHistory(accountHistory(account.id, balanceSnapshots), ROW_HISTORY_WINDOW_DAYS),
     latestTransaction,
     netWorthContribution: getAccountNetWorthContribution(account),
-    thirtyDaySpending: roundMoney(thirtyDaySpending),
     transactionCount: accountTransactions.length
   };
 }
 
-function getLatestTransactionDate(transactions: Transaction[]) {
-  return transactions.map((transaction) => transaction.date).sort().at(-1);
-}
-
-function isWithinDays(date: string, referenceDate: string | undefined, days: number) {
-  if (!referenceDate) {
-    return false;
+function recentHistory(history: PortfolioPoint[], days: number): PortfolioPoint[] {
+  const latestPoint = history.at(-1);
+  if (!latestPoint) {
+    return history;
   }
 
-  const difference = Date.parse(`${referenceDate}T12:00:00Z`) - Date.parse(`${date}T12:00:00Z`);
-  return difference >= 0 && difference <= days * 86_400_000;
-}
-
-function formatSignedCurrency(amount: number, currency = "USD") {
-  return `${amount < 0 ? "-" : ""}${formatCurrency(Math.abs(amount), currency)}`;
+  const cutoff = latestPoint.time - days * 86_400;
+  return history.filter((point) => point.time >= cutoff);
 }
 
 function commonCurrency(currencies: string[]) {
@@ -417,8 +361,4 @@ function formatDateTime(date?: string) {
   }
 
   return shortDateTimeFormatter.format(new Date(date));
-}
-
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
 }
