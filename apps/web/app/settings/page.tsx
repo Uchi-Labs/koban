@@ -272,7 +272,7 @@ export default async function SettingsPage() {
       </header>
 
       <Tabs defaultValue="connections" className="gap-5">
-        <TabsList className="w-full max-w-xl justify-start">
+        <TabsList variant="buttons" className="justify-start">
           <TabsTrigger value="connections">Connections</TabsTrigger>
           <TabsTrigger value="sync-ai">Sync &amp; AI</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>

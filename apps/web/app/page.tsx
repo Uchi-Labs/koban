@@ -68,7 +68,7 @@ export default async function DashboardPage() {
         />
         {source === "teller" ? (
           <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
-            Synced Teller data
+            Synced accounts
           </Badge>
         ) : null}
       </div>
@@ -217,7 +217,7 @@ export default async function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-sm text-muted-foreground">Sync more Teller history to infer recurring charges.</p>
+              <p className="py-4 text-sm text-muted-foreground">Sync more account history to infer recurring charges.</p>
             )}
           </DashboardCard>
         </div>
@@ -243,7 +243,7 @@ export default async function DashboardPage() {
                   </Link>
                 </>
               }
-              description="Sync a Teller connection or import historical transactions before account totals can be summarized."
+              description="Sync a connected account or import historical transactions before account totals can be summarized."
               icon={<WalletCards className="size-5" />}
               title="Connect an account"
             />
