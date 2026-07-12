@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
-import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
 import { TextReveal } from "@/components/motion/text-reveal";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
@@ -233,8 +232,8 @@ export default async function DashboardPage() {
 
                   return (
                     <Link href="/recurrings" key={item.id}>
-                      <IconiqCard interactive className="gap-0 rounded-xl border-border/50 bg-background/45 py-0">
-                        <IconiqCardContent className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
+                        <div className="flex items-center gap-3 px-3 py-2.5">
                           <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
                           {domain ? <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} /> : null}
                           <div className="flex min-w-0 flex-1 flex-col">
@@ -248,8 +247,8 @@ export default async function DashboardPage() {
                           <span className="min-w-[5rem] text-right text-sm font-medium tabular-nums text-foreground">
                             {formatCurrency(Math.abs(item.amount), item.currency)}
                           </span>
-                        </IconiqCardContent>
-                      </IconiqCard>
+                        </div>
+                      </div>
                     </Link>
                   );
                 })}
