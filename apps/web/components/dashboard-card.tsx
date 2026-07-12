@@ -75,19 +75,19 @@ export function DashboardCard({
       <IconiqCardHeader
         data-dashboard-card-plane="secondary"
         className={cn(
-          "grid grid-cols-[1fr_auto] items-center gap-3 px-5 pt-4 pb-3"
+          "grid min-h-12 grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5"
         )}
       >
-        <IconiqCardTitle as="h2" className="card-label text-sm">{title}</IconiqCardTitle>
+        <IconiqCardTitle as="h2" className="card-label self-center text-sm leading-none">{title}</IconiqCardTitle>
         {action ? (
-          <IconiqCardAction>
+          <IconiqCardAction className="row-span-1 self-center">
             <DashboardCardAction action={action} />
           </IconiqCardAction>
         ) : null}
       </IconiqCardHeader>
       <IconiqCardContent
         data-dashboard-card-plane="primary"
-        className={cn("relative flex flex-col gap-2 px-5 pb-5", contentClassName)}
+        className={cn("relative flex flex-col gap-2 px-5 pt-4 pb-5", contentClassName)}
       >
         {children}
       </IconiqCardContent>
