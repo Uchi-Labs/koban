@@ -2,6 +2,7 @@
 
 import { Check, CircleAlert, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import React from "react";
 import { useState } from "react";
 import { Amount } from "@/components/amount";
@@ -11,8 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { ActionSwapIcon, ActionSwapText } from "@/components/ui/action-swap";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/card";
+import { FaviconBadge } from "@/components/ui/favicon-badge";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { useToast } from "@/components/ui/toast";
 import { formatCurrency } from "@/lib/format";
+import { merchantDomain } from "@/lib/merchant-domain";
 import type { TransactionView } from "@/lib/view-models";
 
 const lastSyncedFormatter = new Intl.DateTimeFormat("en-US", {
@@ -142,18 +146,35 @@ export function DashboardReviewCard({
         <FinanceStatItem animatedCurrency={displayCurrency} animatedValue={reviewTotalAmount} label="Amount" tone="primary" />
         <FinanceStatItem label="Synced" tone="muted" value={formatLastSynced(lastSyncedAt)} />
       </FinanceStatStrip>
-      <div className="divide-y divide-border">
-        {displayRows.map((transaction) => (
-          <div className="flex items-center gap-3 py-2" key={transaction.id}>
-            <span className="size-3.5 shrink-0 rounded-[4px] border border-border" aria-hidden="true" />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-foreground">{transaction.merchant}</span>
-              <span className="truncate text-xs text-muted-foreground">{transaction.accountName}</span>
-            </div>
-            {transaction.category ? <CategoryPill category={transaction.category} /> : null}
-            <Amount amount={transaction.amount} className="min-w-[5.5rem] text-right" currency={transaction.currency} />
-          </div>
-        ))}
+      <div className="grid gap-2">
+        {displayRows.map((transaction) => {
+          const domain = merchantDomain(transaction.merchant);
+
+          return (
+            <Link href="/transactions?review=actionable" key={transaction.id}>
+              <IconiqCard interactive className="gap-0 rounded-xl border-border/50 bg-background/45 py-0">
+                <IconiqCardContent className="flex items-center gap-3 px-3 py-2.5">
+                  {domain ? (
+                    <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/50 text-[10px] font-semibold text-muted-foreground"
+                    >
+                      {transaction.merchant.charAt(0).toUpperCase() || "?"}
+                    </span>
+                  )}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">{transaction.merchant}</span>
+                    <span className="truncate text-xs text-muted-foreground">{transaction.accountName}</span>
+                  </div>
+                  {transaction.category ? <CategoryPill category={transaction.category} /> : null}
+                  <Amount amount={transaction.amount} className="min-w-[5.5rem] text-right" currency={transaction.currency} />
+                </IconiqCardContent>
+              </IconiqCard>
+            </Link>
+          );
+        })}
         {displayRows.length === 0 ? (
           <EmptyState
             actions={<Badge variant="synced">Reviewed</Badge>}

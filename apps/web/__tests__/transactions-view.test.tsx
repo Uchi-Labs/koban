@@ -196,6 +196,7 @@ describe("TransactionsView", () => {
       }
     );
     clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.stubGlobal("PointerEvent", MouseEvent);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ data: [] }), { headers: { "Content-Type": "application/json" } }))
@@ -339,6 +340,64 @@ describe("TransactionsView", () => {
     expect(screen.getAllByTestId("transaction-row")).toHaveLength(transactions.length);
   });
 
+  it("grafts bulk actions onto the static transaction rows without replacing the list", async () => {
+    renderTransactions();
+
+    await userEvent.click(screen.getByLabelText("Select Figma for bulk actions"));
+
+    const bulkActions = screen.getByLabelText("Bulk transaction actions");
+    expect(bulkActions).toHaveTextContent("1selected");
+    expect(within(bulkActions).getByRole("button", { name: "Category" })).toBeInTheDocument();
+    expect(within(bulkActions).getByRole("button", { name: "Add tag" })).toBeInTheDocument();
+    expect(within(bulkActions).getByRole("button", { name: "Mark reviewed" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("transaction-row")).toHaveLength(transactions.length);
+  });
+
+  it("loops the existing transaction PATCH when bulk-marking selected rows reviewed", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (init?.method === "PATCH" && url === "/api/v1/transactions/txn_figma") {
+        return new Response(JSON.stringify({ object: "transaction", reviewed: true }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      return new Response(JSON.stringify({ data: [] }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderTransactions();
+
+    await userEvent.click(screen.getByLabelText("Select Figma for bulk actions"));
+    await userEvent.click(within(screen.getByLabelText("Bulk transaction actions")).getByRole("button", { name: "Mark reviewed" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/transactions/txn_figma",
+        expect.objectContaining({
+          body: JSON.stringify({ reviewed: true }),
+          method: "PATCH"
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Bulk transaction actions")).not.toBeInTheDocument();
+    });
+  });
+
+  it("reveals the beui overflow action set for a row", async () => {
+    renderTransactions();
+
+    await userEvent.click(screen.getByRole("button", { name: "Show actions for Figma" }));
+
+    expect(screen.getByRole("button", { name: "Mark Figma reviewed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit category for Figma" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add tag to Figma" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exclude Figma" })).toBeInTheDocument();
+  });
+
   it("toggles the selected transaction review state through the local v1 API", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -409,7 +468,7 @@ describe("TransactionsView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add tag" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Tags saved to the local Teller ledger.")).toBeInTheDocument();
+      expect(screen.getByText("Tags saved to the local transaction ledger.")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Remove tag airport" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(

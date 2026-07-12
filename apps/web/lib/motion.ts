@@ -48,3 +48,11 @@ export const SPRING_MOUSE = {
   mass: 0.3,
   stiffness: 200,
 } as const;
+
+/** Dashboard hero digits — quick, controlled rolls after a value changes. */
+export const ROLLING_DIGITS_HERO = {
+  animationDelay: 55,
+  enterDamping: 24,
+  enterStiffness: 320,
+  enterY: 14,
+} as const;

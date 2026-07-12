@@ -1335,19 +1335,19 @@ button.transaction-review-row:active {
   /* True columns: merchant/account own the flexible track, then fixed-width
      category, amount, and review-dot tracks so pills start at the same x and
      amounts align vertically down the list. Mobile drops the category track. */
-  grid-template-columns: 1.75rem minmax(0, 1fr) 5.5rem 0.5rem;
+  grid-template-columns: 1rem 1.75rem minmax(0, 1fr) 5.5rem 0.5rem;
   position: relative;
 }
 
 @media (min-width: 640px) {
   .ledger-transaction-row {
-    grid-template-columns: 1.75rem minmax(0, 1fr) 8rem 5.5rem 0.5rem;
+    grid-template-columns: 1rem 1.75rem minmax(0, 1fr) 8rem 5.5rem 0.5rem;
   }
 }
 
 @media (min-width: 1280px) {
   .ledger-transaction-row {
-    grid-template-columns: 1.75rem minmax(0, 1fr) 9rem 5.5rem 0.5rem;
+    grid-template-columns: 1rem 1.75rem minmax(0, 1fr) 9rem 5.5rem 0.5rem;
   }
 }
 
@@ -1369,7 +1369,8 @@ button.transaction-review-row:active {
 }
 
 .ledger-transaction-row:hover,
-.ledger-transaction-row[data-selected] {
+.ledger-transaction-row[data-selected],
+.ledger-transaction-row[data-bulk-selected] {
   --transaction-row-edge-bg: var(--accent);
 }
 

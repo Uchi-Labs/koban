@@ -3,15 +3,19 @@
 import type { Category, TagStyle } from "@ai-finances/schema";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
+  Ban,
   Check,
+  CheckCheck,
   ChevronDown,
   Clock3,
   Download,
+  Eraser,
   Flag,
   Link2,
   Mic,
   Plus,
   Search,
+  Shapes,
   Square,
   Tag,
   Target,
@@ -32,6 +36,8 @@ import { tagStyleMap } from "@/components/tag-style-map";
 import { TransactionTagPopover, type TagOption } from "@/components/transaction-tag-popover";
 import { TransactionGoalPopover, type FinancialGoal } from "@/components/transaction-goal-popover";
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import { ExpandableActionBar } from "@/components/motion/expandable-action-bar";
+import { OverflowActions } from "@/components/motion/overflow-actions";
 import { RangeSlider } from "@/components/motion/range-slider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +45,7 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { EmptyState } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -55,7 +62,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SwipeableRow, useCoarsePointer } from "@/components/ui/swipeable-list";
 import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
@@ -459,6 +465,17 @@ function useTransactionsViewModel({
     });
   }
 
+  function updateRowsOptimistically(updater: (currentRows: TransactionView[]) => TransactionView[]) {
+    setTransactionWindow((currentWindow) => ({
+      ...currentWindow,
+      rows: updater(currentWindow.rows)
+    }));
+    setReviewWindow((currentWindow) => ({
+      ...currentWindow,
+      rows: updater(currentWindow.rows)
+    }));
+  }
+
   const initialSelectedTransaction =
     transactions.find((transaction) =>
       transactionMatchesInitialFilters(transaction, {
@@ -469,8 +486,9 @@ function useTransactionsViewModel({
       })
     ) ?? transactions[0];
   const [selectedId, setSelectedId] = useState(initialSelectedTransaction?.id ?? "");
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(() => new Set());
   const [inspectorOpen, setInspectorOpen] = useState(transactions.length > 0);
-  const [inspectorFocusTarget, setInspectorFocusTarget] = useState<"category" | null>(null);
+  const [inspectorFocusTarget, setInspectorFocusTarget] = useState<"category" | "tag" | null>(null);
   const [newRuleContext, setNewRuleContext] = useState<{ category: Category; merchant: string } | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<TransactionEvidenceView[]>([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
@@ -511,6 +529,7 @@ function useTransactionsViewModel({
   const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(() => new Set());
   const [reviewBusy, setReviewBusy] = useState(false);
   const [bulkReviewState, setBulkReviewState] = useState<ButtonState>("idle");
+  const [bulkMutationBusy, setBulkMutationBusy] = useState(false);
   const [reviewMessage, setReviewMessage] = useState("");
   const { showToast, updateToast } = useToast();
   const [tagStyles, setTagStyles] = useState<TagStyle[]>(initialTagStyles);
@@ -797,6 +816,14 @@ function useTransactionsViewModel({
 
   const groupedTransactions = useMemo(() => groupByDate(filteredTransactions), [filteredTransactions]);
 
+  useEffect(() => {
+    setSelectedTransactionIds((current) => {
+      const visible = new Set(filteredTransactions.map((transaction) => transaction.id));
+      const next = new Set(Array.from(current).filter((id) => visible.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filteredTransactions]);
+
   // Review tab: only actionable rows, honoring the shared search/account/category filters.
   const reviewTransactions = useMemo(() => {
     if (windowed) {
@@ -861,12 +888,16 @@ function useTransactionsViewModel({
 
   const allReviewSelected =
     reviewTransactions.length > 0 && reviewTransactions.every((transaction) => selectedReviewIds.has(transaction.id));
+  const allTransactionsSelected =
+    filteredTransactions.length > 0 && filteredTransactions.every((transaction) => selectedTransactionIds.has(transaction.id));
 
   return {
     accountId,
     allReviewSelected,
+    allTransactionsSelected,
     amountRangeMax,
     bulkReviewState,
+    bulkMutationBusy,
     categories,
     categoryId,
     evidenceItems,
@@ -903,6 +934,7 @@ function useTransactionsViewModel({
     rowsHasMore,
     rowsLoading,
     selectedReviewIds,
+    selectedTransactionIds,
     selectedTransaction,
     selectedTransactionId,
     inspectorFocusTarget,
@@ -922,6 +954,8 @@ function useTransactionsViewModel({
     windowed,
     addTag,
     applyCategoryToAllMatching,
+    bulkAddTag,
+    bulkUpdateCategory,
     commitCategoryFromPicker,
     downloadTransactionsCsv,
     handleRuleCreated,
@@ -944,6 +978,7 @@ function useTransactionsViewModel({
     setQuery,
     setReviewFilter,
     setSelectedReviewIds,
+    setSelectedTransactionIds,
     setTab,
     setTagDraftState,
     startVoiceRecognition,
@@ -952,6 +987,8 @@ function useTransactionsViewModel({
     toggleReviewRow,
     toggleReviewed,
     toggleSelectAllReview,
+    toggleSelectAllTransactions,
+    toggleTransactionRow,
     updateEvidenceStatus,
     updateTagColor,
     updateTransactionCategory,
@@ -960,7 +997,7 @@ function useTransactionsViewModel({
     assignTransactionGoal
   };
 
-  function selectTransaction(transaction: TransactionView, options?: { focus?: "category" }) {
+  function selectTransaction(transaction: TransactionView, options?: { focus?: "category" | "tag" }) {
     if (transaction.id !== selectedTransactionId) {
       stopVoiceRecognition();
     }
@@ -1006,6 +1043,38 @@ function useTransactionsViewModel({
 
   function toggleSelectAllReview(checked: boolean) {
     setSelectedReviewIds(checked ? new Set(reviewTransactions.map((transaction) => transaction.id)) : new Set());
+  }
+
+  function toggleTransactionRow(id: string, checked: boolean) {
+    setSelectedTransactionIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllTransactions(checked: boolean) {
+    setSelectedTransactionIds(
+      checked ? new Set(filteredTransactions.map((transaction) => transaction.id)) : new Set()
+    );
+  }
+
+  function clearSelectedIds(ids: Iterable<string>) {
+    const clearedIds = new Set(ids);
+    const withoutCleared = (current: Set<string>) => {
+      const next = new Set(current);
+      for (const id of clearedIds) {
+        next.delete(id);
+      }
+      return next;
+    };
+
+    setSelectedTransactionIds(withoutCleared);
+    setSelectedReviewIds(withoutCleared);
   }
 
   async function loadMoreTransactions() {
@@ -1139,6 +1208,13 @@ function useTransactionsViewModel({
         }
         return next;
       });
+      setSelectedTransactionIds((current) => {
+        const next = new Set(current);
+        for (const id of ids) {
+          next.delete(id);
+        }
+        return next;
+      });
       setReviewMessage(`${ids.length.toLocaleString()} transactions marked reviewed.`);
       setBulkReviewState("success");
       updateToast(toastId, {
@@ -1161,6 +1237,174 @@ function useTransactionsViewModel({
       setReviewBusy(false);
       resetButtonState(setBulkReviewState);
     }
+  }
+
+  async function bulkUpdateCategory(ids: string[], nextCategoryId: string) {
+    if (ids.length === 0 || bulkMutationBusy) {
+      return;
+    }
+
+    const selectedIds = new Set(ids);
+    const availableRowsById = new Map([...rows, ...reviewRows].map((transaction) => [transaction.id, transaction]));
+    const selectedRows = ids.flatMap((id) => {
+      const transaction = availableRowsById.get(id);
+      return transaction ? [transaction] : [];
+    });
+    const nextCategory = categoryById.get(nextCategoryId);
+
+    if (selectedRows.length === 0 || !nextCategory) {
+      return;
+    }
+
+    const previousCategoryById = new Map(
+      selectedRows.map((transaction) => [
+        transaction.id,
+        { category: transaction.category, categoryId: transaction.categoryId }
+      ])
+    );
+    const succeeded = new Set<string>();
+    const failed = new Set<string>();
+
+    setBulkMutationBusy(true);
+    updateRowsOptimistically((currentRows) =>
+      currentRows.map((row) =>
+        selectedIds.has(row.id)
+          ? { ...row, category: nextCategory, categoryId: nextCategoryId }
+          : row
+      )
+    );
+
+    await Promise.all(
+      selectedRows.map(async (transaction) => {
+        const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}`, {
+          body: JSON.stringify({ category_id: nextCategoryId }),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH"
+        }).catch(() => null);
+
+        if (response?.ok) {
+          succeeded.add(transaction.id);
+        } else {
+          failed.add(transaction.id);
+        }
+      })
+    );
+
+    if (failed.size > 0) {
+      updateRowsOptimistically((currentRows) =>
+        currentRows.map((row) => {
+          const previous = previousCategoryById.get(row.id);
+          return previous ? { ...row, ...previous } : row;
+        })
+      );
+    }
+
+    if (succeeded.size > 0) {
+      updateRows((currentRows) =>
+        currentRows.map((row) =>
+          succeeded.has(row.id)
+            ? { ...row, category: nextCategory, categoryId: nextCategoryId }
+            : row
+        )
+      );
+      clearSelectedIds(succeeded);
+    }
+
+    if (failed.size > 0) {
+      toast.error(
+        `${failed.size.toLocaleString()} of ${selectedRows.length.toLocaleString()} transactions could not be categorized.`
+      );
+    } else {
+      toast.success(
+        `${selectedRows.length.toLocaleString()} transaction${selectedRows.length === 1 ? "" : "s"} categorized as ${nextCategory.name}.`
+      );
+    }
+
+    setBulkMutationBusy(false);
+  }
+
+  async function bulkAddTag(ids: string[], tagName: string) {
+    const tag = tagName.trim();
+
+    if (!tag || ids.length === 0 || bulkMutationBusy) {
+      return;
+    }
+
+    const selectedIds = new Set(ids);
+    const availableRowsById = new Map([...rows, ...reviewRows].map((transaction) => [transaction.id, transaction]));
+    const selectedRows = ids.flatMap((id) => {
+      const transaction = availableRowsById.get(id);
+      return transaction ? [transaction] : [];
+    });
+    const previousTagsById = new Map(selectedRows.map((transaction) => [transaction.id, transaction.tags]));
+    const optimisticTagsById = new Map(
+      selectedRows.map((transaction) => [
+        transaction.id,
+        normalizeTags(
+          transaction.tags.some((candidate) => candidate.toLowerCase() === tag.toLowerCase())
+            ? transaction.tags
+            : [...transaction.tags, tag]
+        )
+      ])
+    );
+    const savedTagsById = new Map<string, string[]>();
+    const failed = new Set<string>();
+
+    setBulkMutationBusy(true);
+    updateRowsOptimistically((currentRows) =>
+      currentRows.map((row) => {
+        const nextTags = optimisticTagsById.get(row.id);
+        return nextTags ? { ...row, tags: nextTags } : row;
+      })
+    );
+
+    await Promise.all(
+      selectedRows.map(async (transaction) => {
+        const nextTags = optimisticTagsById.get(transaction.id) ?? transaction.tags;
+        const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}`, {
+          body: JSON.stringify({ tags: nextTags }),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH"
+        }).catch(() => null);
+
+        if (!response?.ok) {
+          failed.add(transaction.id);
+          return;
+        }
+
+        const body = (await response.json().catch(() => ({}))) as TransactionPatchApiResponse;
+        savedTagsById.set(transaction.id, body.tags ?? body.transaction?.tags ?? nextTags);
+      })
+    );
+
+    if (failed.size > 0) {
+      updateRowsOptimistically((currentRows) =>
+        currentRows.map((row) => {
+          const previousTags = failed.has(row.id) ? previousTagsById.get(row.id) : undefined;
+          return previousTags ? { ...row, tags: previousTags } : row;
+        })
+      );
+    }
+
+    if (savedTagsById.size > 0) {
+      updateRows((currentRows) =>
+        currentRows.map((row) => {
+          const nextTags = savedTagsById.get(row.id);
+          return nextTags ? { ...row, tags: nextTags } : row;
+        })
+      );
+      clearSelectedIds(savedTagsById.keys());
+    }
+
+    if (failed.size > 0) {
+      toast.error(`${failed.size.toLocaleString()} transactions could not be tagged.`);
+    } else {
+      toast.success(
+        `Added ${tag} to ${selectedRows.length.toLocaleString()} transaction${selectedRows.length === 1 ? "" : "s"}.`
+      );
+    }
+
+    setBulkMutationBusy(false);
   }
 
   async function updateTransactionCategory(
@@ -1460,7 +1704,7 @@ function useTransactionsViewModel({
 
     const nextTags = body.tags ?? body.transaction?.tags ?? normalizedTags;
     updateRows((currentRows) => currentRows.map((row) => (row.id === transaction.id ? { ...row, tags: nextTags } : row)));
-    setInspectorMessage("Tags saved to the local Teller ledger.");
+    setInspectorMessage("Tags saved to the local transaction ledger.");
   }
 
   // Row/inspector tag popover: flip a single tag on or off, then reuse the
@@ -1927,10 +2171,10 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
   ];
 
   return (
-    <header className="flex flex-col gap-3 border-b border-border px-3 py-2.5 sm:px-6 md:flex-row md:items-center md:justify-between">
+    <header className="flex flex-col gap-3 border-b border-border/50 bg-background/95 px-3 py-2.5 backdrop-blur sm:px-6 md:flex-row md:items-center md:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-4">
         <h1 className="text-sm font-semibold tracking-tight">Transactions</h1>
-        <TabsList className="min-w-0" variant="line">
+        <TabsList className="min-w-0" variant="buttons">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="review">
             Review
@@ -1951,6 +2195,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
       <div className="flex w-full min-w-0 flex-wrap items-center gap-2 md:w-auto md:flex-1 md:justify-end">
         <Button
           aria-label="Download transactions"
+          className="rounded-full"
           onClick={model.downloadTransactionsCsv}
           size="icon-sm"
           type="button"
@@ -1962,7 +2207,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           Press Command K to open the global command palette.
         </span>
         <InputGroup
-          className={cn("t-clear h-8 min-w-[14rem] flex-1 rounded-xl bg-input/50 sm:w-64 sm:flex-none lg:w-72", model.query && "has-value")}
+          className={cn("t-clear h-9 min-w-[14rem] flex-1 rounded-full border border-border/50 bg-input/35 sm:w-64 sm:flex-none lg:w-72", model.query && "has-value")}
           ref={searchClearRef}
         >
           <div className="t-clear-mirror px-8 text-sm text-foreground" aria-hidden="true">
@@ -1978,7 +2223,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           <InputGroupInput
             aria-describedby={commandHintId}
             aria-label="Search transactions"
-            className="h-8 px-2 text-sm"
+            className="h-9 px-2 text-sm"
             onChange={(event) => model.setQuery(event.target.value)}
             value={model.query}
           />
@@ -2014,13 +2259,13 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           </InputGroupAddon>
         </InputGroup>
         <div aria-label="Transaction amount filters" className="flex min-w-0 flex-1 items-center gap-1 sm:flex-none">
-          <InputGroup className="h-8 min-w-0 flex-1 rounded-xl bg-input/50 sm:w-24 sm:flex-none">
+          <InputGroup className="h-9 min-w-0 flex-1 rounded-full border border-border/50 bg-input/35 sm:w-24 sm:flex-none">
             <InputGroupAddon align="inline-start" className="pl-2 pr-0">
               <InputGroupText className="text-xs">$</InputGroupText>
             </InputGroupAddon>
             <InputGroupInput
               aria-label="Minimum transaction amount"
-              className="h-8 px-2 text-sm"
+              className="h-9 px-2 text-sm"
               inputMode="decimal"
               onChange={(event) => model.setMinAmount(
                 clampAmountInput(event.target.value, model.maxAmount, model.amountRangeMax, "minimum")
@@ -2029,13 +2274,13 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
               value={model.minAmount}
             />
           </InputGroup>
-          <InputGroup className="h-8 min-w-0 flex-1 rounded-xl bg-input/50 sm:w-24 sm:flex-none">
+          <InputGroup className="h-9 min-w-0 flex-1 rounded-full border border-border/50 bg-input/35 sm:w-24 sm:flex-none">
             <InputGroupAddon align="inline-start" className="pl-2 pr-0">
               <InputGroupText className="text-xs">$</InputGroupText>
             </InputGroupAddon>
             <InputGroupInput
               aria-label="Maximum transaction amount"
-              className="h-8 px-2 text-sm"
+              className="h-9 px-2 text-sm"
               inputMode="decimal"
               onChange={(event) => model.setMaxAmount(
                 clampAmountInput(event.target.value, model.minAmount, model.amountRangeMax, "maximum")
@@ -2047,7 +2292,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
         </div>
         <RangeSlider
           aria-label="transaction amount range"
-          className="w-44 shrink-0"
+          className="h-9 w-44 shrink-0 rounded-full border border-border/50 bg-input/35"
           max={model.amountRangeMax}
           min={0}
           onValueChange={([minimum, maximum]) => {
@@ -2066,7 +2311,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           }}
           value={model.categoryId}
         >
-          <SelectTrigger aria-label="Filter by category" className="h-8 min-w-0 flex-1 sm:w-40 sm:flex-none">
+          <SelectTrigger aria-label="Filter by category" className="h-9 min-w-0 flex-1 rounded-full border-border/50 bg-input/35 sm:w-40 sm:flex-none">
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end">
@@ -2081,7 +2326,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
         </Select>
         {model.tab === "all" ? (
           <Select
-          items={REVIEW_FILTER_ITEMS}
+            items={REVIEW_FILTER_ITEMS}
             onValueChange={(value) => {
               if (isTransactionReviewFilter(value)) {
                 model.setReviewFilter(value);
@@ -2089,7 +2334,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             }}
             value={model.reviewFilter}
           >
-            <SelectTrigger aria-label="Filter by review state" className="h-8 min-w-0 flex-1 sm:w-40 sm:flex-none">
+            <SelectTrigger aria-label="Filter by review state" className="h-9 min-w-0 flex-1 rounded-full border-border/50 bg-input/35 sm:w-40 sm:flex-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
@@ -2111,10 +2356,25 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
 function TransactionsList({ model }: { model: TransactionsViewModel }) {
   return (
     <section aria-label="Transactions" className="flex min-h-0 min-w-0 flex-col">
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-muted/15 px-4 py-2 sm:px-6">
+        <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground" htmlFor="transaction-select-all">
+          <Checkbox
+            aria-label="Select all loaded transactions"
+            checked={model.allTransactionsSelected}
+            id="transaction-select-all"
+            indeterminate={!model.allTransactionsSelected && model.selectedTransactionIds.size > 0}
+            onCheckedChange={(checked) => model.toggleSelectAllTransactions(checked === true)}
+          />
+          Select loaded
+        </label>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {model.filteredTransactions.length.toLocaleString("en-US")} loaded
+        </span>
+      </div>
       {model.hasActiveFilters ? (
         <div
           aria-label="Active transaction filters"
-          className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground sm:px-6"
+          className="flex flex-wrap items-center gap-2 border-b border-border/40 bg-muted/10 px-4 py-2 text-xs text-muted-foreground sm:px-6"
         >
           {model.accountId ? <span>Account: {accountLabel(model.rows, model.accountId)}</span> : null}
           {model.categoryId !== "all" ? <span>Category: {categoryLabel(model.categories, model.categoryId)}</span> : null}
@@ -2130,7 +2390,85 @@ function TransactionsList({ model }: { model: TransactionsViewModel }) {
       ) : null}
 
       {model.windowed ? <VirtualizedTransactionsList model={model} /> : <StaticTransactionsList model={model} />}
+      <TransactionBulkActions ids={model.selectedTransactionIds} model={model} />
     </section>
+  );
+}
+
+function TransactionBulkActions({ ids, model }: { ids: Set<string>; model: TransactionsViewModel }) {
+  if (ids.size === 0) {
+    return null;
+  }
+
+  const selectedIds = Array.from(ids);
+  const busy = model.reviewBusy || model.bulkMutationBusy;
+
+  return (
+    <div
+      aria-label="Bulk transaction actions"
+      className="sticky bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/88 px-4 py-2.5 backdrop-blur-xl sm:px-6"
+    >
+      <span className="inline-flex items-center gap-2 text-sm">
+        <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold tabular-nums text-primary">
+          {ids.size}
+        </span>
+        selected
+      </span>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <CategoryPicker
+          aiSuggestionEnabled={model.aiSuggestionEnabled}
+          aiSuggestionMessage={model.aiSuggestionMessage}
+          categories={model.categories}
+          excludeCategoryId={null}
+          onSelect={(categoryId) => void model.bulkUpdateCategory(selectedIds, categoryId)}
+          uncategorizedMerchants={model.uncategorizedMerchants}
+        >
+          <Button className="rounded-full" disabled={busy} size="sm" type="button" variant="outline">
+            <Shapes className="size-4" />
+            Category
+          </Button>
+        </CategoryPicker>
+        <TransactionTagPopover
+          onToggle={(tag) => void model.bulkAddTag(selectedIds, tag)}
+          selected={[]}
+          tags={model.allTagOptions}
+        >
+          <Button className="rounded-full" disabled={busy} size="sm" type="button" variant="outline">
+            <Tag className="size-4" />
+            Add tag
+          </Button>
+        </TransactionTagPopover>
+        <ExpandableActionBar
+          classNames={{
+            track: "border-border/60 bg-card/95 shadow-lg",
+            item: "data-[disabled]:opacity-40"
+          }}
+          expandOnFocus={false}
+          expandOnHover={false}
+          expanded
+          items={[
+            {
+              disabled: busy,
+              icon: <CheckCheck className="size-4" />,
+              id: "mark-reviewed",
+              label: "Mark reviewed",
+              onClick: () => void model.markTransactionsReviewed(selectedIds)
+            },
+            {
+              disabled: busy,
+              icon: <Eraser className="size-4" />,
+              id: "clear-selection",
+              label: "Clear",
+              onClick: () => {
+                model.setSelectedTransactionIds(new Set());
+                model.setSelectedReviewIds(new Set());
+              }
+            }
+          ]}
+          size="sm"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -2332,13 +2670,15 @@ function TransactionRowButton({
   const visibleTags = userFacingTags.slice(0, 1);
   const extraTagCount = userFacingTags.length - visibleTags.length;
   const selectTransaction = () => model.selectTransaction(transaction);
+  const bulkSelected = model.selectedTransactionIds.has(transaction.id);
 
   return (
     <div
       className={cn(
         "ledger-transaction-row group/row relative grid w-full items-center gap-2.5 px-4 py-1 text-left transition-colors sm:px-6",
-        isSelected && "bg-accent"
+        (isSelected || bulkSelected) && "bg-accent"
       )}
+      data-bulk-selected={bulkSelected ? "" : undefined}
       data-selected={isSelected ? "" : undefined}
       data-testid="transaction-row"
     >
@@ -2349,6 +2689,15 @@ function TransactionRowButton({
         onClick={selectTransaction}
         type="button"
       />
+      <span className="pointer-events-auto relative z-20 flex items-center justify-center">
+        <Checkbox
+          aria-label={`Select ${transaction.merchant} for bulk actions`}
+          checked={bulkSelected}
+          onCheckedChange={(checked) => model.toggleTransactionRow(transaction.id, checked === true)}
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        />
+      </span>
       <span className="pointer-events-none relative z-10">
         <MerchantAvatar name={transaction.merchant} />
       </span>
@@ -2405,43 +2754,11 @@ function TransactionRowButton({
           </span>
         ) : null}
 
-        <span className="row-actions pointer-events-auto hidden w-0 shrink-0 items-center gap-0.5 overflow-hidden opacity-0 transition-opacity duration-150 group-hover/row:w-auto group-hover/row:opacity-100 group-focus-within/row:w-auto group-focus-within/row:opacity-100 has-[[aria-expanded=true]]:w-auto has-[[aria-expanded=true]]:opacity-100 motion-reduce:transition-none sm:flex">
-          <button
-            aria-label={
-              transaction.reviewed
-                ? `Move ${transaction.merchant} back to review`
-                : `Mark ${transaction.merchant} reviewed`
-            }
-            className={cn(
-              "inline-flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              transaction.reviewed && "text-(--positive)"
-            )}
-            onClick={(event) => {
-              stopPropagation(event);
-              void model.toggleReviewed(transaction);
-            }}
-            onPointerDown={stopPropagation}
-            type="button"
-          >
-            <Flag className={cn("size-3.5", transaction.reviewed && "fill-current")} />
-          </button>
-
-          <TransactionTagPopover
-            onToggle={(tag) => void model.toggleTransactionTagByName(transaction, tag)}
-            selected={transaction.tags}
-            tags={model.allTagOptions}
-          >
-            <button
-              aria-label={`Tag ${transaction.merchant}`}
-              className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
-              onClick={stopPropagation}
-              onPointerDown={stopPropagation}
-              type="button"
-            >
-              <Tag className="size-3.5" />
-            </button>
-          </TransactionTagPopover>
-
+        <span
+          className="row-actions pointer-events-auto hidden w-0 shrink-0 items-center gap-1 overflow-hidden opacity-0 transition-opacity duration-150 group-hover/row:w-auto group-hover/row:opacity-100 group-focus-within/row:w-auto group-focus-within/row:opacity-100 has-[[aria-expanded=true]]:w-auto has-[[aria-expanded=true]]:opacity-100 motion-reduce:transition-none sm:flex"
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        >
           <TransactionGoalPopover
             onAssign={(goal) => void model.assignTransactionGoal(transaction, goal)}
             value={assignedGoal?.id}
@@ -2456,6 +2773,50 @@ function TransactionRowButton({
               <Target className="size-3.5" />
             </button>
           </TransactionGoalPopover>
+          <OverflowActions
+            classNames={{
+              action: "bg-background/80",
+              toggle: "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground",
+              track: "border-0 bg-transparent p-0 shadow-none"
+            }}
+            collapseOnAction
+            openLabel={`Show actions for ${transaction.merchant}`}
+            overflowActions={[
+              {
+                ariaLabel: transaction.reviewed
+                  ? `Move ${transaction.merchant} back to review`
+                  : `Mark ${transaction.merchant} reviewed`,
+                icon: <Flag className={cn("size-3.5", transaction.reviewed && "fill-current text-(--positive)")} />,
+                id: "review",
+                label: transaction.reviewed ? "Move to review" : "Mark reviewed",
+                onClick: () => void model.toggleReviewed(transaction)
+              },
+              {
+                ariaLabel: `Edit category for ${transaction.merchant}`,
+                icon: <Shapes className="size-3.5" />,
+                id: "category",
+                label: "Edit category",
+                onClick: () => model.selectTransaction(transaction, { focus: "category" })
+              },
+              {
+                ariaLabel: `Add tag to ${transaction.merchant}`,
+                icon: <Tag className="size-3.5" />,
+                id: "tag",
+                label: "Add tag",
+                onClick: () => model.selectTransaction(transaction, { focus: "tag" })
+              },
+              {
+                ariaLabel: `Exclude ${transaction.merchant}`,
+                disabled: transaction.categoryId === "cat_transfer",
+                icon: <Ban className="size-3.5" />,
+                id: "exclude",
+                label: "Exclude",
+                onClick: () => void model.updateTransactionCategory(transaction.id, "cat_transfer")
+              }
+            ]}
+            primaryActions={[]}
+            size="sm"
+          />
         </span>
       </span>
 
@@ -2592,7 +2953,7 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
           className="mt-0 border-border bg-background/40"
           description={
             model.rows.length === 0
-              ? "Sync Teller data from settings to populate this view."
+              ? "Sync a connected account from settings to populate this view."
               : "Select a transaction to inspect tags, notes, evidence, and review state."
           }
           icon={<Search className="size-5" />}
@@ -2606,7 +2967,7 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
   return (
     <aside
       aria-label="Selected transaction inspector"
-      className="t-panel-slide hidden min-h-0 flex-col overflow-y-auto border-l border-border bg-card lg:flex [--panel-translate-y:24px]"
+      className="t-panel-slide hidden min-h-0 flex-col overflow-y-auto border-l border-border/60 bg-muted/10 lg:flex [--panel-translate-y:24px]"
       data-animating={panelAnimating ? "true" : undefined}
       data-open={model.inspectorOpen ? "true" : "false"}
       onTransitionEnd={finishPanelTransition}
@@ -2645,29 +3006,25 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
         </div>
       </header>
 
-      <section className="flex items-start justify-between gap-4 px-5 py-4">
-        <div className="min-w-0">
-          <span className="text-xs text-muted-foreground">{transaction.dateLabel}</span>
-          <h2 className="mt-0.5 truncate text-lg font-semibold">{transaction.merchant}</h2>
-          <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <TextSwap className="text-xs text-muted-foreground capitalize" value={transaction.status} />
-          <Badge variant={transaction.reviewed ? "synced" : "review"}>
-            {transaction.reviewed ? "Reviewed" : "To review"}
-          </Badge>
-          <Amount amount={transaction.amount} compact currency={transaction.currency} />
-        </div>
-      </section>
-
-      <Separator />
-      <TransactionInspectorCategory model={model} transaction={transaction} />
-      <Separator />
-      <TransactionInspectorTags model={model} transaction={transaction} />
-      <Separator />
-      <TransactionInspectorNotes model={model} transaction={transaction} />
-      <Separator />
-      <TransactionInspectorEvidence model={model} transaction={transaction} />
+      <div className="grid gap-3 p-3">
+        <IconiqCard className="gap-0 rounded-xl border-border/50 bg-card/90 py-0 shadow-sm">
+          <IconiqCardContent className="flex items-start justify-between gap-4 px-4 py-4">
+            <div className="min-w-0">
+              <span className="text-xs text-muted-foreground">{transaction.dateLabel}</span>
+              <h2 className="mt-0.5 truncate text-lg font-semibold">{transaction.merchant}</h2>
+              <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <TextSwap className="text-xs text-muted-foreground capitalize" value={transaction.status} />
+              <Badge variant={transaction.reviewed ? "synced" : "review"}>
+                {transaction.reviewed ? "Reviewed" : "To review"}
+              </Badge>
+              <Amount amount={transaction.amount} compact currency={transaction.currency} />
+            </div>
+          </IconiqCardContent>
+        </IconiqCard>
+        <TransactionInspectorDetails model={model} transaction={transaction} />
+      </div>
       {model.inspectorMessage ? (
         <p aria-live="polite" className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
           {model.inspectorMessage}
@@ -2700,40 +3057,37 @@ function MobileTransactionInspector({ model }: { model: TransactionsViewModel })
     >
       {transaction ? (
         <div className="min-h-0">
-          <section className="flex items-start justify-between gap-4 pb-4">
-            <div className="min-w-0">
-              <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {transaction.status === "pending" ? "Pending transaction" : "Posted transaction"}
-              </span>
-              <h2 className="mt-1 truncate text-lg font-semibold">{transaction.merchant}</h2>
-              <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
-              {transaction.categoryId === "cat_transfer" ? (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  Internal transfer
-                  {(() => {
-                    const counterpart = transaction.pairedTransactionId
-                      ? model.rows.find((row) => row.id === transaction.pairedTransactionId)
-                      : undefined;
-                    return counterpart ? ` · linked to ${counterpart.accountName}` : "";
-                  })()}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <Badge variant={transaction.reviewed ? "synced" : "review"}>
-                {transaction.reviewed ? "Reviewed" : "To review"}
-              </Badge>
-              <Amount amount={transaction.amount} compact currency={transaction.currency} />
-            </div>
-          </section>
-          <Separator />
-          <TransactionInspectorCategory model={model} transaction={transaction} />
-          <Separator />
-          <TransactionInspectorTags model={model} transaction={transaction} />
-          <Separator />
-          <TransactionInspectorNotes model={model} transaction={transaction} />
-          <Separator />
-          <TransactionInspectorEvidence model={model} transaction={transaction} />
+          <div className="grid gap-3">
+            <IconiqCard className="gap-0 rounded-xl border-border/50 bg-card/90 py-0 shadow-sm">
+              <IconiqCardContent className="flex items-start justify-between gap-4 px-4 py-4">
+                <div className="min-w-0">
+                  <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    {transaction.status === "pending" ? "Pending transaction" : "Posted transaction"}
+                  </span>
+                  <h2 className="mt-1 truncate text-lg font-semibold">{transaction.merchant}</h2>
+                  <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
+                  {transaction.categoryId === "cat_transfer" ? (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      Internal transfer
+                      {(() => {
+                        const counterpart = transaction.pairedTransactionId
+                          ? model.rows.find((row) => row.id === transaction.pairedTransactionId)
+                          : undefined;
+                        return counterpart ? ` · linked to ${counterpart.accountName}` : "";
+                      })()}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant={transaction.reviewed ? "synced" : "review"}>
+                    {transaction.reviewed ? "Reviewed" : "To review"}
+                  </Badge>
+                  <Amount amount={transaction.amount} compact currency={transaction.currency} />
+                </div>
+              </IconiqCardContent>
+            </IconiqCard>
+            <TransactionInspectorDetails model={model} transaction={transaction} />
+          </div>
           {model.inspectorMessage ? (
             <p aria-live="polite" className="border-t border-border py-3 text-xs text-muted-foreground">
               {model.inspectorMessage}
@@ -2742,6 +3096,25 @@ function MobileTransactionInspector({ model }: { model: TransactionsViewModel })
         </div>
       ) : null}
     </BottomSheet>
+  );
+}
+
+function TransactionInspectorDetails({
+  model,
+  transaction
+}: {
+  model: TransactionsViewModel;
+  transaction: TransactionView;
+}) {
+  return (
+    <IconiqCard className="gap-0 rounded-xl border-border/50 bg-card/90 py-0 shadow-sm">
+      <IconiqCardContent className="p-0">
+        <TransactionInspectorCategory model={model} transaction={transaction} />
+        <TransactionInspectorTags model={model} transaction={transaction} />
+        <TransactionInspectorNotes model={model} transaction={transaction} />
+        <TransactionInspectorEvidence model={model} transaction={transaction} />
+      </IconiqCardContent>
+    </IconiqCard>
   );
 }
 
@@ -2761,7 +3134,7 @@ function TransactionInspectorCategory({ model, transaction }: { model: Transacti
   }, [model, transaction.id]);
 
   return (
-    <section className="px-5 py-4 max-sm:px-0">
+    <section className="border-b border-border/35 px-4 py-4 last:border-b-0">
       <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Category</span>
       <div className="mt-2">
         <CategoryPicker
@@ -2796,14 +3169,27 @@ function TransactionInspectorCategory({ model, transaction }: { model: Transacti
 
 function TransactionInspectorTags({ model, transaction }: { model: TransactionsViewModel; transaction: TransactionView }) {
   const tagDraft = model.tagDraft.trim();
+  const tagInputRef = useRef<HTMLInputElement>(null);
   // Source/machine tags (simplefin, teller:card_payment, ...) are kept on the
   // transaction and stay searchable, but they're a sync adapter's bookkeeping,
   // not something to edit — render them separately, muted, and non-removable.
   const userTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind !== "source");
   const sourceTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind === "source");
 
+  useEffect(() => {
+    if (model.inspectorFocusTarget !== "tag") {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      tagInputRef.current?.focus();
+      model.setInspectorFocusTarget(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [model, transaction.id]);
+
   return (
-    <section className="px-5 py-4">
+    <section className="border-b border-border/35 px-4 py-4 last:border-b-0">
       <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Tags</span>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {userTags.length > 0 ? (
@@ -2835,6 +3221,7 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
             })
           }
           placeholder="Add a tag"
+          ref={tagInputRef}
           value={model.tagDraft}
         />
         <Button aria-label="Add tag" size="icon-sm" type="submit" variant="outline">
@@ -2859,7 +3246,7 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
         </div>
       ) : null}
       {sourceTags.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
           <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
           {sourceTags.map((tag) => (
             <span
@@ -2877,7 +3264,7 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
 
 function TransactionInspectorNotes({ model, transaction }: { model: TransactionsViewModel; transaction: TransactionView }) {
   return (
-    <section className="px-5 py-4">
+    <section className="border-b border-border/35 px-4 py-4 last:border-b-0">
       <label className="flex flex-col gap-1.5" htmlFor="transaction-context-note">
         <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Context note</span>
         <Textarea
@@ -2943,7 +3330,7 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
 
 function TransactionInspectorEvidence({ model, transaction }: { model: TransactionsViewModel; transaction: TransactionView }) {
   return (
-    <section aria-label="Transaction evidence" className="px-5 py-4">
+    <section aria-label="Transaction evidence" className="border-b border-border/35 px-4 py-4 last:border-b-0">
       <header className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           <Link2 className="size-3.5" />
@@ -2970,7 +3357,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
       <div className="mt-2 flex flex-col gap-2">
         {model.evidenceItems.map((item) => (
           <article
-            className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5"
+            className="flex items-start justify-between gap-2 rounded-xl border border-border/40 bg-muted/15 p-2.5"
             key={`${item.sourceItem.id}:${item.relationship}`}
           >
             <div className="min-w-0">
@@ -3050,7 +3437,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
           <div className="mt-2 flex flex-col gap-2">
             {model.linkEvidenceResults.map((item) => (
               <article
-                className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5"
+                className="flex items-start justify-between gap-2 rounded-xl border border-border/40 bg-muted/15 p-2.5"
                 key={item.id}
               >
                 <div className="min-w-0">
@@ -3139,31 +3526,7 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
         </p>
       ) : null}
 
-      {model.selectedReviewIds.size > 0 ? (
-        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-border bg-card/95 px-4 py-2.5 backdrop-blur sm:px-6">
-          <span className="text-sm">
-            <strong className="tabular-nums">{model.selectedReviewIds.size}</strong> selected
-          </span>
-          <div className="flex items-center gap-2">
-            <Button onClick={() => model.setSelectedReviewIds(new Set())} size="sm" type="button" variant="ghost">
-              Clear
-            </Button>
-            <StatefulButton
-              disabled={model.reviewBusy}
-              errorText="Failed"
-              loadingText="Marking"
-              onClick={() => model.markTransactionsReviewed(Array.from(model.selectedReviewIds))}
-              size="sm"
-              state={model.bulkReviewState}
-              successText="Reviewed"
-              type="button"
-            >
-              <Check className="size-4" />
-              Mark {model.selectedReviewIds.size} reviewed
-            </StatefulButton>
-          </div>
-        </div>
-      ) : null}
+      <TransactionBulkActions ids={model.selectedReviewIds} model={model} />
     </div>
   );
 }
