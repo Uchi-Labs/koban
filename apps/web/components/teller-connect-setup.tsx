@@ -711,7 +711,7 @@ function DeleteConnectionDialog({
           >
             {deletingId ? (
               <>
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Removing…
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> Removing…
               </>
             ) : (
               "Remove connection"
@@ -779,7 +779,7 @@ function ConnectionRow({
             variant="ghost"
           >
             {deleting ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
+              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
             ) : (
               <Trash2 className="size-4" aria-hidden />
             )}

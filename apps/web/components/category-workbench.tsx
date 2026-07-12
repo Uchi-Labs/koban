@@ -2,6 +2,7 @@
 
 import type { Category } from "@ai-finances/schema";
 import { Pencil, Plus } from "lucide-react";
+import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import React, { useMemo, useState } from "react";
 import { CategoryEditDialog } from "@/components/category-manager";
 import { CategoryPill } from "@/components/category-pill";
@@ -9,6 +10,7 @@ import { NewCategoryDialog } from "@/components/new-category-dialog";
 import { Button } from "@/components/ui/button";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { formatCurrency } from "@/lib/format";
+import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export interface MonthPoint {
@@ -411,13 +413,24 @@ function DetailPane({
   summaries: CategorySummary[];
   transactionsToReview: number;
 }) {
+  const reduce = useReducedMotion();
   const remaining = detail.budgetAmount === undefined ? undefined : detail.budgetAmount - detail.spentThisMonth;
   const pillTargets = selectedId
     ? summaries.filter((summary) => summary.id === detail.id)
     : summaries.filter((summary) => summary.spentThisMonth > 0).slice(0, 6);
 
   return (
-    <section aria-label="Category detail" className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-5">
+    <LazyMotion features={domAnimation}>
+      <AnimatePresence initial={false} mode="popLayout">
+    <m.section
+      animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+      aria-label="Category detail"
+      className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-5"
+      exit={reduce ? { opacity: 0 } : { opacity: 0, filter: "blur(2px)", y: -4 }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, filter: "blur(2px)", y: 4 }}
+      key={detail.id}
+      transition={{ duration: 0.15, ease: EASE_OUT }}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-2.5">
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
@@ -455,7 +468,7 @@ function DetailPane({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
           <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Spent in {monthLabel.split(" ")[0]}</span>
-          <span className="text-2xl font-semibold tabular-nums">{formatCurrency(detail.spentThisMonth)}</span>
+          <AnimatedNumber className="text-2xl font-semibold tabular-nums" format={formatWhole} value={detail.spentThisMonth} />
           {remaining !== undefined ? (
             <span className={cn("text-xs tabular-nums", remaining < 0 ? "text-[var(--negative)]" : "text-muted-foreground")}>
               {remaining < 0 ? `${formatCurrency(Math.abs(remaining))} over` : `${formatCurrency(remaining)} left`}
@@ -475,7 +488,9 @@ function DetailPane({
       )}
 
       <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
-    </section>
+    </m.section>
+      </AnimatePresence>
+    </LazyMotion>
   );
 }
 

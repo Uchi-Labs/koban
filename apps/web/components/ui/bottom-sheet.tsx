@@ -11,10 +11,10 @@ import {
 } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { EASE_DRAWER } from "@/lib/motion";
+import { EASE_DRAWER, SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-const DRAWER = { duration: 0.5, ease: EASE_DRAWER } as const;
+const OVERLAY_TRANSITION = { duration: 0.2, ease: EASE_DRAWER } as const;
 const DEFAULT_SNAP_POINTS: Array<number | "auto"> = [0.58, 0.92];
 
 export interface BottomSheetProps {
@@ -41,9 +41,11 @@ export function BottomSheet({
   title
 }: BottomSheetProps) {
   const [snap, setSnap] = useState(defaultSnap);
+  const [settleVelocity, setSettleVelocity] = useState(0);
   const [snapReset, setSnapReset] = useState({ defaultSnap, open });
   const dragControls = useDragControls();
   const sheetRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const reduce = useReducedMotion();
   const mounted = useSyncExternalStore(emptySubscribe, getClientMountedSnapshot, getServerMountedSnapshot);
 
@@ -84,9 +86,34 @@ export function BottomSheet({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    openerRef.current = activeElement instanceof HTMLElement ? activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const sheet = sheetRef.current;
+      const firstFocusable = sheet?.querySelector<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      (firstFocusable ?? sheet)?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      const opener = openerRef.current;
+      if (opener?.isConnected) {
+        window.requestAnimationFrame(() => opener.focus());
+      }
+    };
+  }, [open]);
+
   const onDragEnd = (_: unknown, info: PanInfo) => {
     const velocity = info.velocity.y;
     const offset = info.offset.y;
+    setSettleVelocity(velocity);
 
     if (velocity > 600 || offset > dismissThreshold) {
       const smallerSnap = snap > 0 ? snap - 1 : null;
@@ -130,7 +157,7 @@ export function BottomSheet({
             exit={{ opacity: 0 }}
             initial={{ opacity: 0 }}
             onClick={() => onOpenChange(false)}
-            transition={DRAWER}
+            transition={reduce ? { duration: 0.18, ease: EASE_DRAWER } : OVERLAY_TRANSITION}
           />
           <m.div
             animate={reduce ? { opacity: 1, y: 0 } : { y: 0 }}
@@ -153,7 +180,8 @@ export function BottomSheet({
             aria-modal="true"
             aria-label={title}
             style={heightStyle}
-            transition={reduce ? { duration: 0.18, ease: EASE_DRAWER } : DRAWER}
+            tabIndex={-1}
+            transition={reduce ? { duration: 0.18, ease: EASE_DRAWER } : { ...SPRING_PANEL, velocity: settleVelocity }}
           >
             <div
               className="flex cursor-grab touch-none flex-col items-center px-4 pt-3 pb-2 active:cursor-grabbing"

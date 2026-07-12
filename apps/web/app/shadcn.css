@@ -226,7 +226,7 @@
   --text-swap-dur: var(--duration-quick);
   --text-swap-translate-y: var(--distance-micro);
   --text-swap-blur: var(--blur-small);
-  --text-swap-ease: var(--ease-in-out);
+  --text-swap-ease: var(--ease-strong-in-out);
   --modal-open-dur: var(--duration-fast);
   --modal-close-dur: var(--duration-quick);
   --modal-scale: var(--scale-large);
@@ -239,8 +239,8 @@
   --panel-ease: var(--ease-smooth-out);
   --icon-swap-dur: var(--duration-fast);
   --icon-swap-blur: var(--blur-small);
-  --icon-swap-start-scale: 0.25;
-  --icon-swap-ease: var(--ease-in-out);
+  --icon-swap-start-scale: 0.94;
+  --icon-swap-ease: var(--ease-strong-in-out);
   --check-opacity-dur: 420ms;
   --check-rotate-dur: 420ms;
   --check-rotate-from: 80deg;
@@ -283,7 +283,7 @@
   --pulse-min: 0.5;
   --reveal-dur: var(--duration-slow);
   --reveal-blur: var(--blur-small);
-  --reveal-ease: var(--ease-in-out);
+  --reveal-ease: var(--ease-strong-in-out);
   --shimmer-dur: 2000ms;
   --shimmer-base: var(--muted-foreground);
   --shimmer-highlight: var(--foreground);
@@ -324,10 +324,10 @@
 }
 .t-digit {
   display: inline-block;
-  will-change: transform, opacity, filter;
 }
 .t-digit-group.is-animating .t-digit {
   animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both;
+  will-change: transform, opacity, filter;
 }
 .t-digit-group.is-animating .t-digit[data-stagger="1"] {
   animation-delay: var(--digit-stagger);
@@ -351,10 +351,10 @@
   display: flex;
   align-items: center;
   pointer-events: none;
-  will-change: transform;
 }
 .t-badge[data-open="true"] {
   animation: t-badge-slide-in var(--badge-slide-dur) var(--badge-slide-ease);
+  will-change: transform;
 }
 /* Collapsed icon rail: .t-badge above is unlayered, so its display:flex outranks
    Tailwind's layered `hidden` utility — hide it explicitly when collapsed. */
@@ -414,7 +414,6 @@
   transition:
     transform var(--modal-open-dur) var(--modal-ease),
     opacity var(--modal-open-dur) var(--modal-ease);
-  will-change: transform, opacity;
 }
 .t-modal[data-slot="dialog-content"] {
   translate: -50% -50%;
@@ -434,6 +433,11 @@
     transform var(--modal-close-dur) var(--modal-ease),
     opacity var(--modal-close-dur) var(--modal-ease);
 }
+.t-modal[data-starting-style],
+.t-modal[data-ending-style],
+.t-modal.is-closing {
+  will-change: transform, opacity;
+}
 
 .t-panel-slide {
   transform: translateY(var(--panel-translate-y));
@@ -444,7 +448,6 @@
     transform var(--panel-close-dur) var(--panel-ease),
     opacity var(--panel-close-dur) var(--panel-ease),
     filter var(--panel-close-dur) var(--panel-ease);
-  will-change: transform, opacity, filter;
 }
 .t-panel-slide[data-open="true"] {
   transform: translateY(0);
@@ -455,6 +458,9 @@
     transform var(--panel-open-dur) var(--panel-ease),
     opacity var(--panel-open-dur) var(--panel-ease),
     filter var(--panel-open-dur) var(--panel-ease);
+}
+.t-panel-slide[data-animating="true"] {
+  will-change: transform, opacity, filter;
 }
 
 .t-icon-swap {
@@ -513,6 +519,8 @@
     translateY(var(--shift, 0px))
     scale(var(--scale-active, 1));
   transition: transform var(--avatar-dur) var(--avatar-ease-in);
+}
+.t-avatar-group[data-animating="true"] .t-avatar {
   will-change: transform;
 }
 
@@ -675,7 +683,6 @@
     opacity var(--stagger-dur) var(--stagger-ease),
     transform var(--stagger-dur) var(--stagger-ease),
     filter var(--stagger-dur) var(--stagger-ease);
-  will-change: transform, opacity, filter;
 }
 .t-stagger-line--2 { transition-delay: var(--stagger-stagger); }
 .t-stagger.is-shown .t-stagger-line {
@@ -692,6 +699,7 @@
     transform 0s linear,
     filter 0s linear;
   transition-delay: 0s;
+  will-change: transform, opacity, filter;
 }
 
 .t-acc-panel {
@@ -954,6 +962,45 @@ button.transaction-review-row:active {
   opacity: 0;
   transform: scale(0.98);
   transition-duration: var(--duration-quick);
+}
+
+/* Base UI keeps tab panels mounted through their exit transition. A small
+   fade/rise softens content swaps without animating the surrounding layout. */
+[data-slot="tabs-content"] {
+  transition:
+    opacity var(--duration-quick) var(--ease-strong-out),
+    transform var(--duration-quick) var(--ease-strong-out),
+    filter var(--duration-quick) var(--ease-strong-out);
+}
+
+[data-slot="tabs-content"][data-starting-style] {
+  opacity: 0;
+  transform: translateY(4px);
+  filter: blur(2px);
+}
+
+[data-slot="tabs-content"][data-ending-style] {
+  opacity: 0;
+}
+
+@keyframes empty-state-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes empty-state-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.empty-state-enter {
+  animation: empty-state-enter var(--duration-fast) var(--ease-smooth-out) both;
 }
 
 /* Tooltips: quick in, instant feel. */
@@ -1392,6 +1439,14 @@ button.transaction-review-row:active {
   [data-slot="dialog-content"],
   [data-slot="tooltip-content"] {
     transition-property: opacity;
+  }
+  [data-slot="tabs-content"] {
+    transform: none !important;
+    filter: none !important;
+    transition: opacity var(--duration-quick) var(--ease-strong-out);
+  }
+  .empty-state-enter {
+    animation: empty-state-fade var(--duration-fast) var(--ease-smooth-out) both;
   }
   .animate-bounce-in,
   [data-slot="chart-wave-loader"] .chart-wave-path,

@@ -61,10 +61,10 @@ export const ICON_VARIANTS: Record<CoreAnimation, Variants> = {
     },
     exit: {
       opacity: 0,
-      scale: 0.25,
+      scale: 0.94,
       transition: BLUR_TRANSITION
     },
-    initial: { opacity: 0, scale: 0.25 }
+    initial: { opacity: 0, scale: 0.94 }
   },
   roll: {
     animate: {

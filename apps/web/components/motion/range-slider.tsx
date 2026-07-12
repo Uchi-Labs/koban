@@ -118,7 +118,8 @@ export function RangeSlider({
   const ticks = showTicks && tickCount > 0 && tickCount <= 50
     ? Array.from({ length: tickCount + 1 }, (_, index) => min + index * step)
     : [];
-  const transition = reduce ? { duration: 0 } : SPRING_GLIDE;
+  const glideTransition = reduce ? { duration: 0 } : { type: "spring" as const, ...SPRING_GLIDE };
+  const rangeScale = Math.max(0, (highPercent - lowPercent) / 100);
 
   return (
     <div
@@ -134,10 +135,16 @@ export function RangeSlider({
     >
       <motion.div
         aria-hidden="true"
-        className="absolute inset-y-0 rounded-xl bg-primary/15"
-        animate={{ left: `${lowPercent}%`, right: `${100 - highPercent}%` }}
-        transition={transition}
-      />
+        className="pointer-events-none absolute inset-y-0 left-0 w-full"
+        animate={{ x: `${lowPercent}%` }}
+        transition={glideTransition}
+      >
+        <motion.div
+          className="h-full origin-left rounded-xl bg-primary/15"
+          animate={{ scaleX: rangeScale }}
+          transition={glideTransition}
+        />
+      </motion.div>
       {ticks.map((tick) => (
         <span
           aria-hidden="true"
@@ -151,20 +158,28 @@ export function RangeSlider({
         const thumbIndex = index as 0 | 1;
         return (
           <motion.div
-            animate={{ left: `${percent}%`, scaleY: activeThumb === thumbIndex ? 1.35 : 1 }}
-            aria-disabled={disabled || undefined}
-            aria-label={`${index === 0 ? "Minimum" : "Maximum"} ${ariaLabel}`}
-            aria-valuemax={max}
-            aria-valuemin={min}
-            aria-valuenow={current}
-            className="absolute top-1/2 h-5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-foreground shadow-sm outline-none ring-foreground/30 focus-visible:ring-4"
-            data-thumb-index={index}
+            animate={{ x: `${percent}%` }}
+            className="pointer-events-none absolute inset-y-0 left-0 w-full"
             key={index}
-            onKeyDown={(event) => handleKeyDown(thumbIndex, current, event)}
-            role="slider"
-            tabIndex={disabled ? -1 : 0}
-            transition={reduce ? { duration: 0 } : SPRING_BOUNCY}
-          />
+            transition={glideTransition}
+          >
+            <div className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
+              <motion.div
+                animate={{ scaleY: activeThumb === thumbIndex ? 1.35 : 1 }}
+                aria-disabled={disabled || undefined}
+                aria-label={`${index === 0 ? "Minimum" : "Maximum"} ${ariaLabel}`}
+                aria-valuemax={max}
+                aria-valuemin={min}
+                aria-valuenow={current}
+                className="pointer-events-auto h-5 w-1.5 rounded-sm bg-foreground shadow-sm outline-none ring-foreground/30 focus-visible:ring-4"
+                data-thumb-index={index}
+                onKeyDown={(event) => handleKeyDown(thumbIndex, current, event)}
+                role="slider"
+                tabIndex={disabled ? -1 : 0}
+                transition={reduce ? { duration: 0 } : SPRING_BOUNCY}
+              />
+            </div>
+          </motion.div>
         );
       })}
     </div>

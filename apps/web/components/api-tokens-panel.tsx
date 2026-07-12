@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader } from "@/components/ui/loader";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useShakeReplay } from "@/lib/transitions";
 import { cn } from "@/lib/utils";
@@ -282,7 +283,14 @@ export function ApiTokensPanel({ hostedAuth }: ApiTokensPanelProps) {
             <Separator />
 
             <div className="grid gap-2">
-              {tokens.length === 0 ? (
+              {isLoading ? (
+                Array.from({ length: 3 }, (_, index) => (
+                  <div className="grid gap-2 rounded-md border border-border bg-background p-3" key={index}>
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="h-3 w-56 max-w-full" />
+                  </div>
+                ))
+              ) : tokens.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No API tokens.</p>
               ) : (
                 tokens.map((token) => (

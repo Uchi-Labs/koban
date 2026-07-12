@@ -1,7 +1,7 @@
 "use client";
 // beui.dev/components/motion/text-animation
 
-import { motion, type Transition, useInView, useReducedMotion } from "motion/react";
+import { LazyMotion, domAnimation, m, type Transition, useInView, useReducedMotion } from "motion/react";
 import { useRef, type ElementType, type ReactNode } from "react";
 import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,7 @@ export function TextReveal({
 
   return (
     <Comp ref={ref} className={cn("block", className)}>
+      <LazyMotion features={domAnimation}>
       {lines.map((line) => {
         const units = split === "word" ? line.split(" ") : Array.from(line);
         const lineCount = lineCounts.get(line) ?? 0;
@@ -87,7 +88,7 @@ export function TextReveal({
                     filter: { duration: 0.28, ease: EASE_OUT, delay: unitDelay },
                   };
               return (
-                <motion.span
+                <m.span
                   key={unitKey}
                   initial={reduce ? false : initial}
                   animate={animate}
@@ -98,12 +99,13 @@ export function TextReveal({
                   {split === "word" && i < units.length - 1 ? (
                     <span className="inline-block">&nbsp;</span>
                   ) : null}
-                </motion.span>
+                </m.span>
               );
             })}
           </span>
         );
       })}
+      </LazyMotion>
       {children}
     </Comp>
   );

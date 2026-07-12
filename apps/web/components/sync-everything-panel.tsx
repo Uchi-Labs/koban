@@ -302,7 +302,7 @@ export function SyncEverythingPanel({
           state={busy ? "loading" : "idle"}
           type="button"
         >
-          <RefreshCw className={cn("size-4", busy && "animate-spin")} />
+          <RefreshCw className={cn("size-4", busy && "animate-spin motion-reduce:animate-none")} />
           Sync everything
         </StatefulButton>
       </CardHeader>

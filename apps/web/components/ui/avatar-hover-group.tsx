@@ -12,6 +12,11 @@ export function AvatarHoverGroup({ children, className }: { children: ReactNode;
     <div
       className={cn("t-avatar-group", className)}
       onMouseLeave={hoverCapable ? () => applyAvatarGroupShift(ref.current, null, "out") : undefined}
+      onTransitionEnd={(event) => {
+        if (event.propertyName === "transform") {
+          delete event.currentTarget.dataset.animating;
+        }
+      }}
       ref={ref}
     >
       {children}

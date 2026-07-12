@@ -31,8 +31,10 @@ export function AnimatedNumber({
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { amount: 0.6, once: true });
   const reduce = useReducedMotion();
-  const [display, setDisplay] = useState(0);
-  const fromRef = useRef(0);
+  const [display, setDisplay] = useState(value);
+  const [digitAnimating, setDigitAnimating] = useState(false);
+  const fromRef = useRef(value);
+  const digitMountedRef = useRef(false);
 
   useEffect(() => {
     if (startOnView && !inView) {
@@ -48,30 +50,51 @@ export function AnimatedNumber({
     const controls = animate(fromRef.current, value, {
       duration,
       ease: EASE_OUT,
-      onUpdate: (nextValue) => setDisplay(nextValue),
+      onUpdate: (nextValue) => {
+        fromRef.current = nextValue;
+        setDisplay(nextValue);
+      },
     });
-
-    fromRef.current = value;
 
     return () => controls.stop();
   }, [duration, inView, reduce, startOnView, value]);
 
+  useEffect(() => {
+    if (!digitPopOnChange || reduce) {
+      digitMountedRef.current = true;
+      setDigitAnimating(false);
+      return;
+    }
+
+    if (!digitMountedRef.current) {
+      digitMountedRef.current = true;
+      return;
+    }
+
+    setDigitAnimating(false);
+    const frame = window.requestAnimationFrame(() => setDigitAnimating(true));
+    const timeout = window.setTimeout(() => setDigitAnimating(false), 650);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [digitPopOnChange, reduce, value]);
+
   if (digitText) {
     const text = digitText(display);
     const chars = Array.from(text);
-    const shouldAnimateDigits = digitPopOnChange && !reduce;
+    const shouldAnimateDigits = digitPopOnChange && !reduce && digitAnimating;
 
     return (
       <span
         className={cn("t-digit-group tabular-nums", shouldAnimateDigits && "is-animating", className)}
-        key={shouldAnimateDigits ? value : "static-digits"}
         ref={ref}
       >
         {splitPopDigits(text).map(({ char, stagger }, index) => (
           <span
             className={cn("t-digit", digitClassName?.(char, index, chars))}
             data-stagger={stagger}
-            key={`${index}-${char}`}
+            key={index}
           >
             {char}
           </span>

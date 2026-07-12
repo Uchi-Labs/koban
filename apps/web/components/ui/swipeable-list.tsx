@@ -178,7 +178,7 @@ export function SwipeableRow({
           className={cn("relative z-10 cursor-grab touch-pan-y select-none active:cursor-grabbing", surfaceClassName)}
           drag="x"
           dragConstraints={{ left: -rightWidth, right: leftWidth }}
-          dragElastic={0.04}
+          dragElastic={0.18}
           dragMomentum={false}
           onDragStart={() => animationRef.current?.stop()}
           onDragEnd={onDragEnd}

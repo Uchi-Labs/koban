@@ -17,7 +17,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EASE_OUT } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/motion";
 import { useHoverCapable } from "@/lib/hooks/use-hover-capable";
 import { cn } from "@/lib/utils";
 

@@ -3,7 +3,7 @@
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { EASE_OUT } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**

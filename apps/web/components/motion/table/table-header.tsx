@@ -12,7 +12,7 @@ import { motion } from "motion/react";
 import { type PointerEvent as ReactPointerEvent, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Checkbox } from "@/components/motion/checkbox";
-import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
+import { EASE_OUT, SPRING_PRESS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { TableMenu } from "./table-menu";
 import type {

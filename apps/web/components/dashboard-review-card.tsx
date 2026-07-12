@@ -139,7 +139,7 @@ export function DashboardReviewCard({
           tone={remainingCount > 0 ? "warning" : "positive"}
           value={remainingCount.toLocaleString()}
         />
-        <FinanceStatItem label="Amount" tone="primary" value={formatCurrency(reviewTotalAmount, displayCurrency)} />
+        <FinanceStatItem animatedCurrency={displayCurrency} animatedValue={reviewTotalAmount} label="Amount" tone="primary" />
         <FinanceStatItem label="Synced" tone="muted" value={formatLastSynced(lastSyncedAt)} />
       </FinanceStatStrip>
       <div className="divide-y divide-border">
@@ -159,7 +159,7 @@ export function DashboardReviewCard({
             actions={<Badge variant="synced">Reviewed</Badge>}
             className="my-2"
             description="New imported transactions will appear here when they need category or evidence review."
-            icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200" />}
+            icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none" />}
             size="sm"
             title="No transactions need review in the current local ledger."
           />
@@ -197,7 +197,7 @@ export function DashboardReviewCard({
       {message ? (
         <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
           {isSuccessMessage(message) ? (
-            <Check className="size-3.5 animate-in fade-in zoom-in-95 text-(--positive) duration-200" />
+            <Check className="size-3.5 animate-in fade-in zoom-in-95 text-(--positive) duration-200 motion-reduce:animate-none" />
           ) : null}
           {message}
         </p>

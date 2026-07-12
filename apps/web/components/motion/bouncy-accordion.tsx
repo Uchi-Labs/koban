@@ -2,7 +2,9 @@
 // beui.dev/components/motion/bouncy-accordion
 
 import {
-  motion,
+  LazyMotion,
+  domAnimation,
+  m,
   useReducedMotion,
   type Transition,
 } from "motion/react";
@@ -15,7 +17,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EASE_OUT } from "@/lib/motion";
+import { EASE_OUT, SPRING_LAYOUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export type BouncyAccordionItem = {
@@ -47,41 +49,10 @@ export interface BouncyAccordionProps {
   classNames?: BouncyAccordionClassNames;
 }
 
-// Local springs keep the accordion's connected groups moving together while
-// avoiding scale projection on text-heavy row contents. Measured height is the
-// intentional exception to transform-only motion: it preserves accessible,
-// natural-flow content while the disclosure opens and closes.
-// Gap spring: must not overshoot y — positive y overshoot drifts items below
-// their mt-3 resting point and briefly overlaps the next item.
-const ROW_TRANSITION: Transition = {
-  type: "spring",
-  duration: 0.55,
-  bounce: 0.38,
-};
-
-const CONTENT_OPEN_TRANSITION: Transition = {
-  type: "spring",
-  duration: 0.58,
-  bounce: 0.32,
-};
-
-const CONTENT_CLOSE_TRANSITION: Transition = {
-  type: "spring",
-  duration: 0.46,
-  bounce: 0.26,
-};
-
 const DESCRIPTION_TRANSITION: Transition = {
   duration: 0.18,
   ease: EASE_OUT,
 };
-
-const CHEVRON_TRANSITION: Transition = {
-  type: "spring",
-  duration: 0.42,
-  bounce: 0.28,
-};
-
 
 function useControllableAccordionValue({
   value,
@@ -159,12 +130,12 @@ function BouncyAccordionRow({
   }, []);
 
   return (
-    <motion.div
+    <m.div
       initial={false}
       animate={{ marginTop: separatedFromPrevious ? 12 : 0 }}
-      transition={reduce ? { duration: 0 } : ROW_TRANSITION}
+      transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
     >
-      <motion.div
+      <m.div
         data-state={open ? "open" : "closed"}
         initial={false}
         animate={{
@@ -173,7 +144,7 @@ function BouncyAccordionRow({
           borderBottomLeftRadius: endsGroup ? 28 : 0,
           borderBottomRightRadius: endsGroup ? 28 : 0,
         }}
-        transition={reduce ? { duration: 0 } : ROW_TRANSITION}
+        transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
         className={cn(
           "overflow-hidden bg-card text-card-foreground",
           item.disabled && "opacity-50",
@@ -212,20 +183,20 @@ function BouncyAccordionRow({
           >
             {item.title}
           </span>
-          <motion.span
+          <m.span
             aria-hidden
             animate={{ rotate: open ? 180 : 0 }}
-            transition={reduce ? { duration: 0 } : CHEVRON_TRANSITION}
+            transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
             className={cn(
               "grid h-6 w-6 shrink-0 place-items-center text-muted-foreground",
               classNames?.chevron,
             )}
           >
             <ChevronDown className="h-4 w-4" />
-          </motion.span>
+          </m.span>
         </button>
 
-        <motion.div
+        <m.div
           id={contentId}
           role="region"
           aria-labelledby={triggerId}
@@ -234,16 +205,10 @@ function BouncyAccordionRow({
           animate={{
             height: open && item.description ? contentHeight : 0,
           }}
-          transition={
-            reduce
-              ? { duration: 0 }
-              : open
-                ? CONTENT_OPEN_TRANSITION
-                : CONTENT_CLOSE_TRANSITION
-          }
+          transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
           className={cn("overflow-hidden", classNames?.content)}
         >
-          <motion.div
+          <m.div
             ref={contentRef}
             animate={{
               opacity: open ? 1 : 0,
@@ -259,10 +224,10 @@ function BouncyAccordionRow({
             >
               {item.description}
             </div>
-          </motion.div>
-        </motion.div>
-      </motion.div>
-    </motion.div>
+          </m.div>
+        </m.div>
+      </m.div>
+    </m.div>
   );
 }
 
@@ -299,6 +264,7 @@ export function BouncyAccordion({
   );
 
   return (
+    <LazyMotion features={domAnimation}>
     <div className={cn("w-full", className, classNames?.root)}>
       {items.map((item, index) => {
         const open = activeValue === item.id;
@@ -327,5 +293,6 @@ export function BouncyAccordion({
         );
       })}
     </div>
+    </LazyMotion>
   );
 }

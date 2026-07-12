@@ -3,7 +3,7 @@
 import { ArrowDownToLine, ArrowUp, CreditCard, Repeat } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import type { ComponentType } from "react";
-import { SPRING_PRESS } from "@/lib/ease";
+import { SPRING_PRESS } from "@/lib/motion";
 
 type WalletAction = {
   key: string;

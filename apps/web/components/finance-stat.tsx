@@ -52,7 +52,7 @@ export function FinanceStatItem({
   label: string;
   tone?: FinanceStatTone;
   unit?: string;
-  value: React.ReactNode;
+  value?: React.ReactNode;
 }) {
   const toneClasses = statToneClasses[tone];
 

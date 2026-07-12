@@ -332,6 +332,7 @@ const ToastItem = memo(function ToastItem({
   toast: AnimatedToast;
 }) {
   const reduce = useReducedMotion();
+  const [dragExit, setDragExit] = useState<{ velocity: number; x: number } | null>(null);
   const status = toast.status ?? "neutral";
   const Icon = STATUS_ICON[status];
   const iconNode = icons?.[status] ?? toast.icon ?? <Icon className="h-3.5 w-3.5" />;
@@ -344,25 +345,38 @@ const ToastItem = memo(function ToastItem({
       drag={canDismiss && !reduce ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.18}
-      exit={
-        reduce
-          ? { opacity: 0 }
+      exit={reduce
+        ? { opacity: 0 }
+        : dragExit
+          ? {
+              opacity: 0,
+              x: dragExit.x,
+              transition: {
+                opacity: { duration: 0.18, ease: EASE_OUT },
+                x: { ...SPRING_PANEL, velocity: dragExit.velocity },
+              },
+            }
           : {
               opacity: 0,
               scale: 0.96,
               transition: { duration: 0.18, ease: EASE_OUT },
               x: 32,
-            }
-      }
+            }}
       initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 22 }}
       layout
-      onDragEnd={(_, info) => {
+      onDragEnd={(event, info) => {
         if (!canDismiss || !onDismiss) {
           return;
         }
 
         if (Math.abs(info.offset.x) > 72 || Math.abs(info.velocity.x) > 520) {
-          onDismiss(toast.id);
+          const direction = Math.sign(info.offset.x || info.velocity.x) || 1;
+          const containerWidth = (event.currentTarget as HTMLElement).parentElement?.getBoundingClientRect().width ?? 0;
+          setDragExit({
+            velocity: info.velocity.x,
+            x: direction * Math.max(containerWidth + 24, Math.abs(info.offset.x)),
+          });
+          window.requestAnimationFrame(() => onDismiss(toast.id));
         }
       }}
       style={{ zIndex: 20 - index }}

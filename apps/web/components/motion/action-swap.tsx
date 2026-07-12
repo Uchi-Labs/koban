@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion, type HTMLMotionProps, type Variants } from "motion/react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { EASE_OUT, EASE_OUT_CSS, SPRING_PRESS, SPRING_SWAP } from "@/lib/ease";
+import { EASE_OUT, EASE_OUT_CSS, SPRING_PRESS, SPRING_SWAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export type ActionSwapItem = {
@@ -110,7 +110,7 @@ const TEXT_VARIANTS: Record<CoreAnimation, Variants> = {
 
 const ICON_VARIANTS: Record<CoreAnimation, Variants> = {
   blur: {
-    initial: { opacity: 0, scale: 0.25, filter: SWAP_BLUR },
+    initial: { opacity: 0, scale: 0.94, filter: SWAP_BLUR },
     animate: {
       opacity: 1,
       scale: 1,
@@ -119,7 +119,7 @@ const ICON_VARIANTS: Record<CoreAnimation, Variants> = {
     },
     exit: {
       opacity: 0,
-      scale: 0.25,
+      scale: 0.94,
       filter: SWAP_BLUR,
       transition: BLUR_TRANSITION,
     },
