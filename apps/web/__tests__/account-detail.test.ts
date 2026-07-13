@@ -1,4 +1,4 @@
-import type { Account, RecurringItem, Transaction } from "@ai-finances/schema";
+import type { Account, Transaction } from "@ai-finances/schema";
 import { describe, expect, it } from "vitest";
 import { selectAccountDetailData } from "@/lib/account-detail";
 
@@ -29,35 +29,20 @@ const accounts = [
   }
 ] satisfies Account[];
 
-function transaction(id: string, accountId: string, date: string): Transaction {
+function transaction(id: string, accountId: string, date: string, merchantName = id): Transaction {
   return {
     accountId,
     amount: -25,
     categoryId: "cat_food",
     currency: "USD",
     date,
-    description: id,
+    description: merchantName,
     id,
-    merchantName: id,
+    merchantName,
     providerConnectionId: "provider_example",
     reviewed: false,
     status: "posted",
     tags: []
-  };
-}
-
-function recurring(id: string, accountId: string): RecurringItem {
-  return {
-    accountId,
-    amount: 25,
-    averageAmount: 25,
-    cadence: "monthly",
-    categoryId: "cat_food",
-    currency: "USD",
-    id,
-    name: id,
-    nextDate: "2026-08-01",
-    status: "active"
   };
 }
 
@@ -66,18 +51,22 @@ describe("selectAccountDetailData", () => {
     const result = selectAccountDetailData(
       {
         accounts,
-        recurringItems: [recurring("Cash subscription", "acct_cash"), recurring("Broker fee", "acct_investment")],
         transactions: [
-          transaction("Older cash charge", "acct_cash", "2026-07-01"),
-          transaction("Broker trade", "acct_investment", "2026-07-09"),
-          transaction("Latest cash charge", "acct_cash", "2026-07-11")
+          transaction("cash-jan", "acct_cash", "2026-01-01", "Cash subscription"),
+          transaction("cash-feb", "acct_cash", "2026-02-01", "Cash subscription"),
+          transaction("cash-mar", "acct_cash", "2026-03-01", "Cash subscription"),
+          transaction("broker-jan", "acct_investment", "2026-01-09", "Broker fee"),
+          transaction("broker-feb", "acct_investment", "2026-02-09", "Broker fee"),
+          transaction("broker-mar", "acct_investment", "2026-03-09", "Broker fee")
         ]
       },
       "acct_cash"
     );
 
     expect(result?.account.id).toBe("acct_cash");
-    expect(result?.transactions.map((item) => item.id)).toEqual(["Latest cash charge", "Older cash charge"]);
-    expect(result?.recurringItems.map((item) => item.id)).toEqual(["Cash subscription"]);
+    expect(result?.transactions.map((item) => item.id)).toEqual(["cash-mar", "cash-feb", "cash-jan"]);
+    expect(result?.transactions.every((item) => item.accountId === "acct_cash")).toBe(true);
+    expect(result?.recurringItems.map((item) => item.name)).toEqual(["Cash subscription"]);
+    expect(result?.recurringItems.every((item) => item.accountId === "acct_cash")).toBe(true);
   });
 });

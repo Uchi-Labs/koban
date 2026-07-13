@@ -5,6 +5,11 @@ const KNOWN_MERCHANT_DOMAINS: Array<{ domain: string; pattern: RegExp }> = [
   { domain: "amazon.com", pattern: /\b(?:amazon|amzn)\b/i },
   { domain: "anthropic.com", pattern: /\banthropic\b/i },
   { domain: "apple.com", pattern: /\bapple\b/i },
+  // Deliberately NO bank/brokerage domains here: institution names resolved to
+  // third-party favicon URLs (google/ddg) would leak which institutions the
+  // user banks with from their own browser (SEC-03). Institutions fall back to
+  // the tinted icon in account-favicon-badge.tsx. Restore bank logos only via
+  // a same-origin favicon proxy if ever wanted.
   { domain: "copilot.money", pattern: /\bcopilot money\b/i },
   { domain: "cursor.com", pattern: /\bcursor\b/i },
   { domain: "discord.com", pattern: /\bdiscord\b/i },

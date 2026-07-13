@@ -201,11 +201,11 @@ export default async function AccountsPage() {
                           key={row.account.id}
                         >
                           {/* Stretched-link overlay keeps the whole row clickable while the
-                              card button stays independently interactive above it. */}
+                              card-detail button stays independently interactive above it. */}
                           <Link
-                            aria-label={`View transactions for ${row.account.name}`}
-                            className="absolute inset-0 rounded-xl"
-                            href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
+                            aria-label={`View account page for ${row.account.name}`}
+                            className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                            href={`/accounts/${encodeURIComponent(row.account.id)}`}
                           />
                           <AccountFaviconBadge
                             accentColorVar={accent.colorVar}
@@ -220,7 +220,7 @@ export default async function AccountsPage() {
                             </p>
                           </div>
                           {row.history.length >= 2 ? (
-                            <div className="relative z-10 hidden w-20 shrink-0 sm:block">
+                            <div className="pointer-events-none hidden w-20 shrink-0 sm:block">
                               <LivelineChart height={28} points={row.history} sparkline />
                             </div>
                           ) : null}
@@ -240,16 +240,16 @@ export default async function AccountsPage() {
                           >
                             {formatCurrency(row.account.currentBalance, row.account.currency)}
                           </span>
-                          <span className="relative z-10 flex size-7 shrink-0 items-center justify-center">
-                            {supportsDetails ? (
+                          {supportsDetails ? (
+                            <span className="relative z-10 flex size-7 shrink-0 items-center justify-center">
                               <AccountCardDialog
                                 accountId={row.account.id}
                                 institutionName={row.account.institutionName}
                                 mask={row.account.mask}
                                 name={row.account.name}
                               />
-                            ) : null}
-                          </span>
+                            </span>
+                          ) : null}
                           <ArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                         </div>
                       );
@@ -275,9 +275,9 @@ export default async function AccountsPage() {
 
               return (
                 <Link
-                  aria-label={`View recent transactions for ${row.account.name}`}
-                  className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50"
-                  href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
+                  aria-label={`View account page for ${row.account.name}`}
+                  className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none"
+                  href={`/accounts/${encodeURIComponent(row.account.id)}`}
                   key={`${row.account.id}-activity`}
                 >
                   <div className="flex min-w-0 items-start gap-2">

@@ -169,10 +169,12 @@ export function MiniLineChart({
 
 export function NetWorthChart({
   className,
+  label = "Net worth",
   points,
   positive
 }: {
   className?: string;
+  label?: string;
   points: NetWorthTrendPoint[];
   positive: boolean;
 }) {
@@ -180,7 +182,7 @@ export function NetWorthChart({
   const netWorthConfig = {
     value: {
       color: positive ? "var(--positive)" : "var(--negative)",
-      label: "Net worth"
+      label
     }
   } satisfies ChartConfig;
 
