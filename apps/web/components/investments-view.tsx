@@ -177,10 +177,10 @@ function InvestmentTotalsSection({
 }) {
   return (
     <section aria-label="Investment totals">
-      <DashboardCard title="Portfolio value" action={{ label: "Accounts", href: "/accounts" }}>
+      <DashboardCard title="Portfolio value" action={{ label: "Accounts", href: "/accounts" }} surface="iconiq">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <MoneyHero amount={data.totalMarketValue} currency={data.currency} rolling />
+            <MoneyHero amount={data.totalMarketValue} currency={data.currency} />
             <div className="mt-1 text-xs text-muted-foreground">Total across investment accounts</div>
             {data.totalUnrealizedPnl !== undefined ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -328,7 +328,7 @@ function NetWorthMixSection({
 }) {
   return (
     <section className="mt-4" aria-label="Net worth mix">
-      <DashboardCard title="Net worth mix" layered={false}>
+      <DashboardCard title="Net worth mix" layered={false} surface="iconiq">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {accounts.map((account) => {
             const weight = totalMarketValue > 0 ? Math.abs(account.balance / totalMarketValue) * 100 : 0;
@@ -377,7 +377,7 @@ function HoldingsSection({
 }) {
   return (
     <section className="mt-4" aria-label="Holdings">
-      <DashboardCard title="Holdings" layered={false}>
+      <DashboardCard title="Holdings" layered={false} surface="iconiq">
         {sortedHoldings.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No positions synced yet. Connect a brokerage in Settings to populate holdings.

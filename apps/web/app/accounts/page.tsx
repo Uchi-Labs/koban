@@ -200,7 +200,7 @@ export default async function AccountsPage() {
                       return (
                         <div
                           className={cn(
-                            "group relative flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm transition-[background-color,border-color] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                            "group relative flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm transition-[background-color,border-color] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none",
                             "hover:border-border/60 hover:bg-card",
                             accent.hoverClassName
                           )}

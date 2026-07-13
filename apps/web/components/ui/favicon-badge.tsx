@@ -4,6 +4,7 @@ import { Globe } from "lucide-react";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import * as React from "react";
 
+import { SPRING_FAVICON_SWAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const componentThemeClassName = "iconiq-theme";
@@ -400,7 +401,7 @@ const FaviconBadge = React.forwardRef<HTMLSpanElement, FaviconBadgeProps>(
                 ref={isLoading ? probeImgRef : undefined}
                 referrerPolicy="no-referrer"
                 src={imageSrc}
-                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 28 }}
+                transition={reduceMotion ? { duration: 0 } : SPRING_FAVICON_SWAP}
                 width={config.icon}
               />
               {isLoading ? (
