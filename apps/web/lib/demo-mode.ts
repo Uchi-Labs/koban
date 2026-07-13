@@ -2,9 +2,10 @@
 // screenshots/demos.
 //
 // Balances are magnitude-squashed (|v|^0.8 × jitter) so a six-figure portfolio
-// demos as a modest five-figure one; an account's balance history, units, and
-// market values share the account's linear factor so charts keep their shapes
-// and price × units stays coherent. Transaction amounts get a mild per-merchant
+// demos as a modest five-figure one; an account's balance history and market
+// values share the account's linear factor so charts keep their shapes. Position price, units,
+// and cost basis are recomputed into a coherent synthetic lot so real returns
+// never survive the display boundary. Transaction amounts get a mild per-merchant
 // factor instead (a $13 subscription should still look like a subscription, not
 // $2). Account and institution names are swapped for a generic pool; masks are
 // re-rolled. Applied only at display-read boundaries (getFinanceData /
@@ -38,6 +39,10 @@ function hash01(seed: string): number {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function round6(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 /**
@@ -201,17 +206,60 @@ export function scrambleBalanceSnapshots<
   });
 }
 
-/** Units and market value scale together; price and per-unit cost basis stay real so holdings look plausible. */
-export function scramblePositions<T extends { accountId: string; units: number; marketValue: number }>(
+/** Recompute each holding into a deterministic synthetic lot with coherent price × units and a private return. */
+export function scramblePositions<
+  T extends {
+    accountId: string;
+    costBasis?: number;
+    id?: string;
+    marketValue: number;
+    price?: number;
+    units: number;
+  }
+>(
   positions: T[],
   factors: Map<string, number>
 ): T[] {
   return positions.map((position) => {
     const factor = factors.get(position.accountId) ?? 1;
+    const seed = position.id ?? `${position.accountId}:${position.units}:${position.marketValue}`;
+    const marketValue = round2(position.marketValue * factor);
+    const priceFactor = 0.65 + hash01(`koban-demo-position-price:${seed}`) * 0.25;
+    const fallbackPrice = position.units === 0 ? 0 : position.marketValue / position.units;
+    const sourcePrice = position.price && Number.isFinite(position.price) ? position.price : fallbackPrice;
+    const price = position.price === undefined ? undefined : round6(sourcePrice * priceFactor);
+    const units = price && Number.isFinite(price)
+      ? Math.round((marketValue / price) * 10000) / 10000
+      : Math.round(position.units * factor * 10000) / 10000;
+    const costBasis = syntheticCostBasis(position, { marketValue, seed, units });
+
     return {
       ...position,
-      marketValue: round2(position.marketValue * factor),
-      units: Math.round(position.units * factor * 10000) / 10000
+      costBasis,
+      marketValue,
+      price,
+      units
     };
   });
+}
+
+function syntheticCostBasis(
+  position: { costBasis?: number; marketValue: number; units: number },
+  scrambled: { marketValue: number; seed: string; units: number }
+): number | undefined {
+  if (position.costBasis === undefined || scrambled.units === 0) {
+    return undefined;
+  }
+
+  const realCostBasisValue = position.costBasis * position.units;
+  const realReturn = realCostBasisValue === 0
+    ? 0
+    : (position.marketValue - realCostBasisValue) / Math.abs(realCostBasisValue);
+  let syntheticReturn = -0.15 + hash01(`koban-demo-position-return:${scrambled.seed}`) * 0.5;
+  if (Math.abs(syntheticReturn - realReturn) < 0.05) {
+    syntheticReturn += syntheticReturn > 0.1 ? -0.1 : 0.1;
+  }
+
+  const syntheticCostBasisValue = scrambled.marketValue / (1 + syntheticReturn);
+  return round6(syntheticCostBasisValue / scrambled.units);
 }

@@ -6,6 +6,7 @@ import {
   buildTransactionTags,
   findDuplicateTransaction,
   findMerchantSignEvidence,
+  formatDryRunReport,
   loadFinanceDbCopilotImporter,
   matchCopilotAccount,
   normalizeBalanceMinor,
@@ -253,4 +254,56 @@ test("blocks apply when source currency and an unmatched account balance are abs
 
   assert.ok(plan.blockingIssues.includes("1 transaction(s) without source currency"));
   assert.ok(plan.blockingIssues.includes("1 new account(s) without accountDailyBalance history"));
+});
+
+test("falls back from malformed transaction currency and reports a dry-run warning", () => {
+  const plan = buildImportPlan({
+    balances: [],
+    existingAccounts: [{
+      id: "koban_checking",
+      institution_name: "Example Bank",
+      mask: "1234",
+      name: "Everyday Checking",
+      provider: "plaid",
+      provider_connection_id: "provider_plaid",
+      type: "checking"
+    }],
+    existingSnapshots: [],
+    existingTransactions: [],
+    mappings: {
+      accounts: {
+        checking: {
+          id: "checking",
+          institutionName: "Example Bank",
+          mask: "1234",
+          name: "Everyday Checking",
+          originalSubtype: "checking",
+          originalType: "depository"
+        }
+      },
+      categories: {},
+      tags: {}
+    },
+    overrides: {
+      defaultCurrency: "USD",
+      forcedMatches: { checking: "koban_checking" }
+    },
+    sourceStats: { deletedCount: 0, pendingCount: 0 },
+    transactions: [{
+      account_id: "checking",
+      amount: 12.34,
+      category_id: null,
+      date: "2026-07-10",
+      id: "bad_currency",
+      iso_currency_code: "usdollars",
+      is_amazon: 0,
+      name: "Lunch",
+      original_name: "LUNCH",
+      tag_ids: null
+    }]
+  });
+
+  assert.equal(plan.importTransactions[0].currency, "USD");
+  assert.deepEqual(plan.invalidTransactionCurrencyIds, ["bad_currency"]);
+  assert.match(formatDryRunReport(plan), /Malformed source currency rows: 1/);
 });

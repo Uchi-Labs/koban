@@ -17,6 +17,7 @@ import { MorphingPanel } from "@/components/ui/morphing-modal";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { formatCurrency } from "@/lib/format";
 import { useShakeReplay } from "@/lib/transitions";
 import { playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
@@ -145,8 +146,6 @@ interface RuleApiRule {
   pattern: string;
   tags: string[];
 }
-
-const transactionAmountFormatters = new Map<string, Intl.NumberFormat>();
 
 interface RulesPanelProps {
   categories: Category[];
@@ -1217,21 +1216,7 @@ function providerRunMessage(providerRun: SuggestionApiResponse["provider"]): str
 }
 
 function formatTransactionAmount(amount: number, currency: string): string {
-  const fractionDigits = amount % 1 === 0 ? 0 : 2;
-  const formatterKey = `${currency}:${fractionDigits}`;
-  let formatter = transactionAmountFormatters.get(formatterKey);
-
-  if (!formatter) {
-    formatter = Intl.NumberFormat("en-US", {
-      currency,
-      maximumFractionDigits: fractionDigits,
-      minimumFractionDigits: fractionDigits,
-      style: "currency"
-    });
-    transactionAmountFormatters.set(formatterKey, formatter);
-  }
-
-  return formatter.format(amount);
+  return formatCurrency(amount, currency);
 }
 
 function tagsFromInput(value: string): string[] {

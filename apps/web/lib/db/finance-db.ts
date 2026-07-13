@@ -4504,6 +4504,39 @@ export async function writeSyncStateValue(key: string, value: string): Promise<v
   });
 }
 
+/**
+ * Serialize a sync-state read/modify/write across app instances. The row lock is
+ * held until the callback's replacement value is committed.
+ */
+export async function withLockedSyncStateValue<T>(
+  key: string,
+  operation: (value: string | undefined) => Promise<{ result: T; value: string }>
+): Promise<T> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await db.exec("BEGIN");
+    try {
+      await db.query(
+        `INSERT INTO sync_state (key, value)
+        VALUES ($1, '')
+        ON CONFLICT (key) DO NOTHING`,
+        [key]
+      );
+      const current = await db.query<SyncStateRow>(
+        "SELECT key, value FROM sync_state WHERE key = $1 FOR UPDATE",
+        [key]
+      );
+      const update = await operation(current.rows[0]?.value || undefined);
+      await writeSyncState(db, { [key]: update.value });
+      await db.exec("COMMIT");
+      return update.result;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
 export async function deleteSyncStateValue(key: string): Promise<void> {
   await enqueueDbWrite(async () => {
     const db = await getFinanceDb();

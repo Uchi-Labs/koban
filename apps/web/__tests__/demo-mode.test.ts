@@ -47,6 +47,42 @@ describe("demo mode scrambling", () => {
     expect(position.units).toBeCloseTo(50 * accountDemoFactor(account), 3);
   });
 
+  it("scrambles investment price and return while keeping market value plausible", () => {
+    const factors = buildDemoFactors([account]);
+    const realPosition = {
+      accountId: "acct_big",
+      costBasis: 160,
+      id: "position_private",
+      marketValue: 10_000,
+      price: 200,
+      units: 50
+    };
+    const [scrambled] = scramblePositions([realPosition], factors);
+    const realPercent = 25;
+    const scrambledCostBasisValue = scrambled.costBasis * scrambled.units;
+    const scrambledPercent = ((scrambled.marketValue - scrambledCostBasisValue) / scrambledCostBasisValue) * 100;
+
+    expect(scrambled.price).not.toBe(realPosition.price);
+    expect(scrambledPercent).not.toBeCloseTo(realPercent, 4);
+    expect(scrambled.marketValue).toBeCloseTo(scrambled.units * scrambled.price, 0);
+  });
+
+  it("never passes through cost basis for a zero-unit holding", () => {
+    const [scrambled] = scramblePositions([{
+      accountId: "acct_big",
+      costBasis: 160,
+      id: "position_closed",
+      marketValue: 0,
+      price: 200,
+      units: 0
+    }], buildDemoFactors([account]));
+
+    expect(scrambled.price).not.toBe(200);
+    expect(scrambled.costBasis).toBeUndefined();
+    expect(scrambled.marketValue).toBe(0);
+    expect(scrambled.units).toBe(0);
+  });
+
   it("keeps transaction amounts life-sized via a per-merchant factor", () => {
     const [netflix] = scrambleTransactions([{ accountId: "acct_a", amount: -12.99, merchantName: "NETFLIX" }]);
     expect(netflix.amount).toBeLessThan(0);

@@ -131,7 +131,7 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   // single-currency user's rows that predate Copilot storing one, and permission
   // for archival accounts to import with a zero opening balance.
   const forcedMatches = overrides.forcedMatches ?? {};
-  const defaultCurrency = overrides.defaultCurrency;
+  const defaultCurrency = normalizeImportCurrency(overrides.defaultCurrency);
   const allowEmptyBalances = overrides.allowEmptyBalances === true;
   const accountMappings = normalizeMappingBucket(mappings.accounts);
   const categoryMappings = normalizeMappingBucket(mappings.categories);
@@ -229,6 +229,7 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
   const importTransactions = [];
   const invalidTagJsonTransactionIds = [];
   const invalidTransactionAmountIds = [];
+  const invalidTransactionCurrencyIds = [];
   const missingTransactionCurrencyIds = [];
   const missingTransactionNameIds = [];
   const missingCategoryIds = new Set();
@@ -257,7 +258,12 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
       invalidTransactionAmountIds.push(transaction.id);
       continue;
     }
-    const currency = cleanText(transaction.iso_currency_code)?.toUpperCase() || defaultCurrency;
+    const sourceCurrency = cleanText(transaction.iso_currency_code)?.toUpperCase();
+    const normalizedSourceCurrency = normalizeImportCurrency(sourceCurrency);
+    if (sourceCurrency && !normalizedSourceCurrency) {
+      invalidTransactionCurrencyIds.push(transaction.id);
+    }
+    const currency = normalizedSourceCurrency || defaultCurrency;
     if (!currency) {
       missingTransactionCurrencyIds.push(transaction.id);
     }
@@ -395,6 +401,7 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
     importTransactions,
     invalidTagJsonTransactionIds,
     invalidTransactionAmountIds,
+    invalidTransactionCurrencyIds,
     missingBalanceAccountIds,
     missingCategoryIds: [...missingCategoryIds].sort(),
     missingCurrencyAccountIds,
@@ -494,6 +501,7 @@ export function formatDryRunReport(plan) {
     `- Amazon provenance: ${formatNumber(plan.sourceCounts.amazonTransactionCount)} transactions tagged copilot:amazon`,
     `- Invalid tag_ids JSON rows: ${formatNumber(plan.invalidTagJsonTransactionIds.length)}`,
     `- Invalid amount rows: ${formatNumber(plan.invalidTransactionAmountIds.length)}`,
+    `- Malformed source currency rows: ${formatNumber(plan.invalidTransactionCurrencyIds.length)}`,
     `- Rows without source currency: ${formatNumber(plan.missingTransactionCurrencyIds.length)}`,
     `- Rows without source names/descriptions: ${formatNumber(plan.missingTransactionNameIds.length)}`,
     "",
@@ -893,6 +901,11 @@ function dateOnly(value) {
 
 function dayDistance(left, right) {
   return Math.abs(Date.parse(`${left}T00:00:00.000Z`) - Date.parse(`${right}T00:00:00.000Z`)) / DAY_MS;
+}
+
+function normalizeImportCurrency(value) {
+  const normalized = cleanText(value)?.toUpperCase();
+  return normalized && /^[A-Z]{3}$/.test(normalized) ? normalized : undefined;
 }
 
 function cleanText(value) {

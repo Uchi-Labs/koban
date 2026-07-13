@@ -34,12 +34,12 @@ const securityHeaders = [
       "frame-ancestors 'none'",
       "object-src 'none'",
       "form-action 'self'",
-      "img-src 'self' data: blob:",
+      "img-src 'self' data: blob: https://www.google.com https://icons.duckduckgo.com",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' https://cdn.teller.io https://cdn.plaid.com",
-      "connect-src 'self' https://api.teller.io https://*.teller.io https://*.plaid.com",
-      "frame-src https://*.teller.io https://cdn.plaid.com",
+      "script-src 'self' https://cdn.teller.io https://cdn.plaid.com https://s3.tradingview.com",
+      "connect-src 'self' https://api.teller.io https://*.teller.io https://*.plaid.com https://*.tradingview.com wss://*.tradingview.com",
+      "frame-src https://*.teller.io https://cdn.plaid.com https://*.tradingview.com",
       "upgrade-insecure-requests"
     ].join("; ")
   }
