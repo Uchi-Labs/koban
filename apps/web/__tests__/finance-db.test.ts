@@ -36,6 +36,7 @@ import {
   listTransactionEvidence,
   listSourceItems,
   readFinanceDbSnapshot,
+  readSyncStateValue,
   recordAppSyncRun,
   recordAppSyncScheduleRun,
   recordSourceSyncRun,
@@ -53,7 +54,8 @@ import {
   updateDbTransaction,
   updateTransactionEvidenceStatus,
   updateTransactionRule,
-  upsertTagStyle
+  upsertTagStyle,
+  withLockedSyncStateValue
 } from "@/lib/db/finance-db";
 import { categoryColorPalette } from "@/lib/category-style";
 import {
@@ -95,6 +97,20 @@ afterEach(async () => {
 });
 
 describe("finance db", () => {
+  it("serializes concurrent sync-state read-modify-write operations", async () => {
+    useTempDb();
+
+    const counts = await Promise.all(Array.from({ length: 5 }, () =>
+      withLockedSyncStateValue("test_atomic_counter", async (storedValue) => {
+        const count = Number.parseInt(storedValue ?? "0", 10) + 1;
+        return { result: count, value: String(count) };
+      })
+    ));
+
+    expect(counts).toEqual([1, 2, 3, 4, 5]);
+    await expect(readSyncStateValue("test_atomic_counter")).resolves.toBe("5");
+  });
+
   it("recovers when a previous local PGlite process left a stale postmaster pid file", async () => {
     useTempDb();
     rmSync(testDbPath!, { force: true, recursive: true });

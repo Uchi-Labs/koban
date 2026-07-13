@@ -28,6 +28,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { normalizeCurrencyCode } from "@/lib/currency";
+import { formatCurrency } from "@/lib/format";
 import { isSourceImportTooLarge, sourceImportLimitLabel, sourceImportTooLargeMessage } from "@/lib/source-import-limits";
 import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/source-preview";
 import { cn } from "@/lib/utils";
@@ -1314,7 +1315,7 @@ function sourceCurrencyFormatter(currency: string): Intl.NumberFormat {
 }
 
 function formatTransactionAmount(transaction: EvidenceReviewView["transaction"]): string {
-  return sourceCurrencyFormatter(transaction.currency).format(transaction.amount);
+  return formatCurrency(transaction.amount, transaction.currency);
 }
 
 function formatSourceStorage(storage: SourceAdapterView["storage"]): string {
