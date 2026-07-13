@@ -32,6 +32,9 @@ jobs:
       - name: Unit tests
         run: pnpm --dir apps/web test
 
+      - name: Copilot import tests
+        run: pnpm test:copilot-import
+
       - name: Build
         run: NEXT_DIST_DIR=.next-build pnpm --dir apps/web build
 

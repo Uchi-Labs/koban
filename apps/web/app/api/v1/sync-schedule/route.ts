@@ -1,15 +1,20 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readOptionalJsonObject } from "@/lib/api-request";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { runAppSync } from "@/lib/app-sync-service";
 import {
   appSyncScheduleId,
+  claimAppSyncSchedule,
+  claimAppSyncScheduleForRunNow,
+  clearAppSyncScheduleClaim,
   ensureAppSyncSchedule,
   recordAppSyncScheduleRun,
   snapTradeSyncScheduleId,
   updateAppSyncSchedule
 } from "@/lib/db/finance-db";
 import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync-request";
+import { withSyncScheduleClaimHeartbeat } from "@/lib/sync-schedule-claim";
 
 export const runtime = "nodejs";
 
@@ -92,16 +97,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: sourceIds.error }, { status: 400 });
   }
 
-  const run = await runAppSync({
-    enrichmentLimit: enrichmentLimit.value,
-    sourceIds: sourceIds.value
-  });
-  const updatedSchedule = await recordAppSyncScheduleRun(run);
+  const claimedBy = `sync-schedule-api:${process.pid}:${randomUUID()}`;
+  const claimed = action === "run_due"
+    ? await claimAppSyncSchedule(appSyncScheduleId, claimedBy)
+    : await claimAppSyncScheduleForRunNow(appSyncScheduleId, claimedBy);
 
-  return NextResponse.json({
-    object: "sync_schedule_run",
-    run: appSyncRunRecordToPayload(run),
-    schedule: syncScheduleRecordToPayload(updatedSchedule),
-    status: "ran"
-  });
+  if (!claimed) {
+    return NextResponse.json({
+      object: "sync_schedule_run",
+      reason: "claimed",
+      run: null,
+      schedule: syncScheduleRecordToPayload(await ensureAppSyncSchedule()),
+      status: "skipped"
+    });
+  }
+
+  try {
+    const { run, updatedSchedule } = await withSyncScheduleClaimHeartbeat(
+      appSyncScheduleId,
+      claimedBy,
+      async (signal) => {
+        const run = await runAppSync({
+          enrichmentLimit: enrichmentLimit.value,
+          signal,
+          sourceIds: sourceIds.value
+        });
+        const updatedSchedule = await recordAppSyncScheduleRun(run, appSyncScheduleId, claimedBy);
+        return { run, updatedSchedule };
+      }
+    );
+
+    return NextResponse.json({
+      object: "sync_schedule_run",
+      run: appSyncRunRecordToPayload(run),
+      schedule: syncScheduleRecordToPayload(updatedSchedule),
+      status: "ran"
+    });
+  } catch (error) {
+    await clearAppSyncScheduleClaim(appSyncScheduleId, claimedBy);
+    throw error;
+  }
 }

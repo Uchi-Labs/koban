@@ -4,16 +4,22 @@
 // (investments only, typically every 30 minutes). Before this ticker existed the
 // schedule only advanced while someone had the Settings page open in a browser.
 
+import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import {
   appSyncScheduleId,
+  claimAppSyncSchedule,
+  clearAppSyncScheduleClaim,
   ensureAppSyncSchedule,
   recordAppSyncScheduleRun,
   snapTradeSyncScheduleId,
   type SyncScheduleRecord
 } from "@/lib/db/finance-db";
 import { runAppSync, runSnapTradeSync } from "@/lib/app-sync-service";
+import { withSyncScheduleClaimHeartbeat } from "@/lib/sync-schedule-claim";
 
 const TICK_INTERVAL_MS = 60_000;
+const tickerClaimantId = `${hostname()}:${process.pid}:${randomUUID()}`;
 
 let started = false;
 let ticking = false;
@@ -32,8 +38,8 @@ export function startSyncScheduleTicker(): void {
   console.log("[sync-ticker] started (checks every 60s)");
 }
 
-function isDue(schedule: SyncScheduleRecord): boolean {
-  return schedule.enabled && schedule.nextRunAt !== undefined && Date.parse(schedule.nextRunAt) <= Date.now();
+export function isDue(schedule: SyncScheduleRecord, now = Date.now()): boolean {
+  return schedule.enabled && schedule.nextRunAt !== undefined && Date.parse(schedule.nextRunAt) <= now;
 }
 
 async function tick(): Promise<void> {
@@ -44,17 +50,31 @@ async function tick(): Promise<void> {
   ticking = true;
   try {
     const snaptrade = await ensureAppSyncSchedule(snapTradeSyncScheduleId);
-    if (isDue(snaptrade)) {
+    if (isDue(snaptrade) && await claimAppSyncSchedule(snapTradeSyncScheduleId, tickerClaimantId)) {
       console.log("[sync-ticker] snaptrade sync due — running");
-      const { run } = await runSnapTradeSync();
-      await recordAppSyncScheduleRun(run, snapTradeSyncScheduleId);
+      try {
+        await withSyncScheduleClaimHeartbeat(snapTradeSyncScheduleId, tickerClaimantId, async (signal) => {
+          const { run } = await runSnapTradeSync(signal);
+          await recordAppSyncScheduleRun(run, snapTradeSyncScheduleId, tickerClaimantId);
+        });
+      } catch (error) {
+        await clearAppSyncScheduleClaim(snapTradeSyncScheduleId, tickerClaimantId);
+        throw error;
+      }
     }
 
     const wholeApp = await ensureAppSyncSchedule(appSyncScheduleId);
-    if (isDue(wholeApp)) {
+    if (isDue(wholeApp) && await claimAppSyncSchedule(appSyncScheduleId, tickerClaimantId)) {
       console.log("[sync-ticker] whole-app sync due — running");
-      const run = await runAppSync({ enrichmentLimit: 50, includePlaid: true, includeSimpleFin: true });
-      await recordAppSyncScheduleRun(run, appSyncScheduleId);
+      try {
+        await withSyncScheduleClaimHeartbeat(appSyncScheduleId, tickerClaimantId, async (signal) => {
+          const run = await runAppSync({ enrichmentLimit: 50, includePlaid: true, includeSimpleFin: true, signal });
+          await recordAppSyncScheduleRun(run, appSyncScheduleId, tickerClaimantId);
+        });
+      } catch (error) {
+        await clearAppSyncScheduleClaim(appSyncScheduleId, tickerClaimantId);
+        throw error;
+      }
     }
   } catch (error) {
     console.error("[sync-ticker] tick failed:", error instanceof Error ? error.message : error);
