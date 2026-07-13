@@ -237,8 +237,8 @@ describe("source adapter normalization", () => {
       externalId: "19715679766434764",
       kind: "grocery_order",
       merchantName: "target",
-      occurredAt: "2026-03-31T04:00:00.000Z",
-      summary: "Retailer: target. Order: 19715679766434764. Delivered: 2026-03-31T04:00:00.000Z. Status: Delivered. Items: 3. Item total: 13.97. Products: Organic Tomatoes, Blueberries",
+      occurredAt: "2026-03-31T00:00:00.000Z",
+      summary: "Retailer: target. Order: 19715679766434764. Delivered: 2026-03-31T00:00:00.000Z. Status: Delivered. Items: 3. Item total: 13.97. Products: Organic Tomatoes, Blueberries",
       title: "Organic Tomatoes, Blueberries"
     });
     expect(items[0].metadata).toMatchObject({
@@ -265,8 +265,8 @@ describe("source adapter normalization", () => {
       currency: "USD",
       externalId: "19637281555423008",
       merchantName: "target",
-      occurredAt: "2026-03-22T04:00:00.000Z",
-      summary: "Retailer: target. Order: 19637281555423008. Delivered: 2026-03-22T04:00:00.000Z. Status: Delivered. Items: 5. Total: 77.25",
+      occurredAt: "2026-03-22T00:00:00.000Z",
+      summary: "Retailer: target. Order: 19637281555423008. Delivered: 2026-03-22T00:00:00.000Z. Status: Delivered. Items: 5. Total: 77.25",
       title: "Instacart order 19637281555423008"
     });
   });

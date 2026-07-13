@@ -3647,6 +3647,14 @@ function normalizeDate(value: string | undefined): string | undefined {
     return value;
   }
 
+  // Date-only report values must not inherit the server's local timezone.
+  // Instacart exports use forms such as "Mar 31, 2026"; interpreting those
+  // at UTC midnight keeps imported evidence stable across environments.
+  if (/^[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}$/.test(value.trim())) {
+    const parsed = new Date(`${value.trim()} UTC`);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+  }
+
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
