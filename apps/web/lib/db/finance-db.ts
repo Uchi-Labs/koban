@@ -4511,7 +4511,12 @@ export async function deleteSyncStateValue(key: string): Promise<void> {
 
 function enqueueDbWrite<T>(operation: () => Promise<T>): Promise<T> {
   const state = getFinanceDbState();
-  const scopedOperation = () => runInDbWriteScope(operation);
+  // Every write invalidates the read caches — the queue is the only mutation
+  // path, so this guarantees no page ever renders pre-write ledger data.
+  const scopedOperation = () =>
+    runInDbWriteScope(operation).finally(() => {
+      invalidateShellDataCache();
+    });
   const nextOperation = state.writeQueue.then(scopedOperation, scopedOperation);
   state.writeQueue = nextOperation.then(
     () => undefined,
