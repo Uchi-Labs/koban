@@ -45,7 +45,7 @@ export function AccountsNetWorthCard({
         <div className="flex items-start justify-between gap-3" data-range={activeRange}>
           <div>
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Net worth</p>
-            <MoneyHero amount={currentNetWorth} className="mt-1 text-3xl" currency={currency} rolling />
+            <MoneyHero amount={currentNetWorth} className="mt-1 text-3xl" currency={currency} />
             <Badge className="mt-2 border-transparent font-medium tabular-nums" variant={positive ? "under-budget" : "over-budget"}>
               {percentLabel}
             </Badge>

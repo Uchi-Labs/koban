@@ -3,6 +3,7 @@
 import { AnimatePresence, domAnimation, LazyMotion, m, useInView, useReducedMotion, useSpring } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ROLLING_DIGITS_DEFAULTS } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export type RollingDigitsLocale = true | string | Intl.NumberFormatOptions;
@@ -106,17 +107,6 @@ interface ExitItem {
 
 let exitId = 0;
 const DIGIT_PATTERN = /\d/;
-
-const DIGIT_MOTION_DEFAULTS = {
-  enterStiffness: 170,
-  enterDamping: 10,
-  exitStiffness: 170,
-  exitDamping: 15,
-  direction: "dynamic" as const,
-  enterY: 32,
-  enterScale: 0.84,
-  exitScale: 0.84,
-};
 
 function isDigitChar(char: string) {
   return DIGIT_PATTERN.test(char);
@@ -341,14 +331,14 @@ function DigitCell({
   char,
   isDigit,
   className,
-  enterStiffness = DIGIT_MOTION_DEFAULTS.enterStiffness,
-  enterDamping = DIGIT_MOTION_DEFAULTS.enterDamping,
-  exitStiffness = DIGIT_MOTION_DEFAULTS.exitStiffness,
-  exitDamping = DIGIT_MOTION_DEFAULTS.exitDamping,
-  direction = DIGIT_MOTION_DEFAULTS.direction,
-  enterY = DIGIT_MOTION_DEFAULTS.enterY,
-  enterScale = DIGIT_MOTION_DEFAULTS.enterScale,
-  exitScale = DIGIT_MOTION_DEFAULTS.exitScale,
+  enterStiffness = ROLLING_DIGITS_DEFAULTS.enterStiffness,
+  enterDamping = ROLLING_DIGITS_DEFAULTS.enterDamping,
+  exitStiffness = ROLLING_DIGITS_DEFAULTS.exitStiffness,
+  exitDamping = ROLLING_DIGITS_DEFAULTS.exitDamping,
+  direction = ROLLING_DIGITS_DEFAULTS.direction,
+  enterY = ROLLING_DIGITS_DEFAULTS.enterY,
+  enterScale = ROLLING_DIGITS_DEFAULTS.enterScale,
+  exitScale = ROLLING_DIGITS_DEFAULTS.exitScale,
 }: {
   char: string;
   isDigit: boolean;
@@ -650,16 +640,16 @@ export function RollingDigitsText({
                     opacity: 0,
                     y:
                       direction === "down"
-                        ? (enterY ?? DIGIT_MOTION_DEFAULTS.enterY)
-                        : -(enterY ?? DIGIT_MOTION_DEFAULTS.enterY),
+                        ? (enterY ?? ROLLING_DIGITS_DEFAULTS.enterY)
+                        : -(enterY ?? ROLLING_DIGITS_DEFAULTS.enterY),
                   }
                 : { opacity: 0 }
             }
             key={key}
             transition={{
               type: "spring",
-              stiffness: exitStiffness ?? DIGIT_MOTION_DEFAULTS.exitStiffness,
-              damping: exitDamping ?? DIGIT_MOTION_DEFAULTS.exitDamping,
+              stiffness: exitStiffness ?? ROLLING_DIGITS_DEFAULTS.exitStiffness,
+              damping: exitDamping ?? ROLLING_DIGITS_DEFAULTS.exitDamping,
             }}
           >
             <DigitCell

@@ -11,6 +11,7 @@ import {
 import Image, { type ImageProps } from "next/image";
 import * as React from "react";
 
+import { SPRING_CARD_HOVER, SPRING_CARD_LAYOUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const componentThemeClassName = "iconiq-theme";
@@ -49,30 +50,14 @@ const motionDescriptionElements = {
   span: motion.span,
 } as const;
 
-/** Fluid hover — low bounce, long settle (same family as progress fill). */
-const cardHoverSpring = {
-  type: "spring" as const,
-  stiffness: 95,
-  damping: 19,
-  mass: 0.92,
-  restDelta: 0.001,
-};
-
-const cardLayoutTransition = {
-  type: "spring" as const,
-  stiffness: 220,
-  damping: 30,
-  mass: 0.85,
-};
-
 const CARD_SHADOW_HOVER =
   "var(--ic-card-hover-shadow)";
 
 const cardInteractiveSurfaceClassName =
-  "shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none before:transition-opacity before:duration-250 before:motion-reduce:transition-none hover:border-foreground/11 hover:bg-card hover:before:opacity-100 focus-within:border-foreground/11 focus-within:bg-card focus-within:before:opacity-100";
+  "shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none before:transition-opacity before:duration-250 before:motion-reduce:transition-none hover:border-foreground/11 hover:bg-card hover:before:opacity-100 focus-within:border-foreground/11 focus-within:bg-card focus-within:before:opacity-100";
 
 const cardCssHoverMotionClassName =
-  "transition-[transform,background-color,border-color,box-shadow] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[5px] hover:scale-[1.006] hover:shadow-[var(--ic-card-hover-shadow)] focus-within:-translate-y-[5px] focus-within:scale-[1.006] focus-within:shadow-[var(--ic-card-hover-shadow)] motion-reduce:transform-none motion-reduce:transition-none motion-reduce:hover:transform-none motion-reduce:hover:shadow-none motion-reduce:focus-within:transform-none motion-reduce:focus-within:shadow-none";
+  "transition-[transform,background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] hover:-translate-y-[5px] hover:scale-[1.006] hover:shadow-[var(--ic-card-hover-shadow)] focus-within:-translate-y-[5px] focus-within:scale-[1.006] focus-within:shadow-[var(--ic-card-hover-shadow)] motion-reduce:transform-none motion-reduce:transition-none motion-reduce:hover:transform-none motion-reduce:hover:shadow-none motion-reduce:focus-within:transform-none motion-reduce:focus-within:shadow-none";
 
 type MotionSafeDivProps = Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -119,7 +104,7 @@ type CardMediaProps = CardSectionProps & {
 
 const cardSectionMotionProps = {
   layout: "position" as const,
-  transition: cardLayoutTransition,
+  transition: SPRING_CARD_LAYOUT,
 };
 
 function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null) {
@@ -162,7 +147,7 @@ function getCardSurfaceClassName({
       useCssHoverMotion && cardCssHoverMotionClassName,
     ],
     !interactive && [
-      "transition-[border-color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+      "transition-[border-color,background-color] duration-300 ease-[var(--ease-smooth-out)]",
     ],
     className
   );
@@ -170,7 +155,7 @@ function getCardSurfaceClassName({
 
 function useCardHoverMotion(enabled: boolean) {
   const hoverTarget = useMotionValue(0);
-  const hover = useSpring(hoverTarget, cardHoverSpring);
+  const hover = useSpring(hoverTarget, SPRING_CARD_HOVER);
 
   const y = useTransform(hover, [0, 1], [0, -5]);
   const scale = useTransform(hover, [0, 1], [1, 1.006]);
@@ -393,7 +378,7 @@ const Card = React.forwardRef<HTMLElement, CardProps>(
           assignRef(ref, node);
         }}
         style={useSpringHover ? { ...styleProp, ...hoverStyle } : styleProp}
-        transition={cardLayoutTransition}
+        transition={SPRING_CARD_LAYOUT}
       >
         {useSpringHover ? (
           <motion.div

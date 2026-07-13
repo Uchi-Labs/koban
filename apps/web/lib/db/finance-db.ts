@@ -939,6 +939,22 @@ export async function upsertAccountBalanceSnapshots(snapshots: AccountBalanceSna
   return enqueueDbWrite(() => upsertAccountBalanceSnapshotsNow(snapshots));
 }
 
+export async function replacePlaidLedgerSnapshot(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
+  return enqueueDbWrite(() => replacePlaidLedgerSnapshotNow(input));
+}
+
+export async function replaceSimpleFinLedgerSnapshot(
+  input: SimpleFinLedgerSnapshotInput
+): Promise<SimpleFinLedgerSnapshotRecord> {
+  return enqueueDbWrite(() => replaceSimpleFinLedgerSnapshotNow(input));
+}
+
+export async function ingestFinanceKitLedgerSnapshot(
+  input: FinanceKitLedgerSnapshotInput
+): Promise<FinanceKitLedgerSnapshotRecord> {
+  return enqueueDbWrite(() => ingestFinanceKitLedgerSnapshotNow(input));
+}
+
 export interface CopilotHistoryImportInput {
   accounts: Account[];
   balanceSnapshots: AccountBalanceSnapshot[];
@@ -1024,22 +1040,6 @@ export async function applyCopilotHistoryImport(
       transactionCount: input.transactions.length
     };
   });
-}
-
-export async function replacePlaidLedgerSnapshot(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
-  return enqueueDbWrite(() => replacePlaidLedgerSnapshotNow(input));
-}
-
-export async function replaceSimpleFinLedgerSnapshot(
-  input: SimpleFinLedgerSnapshotInput
-): Promise<SimpleFinLedgerSnapshotRecord> {
-  return enqueueDbWrite(() => replaceSimpleFinLedgerSnapshotNow(input));
-}
-
-export async function ingestFinanceKitLedgerSnapshot(
-  input: FinanceKitLedgerSnapshotInput
-): Promise<FinanceKitLedgerSnapshotRecord> {
-  return enqueueDbWrite(() => ingestFinanceKitLedgerSnapshotNow(input));
 }
 
 export async function resetLocalAppData(): Promise<LocalAppDataResetSummary> {

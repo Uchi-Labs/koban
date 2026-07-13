@@ -1,7 +1,7 @@
 "use client";
 // beui.dev/components/blocks/expandable-action-bar
 
-import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
+import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
   useCallback,
   useEffect,
@@ -13,6 +13,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { SPRING_LAYOUT, SPRING_SWAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export type ExpandableActionBarSize = "sm" | "md";
@@ -54,20 +55,6 @@ export interface ExpandableActionBarProps {
   classNames?: ExpandableActionBarClassNames;
   renderItem?: (item: ExpandableActionBarItem, state: { expanded: boolean; active: boolean }) => ReactNode;
 }
-
-const ITEM_TRANSITION: Transition = {
-  type: "spring",
-  stiffness: 460,
-  damping: 34,
-  mass: 0.62,
-};
-
-const LABEL_TRANSITION: Transition = {
-  type: "spring",
-  stiffness: 380,
-  damping: 32,
-  mass: 0.7,
-};
 
 const SIZE_CLASS: Record<ExpandableActionBarSize, string> = {
   sm: "min-h-9 gap-1 p-1 text-xs",
@@ -184,7 +171,7 @@ export function ExpandableActionBar({
         onMouseLeave={onRootMouseLeave}
         onFocus={onRootFocus}
         onBlur={onRootBlur}
-        transition={reduce ? { duration: 0 } : ITEM_TRANSITION}
+        transition={reduce ? { duration: 0 } : SPRING_SWAP}
         className={cn("inline-flex", classNames?.root, className)}
       >
         <motion.div
@@ -194,7 +181,7 @@ export function ExpandableActionBar({
             SIZE_CLASS[size],
             classNames?.track,
           )}
-          transition={reduce ? { duration: 0 } : ITEM_TRANSITION}
+          transition={reduce ? { duration: 0 } : SPRING_SWAP}
         >
           {items.map((item) => {
             const isActive = item.active || activeId === item.id;
@@ -217,7 +204,7 @@ export function ExpandableActionBar({
                   onAction?.(item);
                 }}
                 whileTap={reduce || item.disabled ? undefined : { scale: 0.96 }}
-                transition={reduce ? { duration: 0 } : ITEM_TRANSITION}
+                transition={reduce ? { duration: 0 } : SPRING_SWAP}
                 className={cn(
                   "relative isolate inline-flex items-center justify-center overflow-hidden rounded-full font-medium text-muted-foreground outline-none transition-[color,background-color] duration-150 ease-out",
                   "focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-40",
@@ -231,7 +218,7 @@ export function ExpandableActionBar({
                   <motion.span
                     layoutId="action-bar-highlight"
                     className="absolute inset-0 -z-10 rounded-full bg-primary/[0.07]"
-                    transition={reduce ? { duration: 0 } : ITEM_TRANSITION}
+                    transition={reduce ? { duration: 0 } : SPRING_SWAP}
                   />
                 ) : null}
 
@@ -268,7 +255,7 @@ export function ExpandableActionBar({
                               filter: isExpanded ? "blur(0px)" : "blur(3px)",
                             }
                       }
-                      transition={reduce ? { duration: 0 } : LABEL_TRANSITION}
+                      transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                       className={cn(
                         "inline-block overflow-hidden whitespace-nowrap",
                         classNames?.label,
@@ -285,7 +272,7 @@ export function ExpandableActionBar({
                           opacity: isExpanded ? 1 : 0,
                           marginLeft: isExpanded ? 4 : 0,
                         }}
-                        transition={reduce ? { duration: 0 } : LABEL_TRANSITION}
+                        transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                         className={cn(
                           "hidden overflow-hidden whitespace-nowrap text-[10px] text-muted-foreground sm:inline-block",
                           classNames?.shortcut,

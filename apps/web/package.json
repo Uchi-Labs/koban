@@ -23,7 +23,6 @@
     "@better-auth/api-key": "^1.6.23",
     "@better-auth/passkey": "^1.6.23",
     "@electric-sql/pglite": "^0.4.6",
-    "@number-flow/react": "^0.6.1",
     "@tanstack/react-virtual": "^3.14.5",
     "@web-kits/audio": "^0.1.0",
     "ai": "^7.0.15",

@@ -18,22 +18,15 @@ import {
   useState,
 } from "react";
 
+import { EASE_DRAWER, SPRING_BANNER_MORPH } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_MORPH_DURATION_MS = 2400;
 
-/** Bouncy-but-controlled spring driving the bar-to-pill layout morph. */
-const MORPH_SPRING = {
-  type: "spring",
-  stiffness: 320,
-  damping: 30,
-  mass: 0.8,
-} as const;
-
 /** Ease used for the entrance and dismiss height collapse. */
 const COLLAPSE_TRANSITION = {
   duration: 0.25,
-  ease: [0.32, 0.72, 0, 1],
+  ease: EASE_DRAWER,
 } as const;
 
 /**
@@ -296,7 +289,7 @@ function BannerSurface({
   onClose: () => void;
   reducedMotion: boolean;
 }) {
-  const morphTransition = reducedMotion ? { duration: 0 } : MORPH_SPRING;
+  const morphTransition = reducedMotion ? { duration: 0 } : SPRING_BANNER_MORPH;
 
   return (
     <div className={cn("flex justify-center", isPill && "py-2.5")}>

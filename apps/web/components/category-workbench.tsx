@@ -174,7 +174,7 @@ function SummaryCard({
   return (
     <button
       className={cn(
-        "iconiq-theme flex w-full items-center justify-around gap-8 rounded-lg border bg-card/95 px-8 py-5 text-left shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color,box-shadow] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        "iconiq-theme flex w-full items-center justify-around gap-8 rounded-lg border bg-card/95 px-8 py-5 text-left shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none",
         selectedAll ? "border-ring/50 ring-1 ring-ring/30" : "border-border/70 hover:border-foreground/11 hover:bg-card hover:shadow-[var(--ic-card-hover-shadow)]"
       )}
       onClick={onSelectAll}

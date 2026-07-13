@@ -17,7 +17,7 @@ export function DashboardCard({
   className = "",
   contentClassName,
   layered = true,
-  surface = "legacy",
+  surface,
   title
 }: {
   action?: { href: string; label: string };
@@ -25,7 +25,7 @@ export function DashboardCard({
   className?: string;
   contentClassName?: string;
   layered?: boolean;
-  surface?: "iconiq" | "legacy";
+  surface: "iconiq" | "legacy";
   title: string;
 }) {
   if (surface === "legacy") {
@@ -68,14 +68,18 @@ export function DashboardCard({
     <IconiqCard
       data-dashboard-card={layered ? "layered" : "flat"}
       className={cn(
-        "gap-0 rounded-xl border-border/60 bg-card/95 py-0 shadow-[var(--ic-card-rest-shadow)]",
+        "gap-0 rounded-xl py-0",
+        layered
+          ? "border-border/60 bg-card/95 shadow-[var(--ic-card-rest-shadow)]"
+          : "border-border/45 bg-card/70 shadow-none",
         className
       )}
     >
       <IconiqCardHeader
         data-dashboard-card-plane="secondary"
         className={cn(
-          "grid min-h-12 grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5"
+          "grid grid-cols-[1fr_auto] items-center gap-3 px-5",
+          layered ? "min-h-12 py-2.5" : "pt-4 pb-3"
         )}
       >
         <IconiqCardTitle as="h2" className="card-label self-center text-sm leading-none">{title}</IconiqCardTitle>
@@ -87,7 +91,11 @@ export function DashboardCard({
       </IconiqCardHeader>
       <IconiqCardContent
         data-dashboard-card-plane="primary"
-        className={cn("relative flex flex-col gap-2 px-5 pt-4 pb-5", contentClassName)}
+        className={cn(
+          "relative flex flex-col gap-2 px-5 pb-5",
+          layered && "pt-4",
+          contentClassName
+        )}
       >
         {children}
       </IconiqCardContent>

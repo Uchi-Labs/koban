@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/card";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
 import { TextReveal } from "@/components/motion/text-reveal";
+import { buildTopCategoryCells } from "@/lib/dashboard-top-categories";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
 import { getFinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
@@ -52,6 +53,7 @@ export default async function DashboardPage() {
   const projectedMonthlySpending = monthlySpendingProjection.amount;
   const reviewSectionLabel = reviewRows[0]?.dateLabel ?? "Latest";
   const investmentBalance = accountGroups.find((group) => group.id === "group_investments")?.totalBalance ?? 0;
+  const topCategoryCells = buildTopCategoryCells(dashboardSummary.topCategories, categories);
 
   const overBudget = monthlyBudgetDelta >= 0;
   const projectionIsEarly = monthlySpendingProjection.confidence === "early";
@@ -82,7 +84,7 @@ export default async function DashboardPage() {
         <DashboardCard title="Monthly spending" action={{ label: "Transactions", href: "/transactions" }} surface="iconiq">
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
-              <MoneyHero amount={monthlySpending} currency={dashboardSummary.currency} rolling />
+              <MoneyHero amount={monthlySpending} currency={dashboardSummary.currency} />
               <div className="mt-1 text-xs text-muted-foreground">
                 of {formatCurrency(monthlyBudget, dashboardSummary.currency)} budgeted
               </div>
@@ -161,67 +163,44 @@ export default async function DashboardPage() {
 
         <div className="grid content-start gap-3">
           <DashboardCard title="Top categories" action={{ label: "View all", href: "/categories" }} surface="iconiq">
-            {(() => {
-              const spendingIds = new Set(dashboardSummary.topCategories.map((summary) => summary.categoryId));
-              const cells = [
-                ...dashboardSummary.topCategories.map((summary) => ({
-                  amount: Math.abs(summary.amount),
-                  budget: summary.budgetAmount ?? Math.abs(summary.amount),
-                  categoryId: summary.categoryId
-                })),
-                // Budgeted-but-unspent categories fill the grid with real budgets.
-                ...categories
-                  .filter(
-                    (category) =>
-                      (category.budgetAmount ?? 0) > 0 &&
-                      !spendingIds.has(category.id) &&
-                      category.id !== "cat_income" &&
-                      category.id !== "cat_transfer"
-                  )
-                  .map((category) => ({ amount: 0, budget: category.budgetAmount ?? 0, categoryId: category.id }))
-              ].slice(0, 6);
+            <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              {topCategoryCells.map((cell) => {
+                const category = categoryById.get(cell.categoryId);
+                const remaining = Math.max(0, cell.budget - cell.amount);
 
-              return (
-                <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                  {cells.map((cell) => {
-                    const category = categoryById.get(cell.categoryId);
-                    const remaining = Math.max(0, cell.budget - cell.amount);
-
-                    return (
-                      <div className="grid gap-1.5" key={cell.categoryId}>
-                        <div className="flex items-center justify-between gap-2">
-                          {category ? (
-                            <CategoryPill className="min-w-0 max-w-full" category={category} />
-                          ) : (
-                            <span className="pill-tint">🏷️ Other</span>
-                          )}
-                          <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
-                            {formatCurrency(cell.amount, dashboardSummary.currency)}
-                          </span>
-                        </div>
-                        <span
-                          className="block h-1.5 overflow-hidden rounded-full"
-                          style={{
-                            background: `color-mix(in oklab, ${category?.color ?? "var(--muted-foreground)"} 14%, transparent)`
-                          }}
-                        >
-                          <span
-                            className="block h-full rounded-full"
-                            style={{
-                              background: category?.color ?? "var(--muted-foreground)",
-                              width: `${cell.budget > 0 ? Math.min(100, (cell.amount / cell.budget) * 100) : 0}%`
-                            }}
-                          />
-                        </span>
-                        <span className="text-right text-xs tabular-nums text-muted-foreground">
-                          {formatCurrency(remaining, dashboardSummary.currency)} left
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+                return (
+                  <div className="grid gap-1.5" key={cell.categoryId}>
+                    <div className="flex items-center justify-between gap-2">
+                      {category ? (
+                        <CategoryPill className="min-w-0 max-w-full" category={category} />
+                      ) : (
+                        <span className="pill-tint">🏷️ Other</span>
+                      )}
+                      <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+                        {formatCurrency(cell.amount, dashboardSummary.currency)}
+                      </span>
+                    </div>
+                    <span
+                      className="block h-1.5 overflow-hidden rounded-full"
+                      style={{
+                        background: `color-mix(in oklab, ${category?.color ?? "var(--muted-foreground)"} 14%, transparent)`
+                      }}
+                    >
+                      <span
+                        className="block h-full rounded-full"
+                        style={{
+                          background: category?.color ?? "var(--muted-foreground)",
+                          width: `${cell.budget > 0 ? Math.min(100, (cell.amount / cell.budget) * 100) : 0}%`
+                        }}
+                      />
+                    </span>
+                    <span className="text-right text-xs tabular-nums text-muted-foreground">
+                      {formatCurrency(remaining, dashboardSummary.currency)} left
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </DashboardCard>
 
           <DashboardCard title="Next two weeks" action={{ label: "Recurrings", href: "/recurrings" }} surface="iconiq">

@@ -72,7 +72,7 @@ export function AccountBalanceHero({
 
           <div>
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Current balance</p>
-            <MoneyHero amount={account.currentBalance} className="mt-1 text-4xl" currency={account.currency} rolling />
+            <MoneyHero amount={account.currentBalance} className="mt-1 text-4xl" currency={account.currency} />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {change ? (
                 <span

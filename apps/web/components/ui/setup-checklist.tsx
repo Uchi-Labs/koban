@@ -17,19 +17,12 @@ import {
   useState,
 } from "react";
 
+import {
+  SPRING_SETUP_CHECKLIST,
+  SPRING_SETUP_CHECKLIST_BADGE,
+  SPRING_SETUP_CHECKLIST_PROGRESS,
+} from "@/lib/motion";
 import { cn } from "@/lib/utils";
-
-const SPRING = {
-  type: "spring" as const,
-  stiffness: 340,
-  damping: 32,
-};
-
-const BADGE_SPRING = {
-  type: "spring" as const,
-  stiffness: 520,
-  damping: 28,
-};
 
 const PIE_RADIUS = 4.5;
 
@@ -161,7 +154,7 @@ export function SetupChecklistCard({
         className
       )}
       initial={reduceMotion ? false : { opacity: 0, y: 16, scale: 0.98 }}
-      transition={SPRING}
+      transition={SPRING_SETUP_CHECKLIST}
     >
       {children}
     </motion.section>
@@ -280,7 +273,7 @@ export function SetupChecklistAction({
       animate={{ opacity: 1, y: 0 }}
       className={cn("mt-5 flex justify-end gap-2", className)}
       initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-      transition={{ ...SPRING, delay: 0.2 }}
+      transition={{ ...SPRING_SETUP_CHECKLIST, delay: 0.2 }}
     >
       {children}
     </motion.div>
@@ -312,7 +305,7 @@ export function SetupChecklistItem({
 
   const itemVariants: Variants = {
     hidden: reduceMotion ? { opacity: 1 } : { opacity: 0, y: 14 },
-    visible: { opacity: 1, y: 0, transition: SPRING },
+    visible: { opacity: 1, y: 0, transition: SPRING_SETUP_CHECKLIST },
   };
 
   return (
@@ -369,7 +362,7 @@ export function SetupChecklistItem({
                   ? { scale: 1, opacity: 1 }
                   : { scale: 0.4, opacity: 0 }
               }
-              transition={reduceMotion ? { duration: 0 } : BADGE_SPRING}
+              transition={reduceMotion ? { duration: 0 } : SPRING_SETUP_CHECKLIST_BADGE}
             >
               <DrawnCheck />
             </motion.span>
@@ -382,12 +375,6 @@ export function SetupChecklistItem({
 
 /** Identity-independent marker so children traversal survives HMR module swaps. */
 SetupChecklistItem.isSetupChecklistItem = true;
-
-const PROGRESS_SPRING = {
-  type: "spring" as const,
-  stiffness: 110,
-  damping: 24,
-};
 
 function clampFraction(value: number) {
   return Math.min(Math.max(value, 0), 1);
@@ -433,7 +420,7 @@ function ProgressPie({
         r={PIE_RADIUS}
         stroke="currentColor"
         strokeWidth={PIE_RADIUS * 2}
-        transition={reduceMotion ? { duration: 0 } : PROGRESS_SPRING}
+        transition={reduceMotion ? { duration: 0 } : SPRING_SETUP_CHECKLIST_PROGRESS}
       />
     </svg>
   );
@@ -459,7 +446,7 @@ export function SetupChecklistProgress({
         animate={{ opacity: 1, y: 0 }}
         className="inline-flex items-center gap-2.5 rounded-full border border-foreground/8 bg-card py-3 pr-4 pl-5"
         initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-        transition={{ ...SPRING, delay: 0.25 }}
+        transition={{ ...SPRING_SETUP_CHECKLIST, delay: 0.25 }}
       >
         <span className="text-[13px] text-muted-foreground">
           {children ? <>{children}: </> : null}

@@ -49,6 +49,71 @@ export const SPRING_MOUSE = {
   stiffness: 200,
 } as const;
 
+/** Iconiq card hover — low bounce with a long, fluid settle. */
+export const SPRING_CARD_HOVER = {
+  damping: 19,
+  mass: 0.92,
+  restDelta: 0.001,
+  stiffness: 95,
+  type: "spring",
+} as const;
+
+/** Iconiq card section layout changes. */
+export const SPRING_CARD_LAYOUT = {
+  damping: 30,
+  mass: 0.85,
+  stiffness: 220,
+  type: "spring",
+} as const;
+
+/** Setup checklist surface entrance and item reveals. */
+export const SPRING_SETUP_CHECKLIST = {
+  damping: 32,
+  stiffness: 340,
+  type: "spring",
+} as const;
+
+/** Setup checklist completion badge. */
+export const SPRING_SETUP_CHECKLIST_BADGE = {
+  damping: 28,
+  stiffness: 520,
+  type: "spring",
+} as const;
+
+/** Setup checklist radial progress fill. */
+export const SPRING_SETUP_CHECKLIST_PROGRESS = {
+  damping: 24,
+  stiffness: 110,
+  type: "spring",
+} as const;
+
+/** Banner bar-to-pill layout morph. */
+export const SPRING_BANNER_MORPH = {
+  damping: 30,
+  mass: 0.8,
+  stiffness: 320,
+  type: "spring",
+} as const;
+
+/** Favicon image resolution swap. */
+export const SPRING_FAVICON_SWAP = {
+  damping: 28,
+  stiffness: 400,
+  type: "spring",
+} as const;
+
+/** Registry rolling-digit defaults for non-hero uses. */
+export const ROLLING_DIGITS_DEFAULTS = {
+  direction: "dynamic" as const,
+  enterDamping: 10,
+  enterScale: 0.84,
+  enterStiffness: 170,
+  enterY: 32,
+  exitDamping: 15,
+  exitScale: 0.84,
+  exitStiffness: 170,
+} as const;
+
 /** Dashboard hero digits — quick, controlled rolls after a value changes. */
 export const ROLLING_DIGITS_HERO = {
   animationDelay: 55,
