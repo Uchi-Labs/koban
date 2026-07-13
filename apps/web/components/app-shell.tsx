@@ -610,25 +610,38 @@ function AppSidebarSections({
           <SidebarGroup className="group-data-[collapsible=icon]:hidden" key={group.id}>
             <SidebarGroupLabel>{group.name}</SidebarGroupLabel>
             <SidebarGroupContent>
-              <ul className="flex flex-col gap-0.5 px-2">
+              <SharedLayoutBg
+                aria-label={`${group.name} accounts`}
+                as="ul"
+                className="flex flex-col gap-0.5 px-2"
+                pillClassName="rounded-lg bg-sidebar-accent/70"
+              >
                 {group.accountIds.flatMap((accountId) => {
                   const account = accountById.get(accountId);
+                  const href = `/accounts/${encodeURIComponent(accountId)}`;
 
                   return account ? [
-                    <li className="flex items-center gap-2 rounded-md px-2 py-1 text-xs" key={account.id}>
-                      <span
-                        aria-hidden="true"
-                        className="size-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: accountColorByType[account.type] }}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {formatCurrency(Math.abs(account.currentBalance), account.currency)}
-                      </span>
+                    <li className={cn("rounded-lg", pathname === href && "bg-sidebar-accent/70")} key={account.id}>
+                      <Link
+                        aria-current={pathname === href ? "page" : undefined}
+                        aria-label={`View account page for ${account.name}`}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
+                        href={href}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="size-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: accountColorByType[account.type] }}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>
+                        <span className="shrink-0 font-medium tabular-nums">
+                          {formatCurrency(Math.abs(account.currentBalance), account.currency)}
+                        </span>
+                      </Link>
                     </li>
                   ] : [];
                 })}
-              </ul>
+              </SharedLayoutBg>
             </SidebarGroupContent>
           </SidebarGroup>
         ))}

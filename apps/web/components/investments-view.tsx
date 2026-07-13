@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import React from "react";
 import { AccountFaviconBadge } from "@/components/account-favicon-badge";
 import { DashboardCard } from "@/components/dashboard-card";
+import { GainLossPill } from "@/components/gain-loss-pill";
 import { LivelineChart } from "@/components/liveline-chart";
 import { MoneyHero } from "@/components/money-hero";
 import { Badge } from "@/components/ui/badge";
@@ -671,29 +672,6 @@ function GainDisplay({ holding }: { holding: HoldingView }) {
         </span>
       ) : null}
     </GainLossPill>
-  );
-}
-
-/** Gain/loss tint at low alpha bg -- --positive/--negative only, the app's sole money semantic colors. */
-function GainLossPill({
-  children,
-  className,
-  positive
-}: {
-  children: React.ReactNode;
-  className?: string;
-  positive: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 font-medium tabular-nums",
-        positive ? "bg-(--positive)/10 text-(--positive)" : "bg-(--negative)/10 text-(--negative)",
-        className
-      )}
-    >
-      {children}
-    </span>
   );
 }
 

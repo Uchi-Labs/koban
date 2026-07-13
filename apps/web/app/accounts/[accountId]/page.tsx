@@ -1,0 +1,349 @@
+import type { Transaction } from "@ai-finances/schema";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CalendarClock,
+  ChartPie,
+  Landmark,
+  Link2,
+  ReceiptText,
+  Repeat2,
+  TrendingUp
+} from "lucide-react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type React from "react";
+import { AccountBalanceHero } from "@/components/account-balance-hero";
+import { AccountCardDialog } from "@/components/account-card-dialog";
+import { Amount } from "@/components/amount";
+import { CategoryPill } from "@/components/category-pill";
+import { GainLossPill } from "@/components/gain-loss-pill";
+import { EmptyState } from "@/components/ui/card";
+import { FaviconBadge } from "@/components/ui/favicon-badge";
+import {
+  Card as IconiqCard,
+  CardAction as IconiqCardAction,
+  CardContent as IconiqCardContent,
+  CardHeader as IconiqCardHeader,
+  CardTitle as IconiqCardTitle
+} from "@/components/ui/iconiq-card";
+import { accountHistory, getInvestmentsData, type HoldingView } from "@/lib/investments";
+import { createAccountCategorySpending, selectAccountDetailData } from "@/lib/account-detail";
+import { getFinanceData } from "@/lib/finance-data";
+import { formatCurrency } from "@/lib/format";
+import { merchantDomain } from "@/lib/merchant-domain";
+import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
+import { cn } from "@/lib/utils";
+
+const fullDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "long",
+  weekday: "long",
+  year: "numeric"
+});
+
+export default async function AccountDetailPage({ params }: { params: Promise<{ accountId: string }> }) {
+  const { accountId } = await params;
+  const financeData = await getFinanceData();
+  const selection = selectAccountDetailData(financeData, accountId);
+
+  if (!selection) {
+    notFound();
+  }
+
+  const { account, recurringItems, transactions } = selection;
+  const snapshots = financeData.tellerLedger?.balanceSnapshots ?? [];
+  const history = accountHistory(account.id, snapshots);
+  const transactionViews = getTransactionViews(transactions, {
+    accounts: financeData.accounts,
+    categories: financeData.categories
+  });
+  const categorySpending = createAccountCategorySpending(transactions, financeData.categories);
+  const recurringViews = getUpcomingRecurringViews(recurringItems, financeData.categories);
+  const investmentData = account.type === "investment" ? await getInvestmentsData() : null;
+  const holdings = investmentData?.holdings.filter((holding) => holding.accountId === account.id) ?? [];
+  const supportsCardDetails = account.id.startsWith("teller_") && ["cash", "checking", "savings"].includes(account.type);
+
+  return (
+    <main className="flex min-h-svh flex-col" data-testid="account-detail-page">
+      <header className="flex items-center justify-between gap-3 border-b border-border px-6 py-3.5">
+        <Link
+          className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[13px] font-semibold tracking-tight text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+          href="/accounts"
+        >
+          <ArrowLeft className="size-3.5" />
+          Accounts
+        </Link>
+        <span className="truncate text-xs text-muted-foreground">{account.institutionName}</span>
+      </header>
+
+      <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-5 p-4 sm:p-6">
+        <AccountBalanceHero
+          account={account}
+          detailsControl={supportsCardDetails ? (
+            <AccountCardDialog
+              accountId={account.id}
+              institutionName={account.institutionName}
+              mask={account.mask}
+              name={account.name}
+            />
+          ) : undefined}
+          history={history}
+        />
+
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(18rem,0.8fr)]">
+          <SectionCard
+            action={{ href: `/transactions?account_id=${encodeURIComponent(account.id)}`, label: "View in Transactions" }}
+            description="Latest activity, grouped by posted date"
+            icon={<ReceiptText className="size-4" />}
+            title="Transactions"
+          >
+            {transactionViews.length > 0 ? (
+              <div className="flex flex-col">
+                {groupTransactions(transactionViews.slice(0, 18)).map(([date, rows]) => (
+                  <section className="border-b border-border/35 py-2.5 last:border-b-0" key={date}>
+                    <h3 className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                      {fullDateFormatter.format(new Date(`${date}T12:00:00Z`))}
+                    </h3>
+                    <div className="grid gap-0.5">
+                      {rows.map((transaction) => (
+                        <Link
+                          className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+                          href={`/transactions?account_id=${encodeURIComponent(account.id)}&q=${encodeURIComponent(transaction.merchant)}`}
+                          key={transaction.id}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">{transaction.merchant}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{transaction.description}</span>
+                          </span>
+                          <CategoryPill category={transaction.category} className="hidden max-w-36 sm:inline-flex" />
+                          <Amount amount={transaction.amount} currency={transaction.currency} />
+                        </Link>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                description="No synced transactions belong to this account yet."
+                icon={<ReceiptText className="size-5" />}
+                size="sm"
+                title="No account activity"
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard
+            description={categorySpending.periodLabel}
+            icon={<ChartPie className="size-4" />}
+            title="Categories"
+          >
+            {categorySpending.rows.length > 0 ? (
+              <div className="grid gap-3 py-1">
+                {categorySpending.rows.map((row) => (
+                  <div className="grid gap-1.5" key={row.category.id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <CategoryPill category={row.category} className="max-w-full" />
+                      <span className="shrink-0 text-sm font-medium tabular-nums">
+                        {formatCurrency(row.amount, account.currency)}
+                      </span>
+                    </div>
+                    <div
+                      className="h-1.5 overflow-hidden rounded-full"
+                      style={{ backgroundColor: `color-mix(in oklab, ${row.category.color} 14%, transparent)` }}
+                    >
+                      <span
+                        className="block h-full rounded-full"
+                        style={{ backgroundColor: row.category.color, width: `${row.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                description="Spending categories will appear after this account has posted outflows."
+                icon={<ChartPie className="size-5" />}
+                size="sm"
+                title="No categorized spending"
+              />
+            )}
+          </SectionCard>
+        </div>
+
+        <SectionCard
+          description="Recurring charges detected from this account's posted history"
+          icon={<Repeat2 className="size-4" />}
+          title="Recurrings"
+        >
+          {recurringViews.length > 0 ? (
+            <div className="grid gap-2 md:grid-cols-2">
+              {recurringViews.map((item) => {
+                const domain = merchantDomain(item.merchant);
+                return (
+                  <Link
+                    className="flex items-center gap-3 rounded-xl border border-border/45 bg-background/35 px-3 py-2.5 transition-colors hover:border-border hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+                    href={`/transactions?account_id=${encodeURIComponent(account.id)}&category_id=${encodeURIComponent(item.categoryId)}&q=${encodeURIComponent(item.merchant)}`}
+                    key={item.id}
+                  >
+                    {domain ? (
+                      <FaviconBadge size="sm" website={domain} />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: `color-mix(in oklab, ${item.category.color} 16%, transparent)`,
+                          color: item.category.color
+                        }}
+                      >
+                        {item.merchant.charAt(0).toUpperCase() || "?"}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{item.merchant}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {item.frequency} · next {item.nextDateLabel}
+                      </span>
+                    </span>
+                    <CategoryPill category={item.category} className="hidden max-w-32 sm:inline-flex" />
+                    <span className="shrink-0 text-sm font-medium tabular-nums">
+                      {formatCurrency(item.averageAmount, item.currency)}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              description="No recurring pattern has enough evidence on this account yet."
+              icon={<CalendarClock className="size-5" />}
+              size="sm"
+              title="No recurring charges detected"
+            />
+          )}
+        </SectionCard>
+
+        {account.type === "investment" ? <InvestmentsSection holdings={holdings} /> : null}
+
+        <IconiqCard className="gap-0 rounded-xl border-border/55 bg-muted/15 py-0">
+          <IconiqCardContent className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+            <span className="flex items-center gap-2 text-muted-foreground">
+              <Landmark className="size-4" />
+              Last synced {formatDateTime(account.lastUpdatedAt)}
+            </span>
+            <Link className="inline-flex items-center gap-1 font-medium hover:text-primary" href="/accounts">
+              All accounts <ArrowRight className="size-3.5" />
+            </Link>
+          </IconiqCardContent>
+        </IconiqCard>
+      </div>
+    </main>
+  );
+}
+
+function SectionCard({
+  action,
+  children,
+  description,
+  icon,
+  title
+}: {
+  action?: { href: string; label: string };
+  children: React.ReactNode;
+  description: string;
+  icon: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <IconiqCard className="gap-0 rounded-xl border-border/60 bg-card/95 py-0 shadow-[var(--ic-card-rest-shadow)]">
+      <IconiqCardHeader className="grid grid-cols-[1fr_auto] items-start gap-3 border-b border-border/35 px-5 py-4">
+        <div>
+          <IconiqCardTitle as="h2" className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">{icon}</span>{title}
+          </IconiqCardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        </div>
+        {action ? (
+          <IconiqCardAction>
+            <Link className="inline-flex items-center gap-1 rounded-full border border-border/50 px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground" href={action.href}>
+              {action.label}<ArrowRight className="size-3" />
+            </Link>
+          </IconiqCardAction>
+        ) : null}
+      </IconiqCardHeader>
+      <IconiqCardContent className="px-5 py-4">{children}</IconiqCardContent>
+    </IconiqCard>
+  );
+}
+
+function InvestmentsSection({ holdings }: { holdings: HoldingView[] }) {
+  return (
+    <SectionCard description="Positions reported for this investment account" icon={<TrendingUp className="size-4" />} title="Investments">
+      {holdings.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr className="text-left text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                <th className="border-b border-border/35 px-2 pb-2">Position</th>
+                <th className="border-b border-border/35 px-2 pb-2 text-right">Units</th>
+                <th className="border-b border-border/35 px-2 pb-2 text-right">Price</th>
+                <th className="border-b border-border/35 px-2 pb-2 text-right">Value</th>
+                <th className="border-b border-border/35 px-2 pb-2 text-right">Total gain</th>
+              </tr>
+            </thead>
+            <tbody>
+              {holdings.map((holding) => (
+                <tr key={holding.id}>
+                  <td className="border-b border-border/25 px-2 py-3 last:border-b-0">
+                    <span className="block font-semibold">{holding.symbol}</span>
+                    <span className="block max-w-72 truncate text-xs text-muted-foreground">{holding.description}</span>
+                  </td>
+                  <td className="border-b border-border/25 px-2 py-3 text-right tabular-nums">{formatUnits(holding.units)}</td>
+                  <td className="border-b border-border/25 px-2 py-3 text-right tabular-nums">{holding.price === undefined ? "—" : formatCurrency(holding.price, holding.currency)}</td>
+                  <td className="border-b border-border/25 px-2 py-3 text-right font-medium tabular-nums">{formatCurrency(holding.marketValue, holding.currency)}</td>
+                  <td className="border-b border-border/25 px-2 py-3 text-right">
+                    <HoldingGainLoss holding={holding} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState
+          description="This investment account has a synced balance but no position-level rows."
+          icon={<TrendingUp className="size-5" />}
+          size="sm"
+          title="No positions reported"
+        />
+      )}
+    </SectionCard>
+  );
+}
+
+function HoldingGainLoss({ holding }: { holding: HoldingView }) {
+  if (holding.unrealizedPnl === undefined) return <span className="text-muted-foreground">—</span>;
+  const positive = holding.unrealizedPnl >= 0;
+  return (
+    <GainLossPill positive={positive}>
+      {positive ? "+" : "−"}{formatCurrency(Math.abs(holding.unrealizedPnl), holding.currency)}
+      {holding.unrealizedPnlPercent === undefined ? null : ` (${positive ? "+" : "−"}${Math.abs(holding.unrealizedPnlPercent).toFixed(1)}%)`}
+    </GainLossPill>
+  );
+}
+
+function groupTransactions<T extends { date: string }>(transactions: T[]): Array<[string, T[]]> {
+  const groups = new Map<string, T[]>();
+  for (const transaction of transactions) groups.set(transaction.date, [...(groups.get(transaction.date) ?? []), transaction]);
+  return [...groups.entries()];
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", hour: "numeric", minute: "2-digit", month: "short" }).format(new Date(value));
+}
+
+function formatUnits(value: number) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value);
+}

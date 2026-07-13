@@ -41,7 +41,7 @@ const variants: Variants = {
 const reducedVariants: Variants = {
   animate: { opacity: 1 },
   exit: (isActive: boolean) => (!isActive ? { opacity: 0 } : {}),
-  initial: { opacity: 0 }
+  initial: { opacity: 1 }
 };
 
 export function SharedLayoutBg({
@@ -105,8 +105,9 @@ export function SharedLayoutBg({
                     className="pointer-events-none absolute inset-y-0"
                     custom={activeId !== null}
                     exit="exit"
-                    initial="initial"
+                    initial={reduce ? false : "initial"}
                     style={{ left: -inset, right: -inset }}
+                    transition={reduce ? { duration: 0 } : undefined}
                     variants={reduce ? reducedVariants : variants}
                   >
                     {activeId === childKey ? (
