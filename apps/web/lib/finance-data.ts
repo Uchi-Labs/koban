@@ -90,10 +90,21 @@ let loggedReadPathNormalizationMigration = false;
 let readPathNormalizationMigrationScheduled = false;
 let shellDataCache: { expiresAt: number; value: ShellData } | null = null;
 
+// Full-ledger read cache (REAL values only — inclusion overrides and demo
+// scrambling are applied per-request downstream). Same TTL + invalidation
+// sites as the shell cache: every ledger write path already calls
+// invalidateShellDataCache(), which clears both.
+let ledgerReadCache: {
+  categories: Awaited<ReturnType<typeof listCategories>>;
+  expiresAt: number;
+  ledger: TellerLedger;
+} | null = null;
+
 const shellDataCacheTtlMs = 30_000;
 
 export function invalidateShellDataCache(): void {
   shellDataCache = null;
+  ledgerReadCache = null;
 }
 
 // Light read for the app shell: accounts and counts only. The full ledger read
@@ -148,9 +159,17 @@ function demoScrambleShellData(value: ShellData, demoMode: boolean): ShellData {
 export async function getFinanceData(): Promise<FinanceData> {
   noStore();
 
-  const categories = await listCategories({ includeArchived: true });
-  const financeDbLedger = await getFinanceDbLedger();
+  const cachedRead = ledgerReadCache;
+  if (cachedRead && cachedRead.expiresAt > Date.now()) {
+    return createFinanceDataFromLedger(await withInclusionOverrides(cachedRead.ledger), cachedRead.categories);
+  }
+
+  const [categories, financeDbLedger] = await Promise.all([
+    listCategories({ includeArchived: true }),
+    getFinanceDbLedger()
+  ]);
   if (financeDbLedger && financeDbLedger.accounts.length > 0) {
+    ledgerReadCache = { categories, expiresAt: Date.now() + shellDataCacheTtlMs, ledger: financeDbLedger };
     scheduleReadPathNormalizationMigration(financeDbLedger);
     return createFinanceDataFromLedger(await withInclusionOverrides(financeDbLedger), categories);
   }

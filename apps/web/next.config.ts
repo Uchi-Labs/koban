@@ -47,6 +47,15 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  experimental: {
+    // Client router cache: repeat navigations to a recently visited route
+    // render instantly from cache (data staleness bounded at 30s; sync cadence
+    // is 30m/daily, and ledger writes invalidate server caches anyway).
+    staleTimes: {
+      dynamic: 30,
+      static: 180
+    }
+  },
   async headers() {
     return [
       {
@@ -56,7 +65,7 @@ const nextConfig: NextConfig = {
     ];
   },
   output: "standalone",
-  serverExternalPackages: ["@electric-sql/pglite"],
+  serverExternalPackages: ["@electric-sql/pglite", "pg"],
   transpilePackages: [
     "@ai-finances/schema",
     "@ai-finances/sync-protocol"
