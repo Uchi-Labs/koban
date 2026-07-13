@@ -9,7 +9,7 @@ import {
   OctagonAlert,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import {
   type ReactNode,
   useCallback,
@@ -102,7 +102,7 @@ const contentVariants = {
 /** Soft light sweep that loops across the gradient surface. */
 function BannerSheen() {
   return (
-    <motion.span
+    <m.span
       animate={{ backgroundPosition: SHEEN_KEYFRAMES }}
       aria-hidden
       className="pointer-events-none absolute inset-0 bg-[length:250%_100%] bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,0.1)_50%,transparent_70%)] dark:bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,0.22)_50%,transparent_70%)]"
@@ -132,7 +132,7 @@ function BannerAction({
 
   if (href) {
     return (
-      <motion.a
+      <m.a
         className={cn(sharedClass, "group flex items-center gap-1.5")}
         href={href}
         onClick={onClick}
@@ -140,19 +140,19 @@ function BannerAction({
       >
         {label}
         <ArrowRight className="size-3 transition-transform duration-200 group-hover:translate-x-0.5" />
-      </motion.a>
+      </m.a>
     );
   }
 
   return (
-    <motion.button
+    <m.button
       className={sharedClass}
       onClick={onClick}
       type="button"
       whileTap={whileTap}
     >
       {label}
-    </motion.button>
+    </m.button>
   );
 }
 
@@ -166,7 +166,7 @@ function BannerDismiss({
   reducedMotion: boolean;
 }) {
   return (
-    <motion.button
+    <m.button
       aria-label="Dismiss banner"
       className={cn(
         "flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-ring/60",
@@ -177,7 +177,7 @@ function BannerDismiss({
       whileTap={reducedMotion ? undefined : { scale: 0.9 }}
     >
       <X className="size-4" />
-    </motion.button>
+    </m.button>
   );
 }
 
@@ -300,7 +300,7 @@ function BannerSurface({
 
   return (
     <div className={cn("flex justify-center", isPill && "py-2.5")}>
-      <motion.div
+      <m.div
         className={cn(
           "relative overflow-hidden border text-sm",
           isPill ? "w-auto border shadow-lg" : "w-full border-x-0 border-t-0",
@@ -315,7 +315,7 @@ function BannerSurface({
 
         <AnimatePresence initial={false} mode="popLayout">
           {isPill ? (
-            <motion.div
+            <m.div
               animate="animate"
               className="flex items-center gap-2 px-4 py-2 font-medium"
               exit="exit"
@@ -331,9 +331,9 @@ function BannerSurface({
                 iconClass={style.ring}
                 message={morphMessage}
               />
-            </motion.div>
+            </m.div>
           ) : (
-            <motion.div
+            <m.div
               animate="animate"
               className="flex items-center gap-3 px-4 py-2.5 sm:px-6"
               exit="exit"
@@ -355,10 +355,10 @@ function BannerSurface({
               >
                 {children}
               </BannerBarContent>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
-      </motion.div>
+      </m.div>
     </div>
   );
 }
@@ -454,7 +454,8 @@ export function Banner({
   }, [phase, morphDuration, close]);
 
   return (
-    <div
+    <LazyMotion features={domAnimation} strict>
+      <div
       className={cn(
         fixed ? "fixed inset-x-0 top-0 z-50" : "relative w-full",
         className
@@ -464,7 +465,7 @@ export function Banner({
     >
       <AnimatePresence>
         {isOpen ? (
-          <motion.div
+          <m.div
             animate={{ height: "auto", opacity: 1 }}
             className="overflow-hidden"
             exit={{ height: 0, opacity: 0 }}
@@ -486,9 +487,10 @@ export function Banner({
             >
               {children}
             </BannerSurface>
-          </motion.div>
+          </m.div>
         ) : null}
       </AnimatePresence>
-    </div>
+      </div>
+    </LazyMotion>
   );
 }

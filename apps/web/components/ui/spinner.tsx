@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import {
   type ComponentProps,
   type CSSProperties,
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 const componentThemeClassName = "iconiq-theme";
 
-const MotionSpan = motion.create("span");
+const MotionSpan = m.span;
 const MATRIX_STYLE_ID = "iconiq-spinner-matrix-styles";
 const MATRIX_GRID = 5;
 
@@ -177,7 +177,8 @@ const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinner(
     const dotDelayStep = variantDuration * 0.167;
 
     return (
-      <span
+      <LazyMotion features={domAnimation} strict>
+        <span
         className={cn(
           componentThemeClassName,
           "inline-flex items-center justify-center",
@@ -190,7 +191,7 @@ const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinner(
         {...props}
       >
         {[0, 1, 2].map((index) => (
-          <motion.span
+          <m.span
             animate={reduceMotion ? undefined : { y: ["0%", "-55%", "0%"] }}
             aria-hidden
             className="aspect-square w-[22%] shrink-0 rounded-full bg-primary"
@@ -203,7 +204,8 @@ const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinner(
             }}
           />
         ))}
-      </span>
+        </span>
+      </LazyMotion>
     );
   }
 
@@ -242,7 +244,8 @@ const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinner(
   }
 
   return (
-    <MotionSpan
+    <LazyMotion features={domAnimation} strict>
+      <MotionSpan
       animate={reduceMotion ? undefined : { rotate: 360 }}
       className={cn(
         componentThemeClassName,
@@ -258,8 +261,9 @@ const Spinner = forwardRef<HTMLSpanElement, SpinnerProps>(function Spinner(
         ease: "linear",
       }}
       {...a11yProps}
-      {...(props as ComponentProps<typeof MotionSpan>)}
-    />
+        {...(props as ComponentProps<typeof MotionSpan>)}
+      />
+    </LazyMotion>
   );
 });
 

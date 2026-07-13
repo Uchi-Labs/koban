@@ -1,7 +1,7 @@
 "use client";
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
   type ForwardedRef,
@@ -246,7 +246,7 @@ function BadgeStatusDot({
   size: BadgeSize;
 }) {
   const dotSize = badgeDotSizes[size];
-  const Dot = animate ? motion.span : "span";
+  const Dot = animate ? m.span : "span";
 
   return (
     <Dot
@@ -420,7 +420,7 @@ function buildBadgeRootProps({
 
 function BadgeShimmer({ waveColor }: { waveColor?: string }) {
   return (
-    <motion.span
+    <m.span
       animate={{ x: ["-100%", "200%"] }}
       aria-hidden
       className="pointer-events-none absolute inset-0 rounded-full"
@@ -526,7 +526,7 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
       variant,
     });
 
-    const Root = behavior.useMotionRoot ? motion.span : "span";
+    const Root = behavior.useMotionRoot ? m.span : "span";
     const rootProps = buildBadgeRootProps({
       behavior,
       onClick,
@@ -536,17 +536,19 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
     });
 
     return (
-      <Root {...rootProps}>
-        {behavior.shouldShimmer ? <BadgeShimmer waveColor={waveColor} /> : null}
-        <BadgeContentRow
-          behavior={behavior}
-          dismissLabel={dismissLabel}
-          icon={icon}
-          onDismiss={onDismiss}
-        >
-          {children}
-        </BadgeContentRow>
-      </Root>
+      <LazyMotion features={domAnimation} strict>
+        <Root {...rootProps}>
+          {behavior.shouldShimmer ? <BadgeShimmer waveColor={waveColor} /> : null}
+          <BadgeContentRow
+            behavior={behavior}
+            dismissLabel={dismissLabel}
+            icon={icon}
+            onDismiss={onDismiss}
+          >
+            {children}
+          </BadgeContentRow>
+        </Root>
+      </LazyMotion>
     );
   }
 );

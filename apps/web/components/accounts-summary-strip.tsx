@@ -2,7 +2,6 @@
 
 import React from "react";
 import { RollingDigits } from "@/components/ui/rolling-digits";
-import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +23,10 @@ export interface AccountsSummaryStat {
  */
 export function AccountsSummaryStrip({ stats }: { stats: AccountsSummaryStat[] }) {
   return (
-    <section aria-label="Account totals" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <section
+      aria-label="Account totals"
+      className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/50 shadow-[var(--ic-card-rest-shadow)] md:grid-cols-4"
+    >
       {stats.map((stat) => (
         <StatTile key={stat.label} stat={stat} />
       ))}
@@ -43,8 +45,7 @@ function StatTile({ stat }: { stat: AccountsSummaryStat }) {
   const negative = stat.value < 0;
 
   return (
-    <IconiqCard className="gap-1.5 rounded-xl border-border/60 bg-card/95 py-3.5 shadow-[var(--ic-card-rest-shadow)]">
-      <IconiqCardContent className="flex flex-col gap-1.5 px-4">
+    <div className="flex flex-col gap-1.5 bg-card/95 px-4 py-3.5">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {stat.icon ? (
             <span aria-hidden="true" className={cn("flex size-5 items-center justify-center rounded-md", toneClassName[tone])}>
@@ -69,7 +70,6 @@ function StatTile({ stat }: { stat: AccountsSummaryStat }) {
             value={stat.value}
           />
         </span>
-      </IconiqCardContent>
-    </IconiqCard>
+    </div>
   );
 }

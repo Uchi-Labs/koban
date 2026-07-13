@@ -6,7 +6,7 @@ import {
 } from "@/lib/finance-api";
 import { listTagStyles } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
-import { getTransactionViews } from "@/lib/view-models";
+import { createViewModelLookups, getTransactionViews } from "@/lib/view-models";
 
 const initialTransactionWindowSize = 200;
 
@@ -23,6 +23,7 @@ export default async function TransactionsPage({
   const accountId = firstParam(params.account_id);
   const categoryId = firstParam(params.category_id);
   const query = firstParam(params.q);
+  const lookups = createViewModelLookups({ accounts, categories });
   const transactionRows = filterTransactionsForList(
     transactions,
     {
@@ -32,7 +33,7 @@ export default async function TransactionsPage({
       reviewFilter,
       ...amountFilters
     },
-    { accounts, categories }
+    lookups
   );
   const reviewRows = filterTransactionsForList(
     transactions,
@@ -43,7 +44,7 @@ export default async function TransactionsPage({
       reviewFilter: "actionable",
       ...amountFilters
     },
-    { accounts, categories }
+    lookups
   );
   const transactionPage = paginateById(transactionRows, { limit: initialTransactionWindowSize });
   const reviewPage = paginateById(reviewRows, { limit: initialTransactionWindowSize });
@@ -59,11 +60,17 @@ export default async function TransactionsPage({
       initialReviewFilter={reviewFilter}
       initialTab={tabFromParams(firstParam(params.tab), reviewFilter)}
       reviewTotalCount={reviewRows.length}
-      reviewTransactions={getTransactionViews(reviewPage.data, { accounts, categories })}
+      reviewTransactions={getTransactionViews(reviewPage.data, {
+        accounts: lookups.accountById,
+        categories: lookups.categoryById
+      })}
       reviewTransactionsHasMore={reviewPage.has_more}
       tagStyles={tagStyles}
       transactionWindowSize={initialTransactionWindowSize}
-      transactions={getTransactionViews(transactionPage.data, { accounts, categories })}
+      transactions={getTransactionViews(transactionPage.data, {
+        accounts: lookups.accountById,
+        categories: lookups.categoryById
+      })}
       transactionsHasMore={transactionPage.has_more}
       windowed
     />

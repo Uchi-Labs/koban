@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useInView, useReducedMotion, useSpring } from "motion/react";
+import { AnimatePresence, domAnimation, LazyMotion, m, useInView, useReducedMotion, useSpring } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -437,7 +437,7 @@ function DigitCell({
     >
       <AnimatePresence>
         {exitQueue.map(({ id, char: exitChar, exitY }) => (
-          <motion.span
+          <m.span
             animate={{
               opacity: 0,
               scale: exitScale,
@@ -459,15 +459,15 @@ function DigitCell({
             }}
           >
             {exitChar}
-          </motion.span>
+          </m.span>
         ))}
       </AnimatePresence>
-      <motion.span
+      <m.span
         className="[backface-visibility:hidden]"
         style={{ opacity, scale, y }}
       >
         {char}
-      </motion.span>
+      </m.span>
     </div>
   );
 }
@@ -635,13 +635,14 @@ export function RollingDigitsText({
   );
 
   return (
-    <div
-      className={cn("inline-flex items-center tabular-nums", className)}
-      style={{ gap }}
-    >
-      <AnimatePresence initial={false}>
-        {cells.map(({ key, char, isDigit }) => (
-          <motion.span
+    <LazyMotion features={domAnimation} strict>
+      <div
+        className={cn("inline-flex items-center tabular-nums", className)}
+        style={{ gap }}
+      >
+        <AnimatePresence initial={false}>
+          {cells.map(({ key, char, isDigit }) => (
+            <m.span
             className="inline-flex"
             exit={
               isDigit
@@ -674,10 +675,11 @@ export function RollingDigitsText({
               exitStiffness={exitStiffness}
               isDigit={isDigit}
             />
-          </motion.span>
-        ))}
-      </AnimatePresence>
-    </div>
+            </m.span>
+          ))}
+        </AnimatePresence>
+      </div>
+    </LazyMotion>
   );
 }
 

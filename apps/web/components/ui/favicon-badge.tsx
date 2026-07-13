@@ -1,7 +1,7 @@
 "use client";
 
 import { Globe } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -354,7 +354,8 @@ const FaviconBadge = React.forwardRef<HTMLSpanElement, FaviconBadgeProps>(
     const accessibleLabel = label ?? domain ?? website;
 
     return (
-      <span
+      <LazyMotion features={domAnimation} strict>
+        <span
         aria-busy={isLoading || undefined}
         className={cn(
           componentThemeClassName,
@@ -378,7 +379,7 @@ const FaviconBadge = React.forwardRef<HTMLSpanElement, FaviconBadgeProps>(
           {showImage && imageSrc ? (
             <>
               {/* biome-ignore lint/performance/noImgElement: external favicon URLs are resolved at runtime and must stay framework-agnostic. */}
-              <motion.img
+              <m.img
                 alt=""
                 animate={
                   reduceMotion
@@ -389,9 +390,11 @@ const FaviconBadge = React.forwardRef<HTMLSpanElement, FaviconBadgeProps>(
                 }
                 className="relative z-[1] size-full rounded-full object-contain"
                 decoding="async"
+                fetchPriority="low"
                 height={config.icon}
                 initial={false}
                 key={imageSrc}
+                loading="lazy"
                 onError={isLoading ? handleImageError : undefined}
                 onLoad={isLoading ? handleImageLoad : undefined}
                 ref={isLoading ? probeImgRef : undefined}
@@ -434,7 +437,8 @@ const FaviconBadge = React.forwardRef<HTMLSpanElement, FaviconBadgeProps>(
         ) : (
           <span className="sr-only">{accessibleLabel}</span>
         )}
-      </span>
+        </span>
+      </LazyMotion>
     );
   }
 );

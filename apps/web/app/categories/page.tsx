@@ -17,11 +17,18 @@ export default async function CategoriesPage() {
   const months = buildMonthAxis(metricTransactions);
   const latestMonth = months.at(-1) ?? new Date().toISOString().slice(0, 7);
   const monthLabel = formatMonthLabel(latestMonth);
+  const transactionsByCategoryId = groupTransactionsByCategoryId(metricTransactions);
 
   const details: CategoryDetail[] = [];
   for (const category of categories) {
     if (!category.archived) {
-      details.push(buildCategoryDetail(category, categories, metricTransactions, months, latestMonth));
+      details.push(buildCategoryDetail(
+        category,
+        categories,
+        transactionsByCategoryId.get(category.id) ?? [],
+        months,
+        latestMonth
+      ));
     }
   }
   details.sort((left, right) => right.spentThisMonth - left.spentThisMonth || right.allTimeSpending - left.allTimeSpending);
@@ -82,23 +89,22 @@ const BUILT_IN_IDS = new Set([
 function buildCategoryDetail(
   category: Category,
   categories: Category[],
-  transactions: Transaction[],
+  categoryTransactions: Transaction[],
   months: string[],
   latestMonth: string
 ): CategoryDetail {
   const view = getCategory(category.id, categories);
-  const categoryTransactions = transactions
-    .filter((transaction) => transaction.categoryId === category.id)
-    .sort((left, right) => right.date.localeCompare(left.date));
+  categoryTransactions.sort((left, right) => right.date.localeCompare(left.date));
   const spendingTransactions = categoryTransactions.filter(isSpendingTransaction);
+  const spendingByMonth = new Map<string, number>();
+  for (const transaction of spendingTransactions) {
+    const month = transaction.date.slice(0, 7);
+    spendingByMonth.set(month, (spendingByMonth.get(month) ?? 0) + Math.abs(transaction.amount));
+  }
 
   const monthlySeries = months.map((month) => ({
     month,
-    spent: roundMoney(
-      spendingTransactions
-        .filter((transaction) => transaction.date.startsWith(month))
-        .reduce((total, transaction) => total + Math.abs(transaction.amount), 0)
-    )
+    spent: roundMoney(spendingByMonth.get(month) ?? 0)
   }));
 
   const spentThisMonth = monthlySeries.find((point) => point.month === latestMonth)?.spent ?? 0;
@@ -118,6 +124,16 @@ function buildCategoryDetail(
     transactionCount: categoryTransactions.length,
     yearly: buildYearlyMetrics(spendingTransactions)
   };
+}
+
+function groupTransactionsByCategoryId(transactions: Transaction[]): Map<string, Transaction[]> {
+  const transactionsByCategoryId = new Map<string, Transaction[]>();
+  for (const transaction of transactions) {
+    const categoryTransactions = transactionsByCategoryId.get(transaction.categoryId) ?? [];
+    categoryTransactions.push(transaction);
+    transactionsByCategoryId.set(transaction.categoryId, categoryTransactions);
+  }
+  return transactionsByCategoryId;
 }
 
 function buildAllDetail(
