@@ -307,3 +307,70 @@ test("falls back from malformed transaction currency and reports a dry-run warni
   assert.deepEqual(plan.invalidTransactionCurrencyIds, ["bad_currency"]);
   assert.match(formatDryRunReport(plan), /Malformed source currency rows: 1/);
 });
+
+test("consumes each existing duplicate target once and imports extra Copilot candidates", () => {
+  const sourceTransaction = (id, date) => ({
+    account_id: "checking",
+    amount: 12.34,
+    category_id: null,
+    date,
+    id,
+    iso_currency_code: "USD",
+    is_amazon: 0,
+    name: "Lunch",
+    original_name: "LUNCH",
+    tag_ids: null
+  });
+  const plan = buildImportPlan({
+    balances: [],
+    existingAccounts: [{
+      id: "koban_checking",
+      institution_name: "Example Bank",
+      mask: "1234",
+      name: "Everyday Checking",
+      provider: "plaid",
+      provider_connection_id: "provider_plaid",
+      type: "checking"
+    }],
+    existingSnapshots: [],
+    existingTransactions: [{
+      account_id: "koban_checking",
+      amount_minor: -1234,
+      date: "2026-07-10",
+      description: "LUNCH",
+      id: "plaid_lunch",
+      merchant_name: "Lunch"
+    }],
+    mappings: {
+      accounts: {
+        checking: {
+          id: "checking",
+          institutionName: "Example Bank",
+          mask: "1234",
+          name: "Everyday Checking",
+          originalSubtype: "checking",
+          originalType: "depository"
+        }
+      },
+      categories: {},
+      tags: {}
+    },
+    overrides: {
+      forcedMatches: { checking: "koban_checking" }
+    },
+    sourceStats: { deletedCount: 0, pendingCount: 0 },
+    transactions: [
+      sourceTransaction("copilot_lunch_1", "2026-07-09"),
+      sourceTransaction("copilot_lunch_2", "2026-07-10"),
+      sourceTransaction("copilot_lunch_3", "2026-07-11")
+    ]
+  });
+
+  assert.equal(plan.duplicates.length, 1);
+  assert.deepEqual(plan.importTransactions.map((transaction) => transaction.sourceId), [
+    "copilot_lunch_2",
+    "copilot_lunch_3"
+  ]);
+  assert.equal(plan.duplicateTargetReuseWarnings.length, 2);
+  assert.match(formatDryRunReport(plan), /WARNING: 2 additional Copilot rows matched an already-consumed Koban transaction/);
+});

@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  appSyncScheduleId,
   closeFinanceDbForTests,
+  claimAppSyncSchedule,
+  clearAppSyncScheduleClaim,
   applyCopilotHistoryImport,
   createFinancialGoal,
   createTransactionEvidenceLink,
@@ -39,6 +42,7 @@ import {
   readSyncStateValue,
   recordAppSyncRun,
   recordAppSyncScheduleRun,
+  refreshAppSyncScheduleClaim,
   recordSourceSyncRun,
   refreshSourceEvidenceMatches,
   replaceTellerLedgerInDb,
@@ -97,6 +101,70 @@ afterEach(async () => {
 });
 
 describe("finance db", () => {
+  it("lets only one runner claim a due sync schedule", async () => {
+    useTempDb();
+    await updateAppSyncSchedule({
+      enabled: true,
+      nextRunAt: "2026-05-31T01:00:00.000Z"
+    });
+
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_a", "2026-05-31T02:00:00.000Z")
+    ).resolves.toBe(true);
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_b", "2026-05-31T02:00:01.000Z")
+    ).resolves.toBe(false);
+  });
+
+  it("lets a runner steal a sync schedule claim after fifteen minutes", async () => {
+    useTempDb();
+    await updateAppSyncSchedule({
+      enabled: true,
+      nextRunAt: "2026-05-31T01:00:00.000Z"
+    });
+
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_a", "2026-05-31T02:00:00.000Z")
+    ).resolves.toBe(true);
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_b", "2026-05-31T02:16:00.000Z")
+    ).resolves.toBe(true);
+  });
+
+  it("clears a failed runner's sync schedule claim", async () => {
+    useTempDb();
+    await updateAppSyncSchedule({
+      enabled: true,
+      nextRunAt: "2026-05-31T01:00:00.000Z"
+    });
+    await claimAppSyncSchedule(appSyncScheduleId, "runner_a", "2026-05-31T02:00:00.000Z");
+
+    await clearAppSyncScheduleClaim(appSyncScheduleId, "runner_a", "2026-05-31T02:01:00.000Z");
+
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_b", "2026-05-31T02:01:01.000Z")
+    ).resolves.toBe(true);
+  });
+
+  it("keeps a live sync schedule claim fresh while its runner is active", async () => {
+    useTempDb();
+    await updateAppSyncSchedule({
+      enabled: true,
+      nextRunAt: "2026-05-31T01:00:00.000Z"
+    });
+    await claimAppSyncSchedule(appSyncScheduleId, "runner_a", "2026-05-31T02:00:00.000Z");
+
+    await expect(
+      refreshAppSyncScheduleClaim(appSyncScheduleId, "runner_a", "2026-05-31T02:10:00.000Z")
+    ).resolves.toBe(true);
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_b", "2026-05-31T02:20:00.000Z")
+    ).resolves.toBe(false);
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "runner_b", "2026-05-31T02:26:00.000Z")
+    ).resolves.toBe(true);
+  });
+
   it("serializes concurrent sync-state read-modify-write operations", async () => {
     useTempDb();
 
@@ -1068,7 +1136,17 @@ describe("finance db", () => {
         transactionCount: 1372
       }
     });
-    const advancedSchedule = await recordAppSyncScheduleRun(run);
+    await expect(
+      claimAppSyncSchedule(appSyncScheduleId, "schedule_runner", "2026-05-31T02:05:00.000Z")
+    ).resolves.toBe(true);
+    await expect(
+      recordAppSyncScheduleRun(run, appSyncScheduleId, "different_runner")
+    ).rejects.toThrow("claim is no longer owned");
+    await expect(ensureAppSyncSchedule()).resolves.toMatchObject({
+      claimedBy: "schedule_runner",
+      lastRunId: undefined
+    });
+    const advancedSchedule = await recordAppSyncScheduleRun(run, appSyncScheduleId, "schedule_runner");
 
     expect(defaultSchedule).toMatchObject({
       enabled: false,
@@ -1085,6 +1163,8 @@ describe("finance db", () => {
       lastStatus: "succeeded",
       nextRunAt: "2026-05-31T03:30:00.000Z"
     });
+    expect(advancedSchedule.claimedAt).toBeUndefined();
+    expect(advancedSchedule.claimedBy).toBeUndefined();
   });
 
   it("suggests synced receipt evidence for matching Teller transactions", async () => {

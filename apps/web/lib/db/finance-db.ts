@@ -376,6 +376,8 @@ interface AppSyncRunRow {
 }
 
 interface SyncScheduleRow {
+  claimed_at: string | null;
+  claimed_by: string | null;
   created_at: string;
   enabled: boolean;
   id: string;
@@ -459,6 +461,7 @@ const syncScheduleDefaults: Record<SyncScheduleId, { intervalMinutes: number }> 
   [appSyncScheduleId]: { intervalMinutes: 240 },
   [snapTradeSyncScheduleId]: { intervalMinutes: 30 }
 };
+const syncScheduleClaimTtlMs = 15 * 60 * 1000;
 
 export interface AppSyncRunInput {
   enrichmentStatus: AppSyncRunStatus;
@@ -492,6 +495,8 @@ export interface SyncScheduleUpdateInput {
 }
 
 export interface SyncScheduleRecord {
+  claimedAt?: string;
+  claimedBy?: string;
   createdAt: string;
   enabled: boolean;
   id: string;
@@ -2703,6 +2708,104 @@ export async function ensureAppSyncSchedule(scheduleId: SyncScheduleId = appSync
   });
 }
 
+export async function claimAppSyncSchedule(
+  scheduleId: SyncScheduleId,
+  claimedBy: string,
+  claimedAt = new Date().toISOString()
+): Promise<boolean> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await ensureAppSyncScheduleInDb(db, claimedAt, scheduleId);
+    const staleBefore = new Date(Date.parse(claimedAt) - syncScheduleClaimTtlMs).toISOString();
+    const result = await db.query<{ id: string }>(
+      `UPDATE sync_schedules
+      SET
+        claimed_at = $3,
+        claimed_by = $2,
+        updated_at = $3
+      WHERE id = $1
+        AND enabled = TRUE
+        AND next_run_at IS NOT NULL
+        AND next_run_at <= $3
+        AND (claimed_at IS NULL OR claimed_at < $4)
+      RETURNING id`,
+      [scheduleId, claimedBy, claimedAt, staleBefore]
+    );
+
+    return result.rows.length === 1;
+  });
+}
+
+export async function claimAppSyncScheduleForRunNow(
+  scheduleId: SyncScheduleId,
+  claimedBy: string,
+  claimedAt = new Date().toISOString()
+): Promise<boolean> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await ensureAppSyncScheduleInDb(db, claimedAt, scheduleId);
+    const staleBefore = new Date(Date.parse(claimedAt) - syncScheduleClaimTtlMs).toISOString();
+    const result = await db.query<{ id: string }>(
+      `UPDATE sync_schedules
+      SET
+        claimed_at = $3,
+        claimed_by = $2,
+        updated_at = $3
+      WHERE id = $1
+        AND (claimed_at IS NULL OR claimed_at < $4)
+      RETURNING id`,
+      [scheduleId, claimedBy, claimedAt, staleBefore]
+    );
+
+    return result.rows.length === 1;
+  });
+}
+
+export async function clearAppSyncScheduleClaim(
+  scheduleId: SyncScheduleId,
+  claimedBy: string,
+  clearedAt = new Date().toISOString()
+): Promise<boolean> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const result = await db.query<{ id: string }>(
+      `UPDATE sync_schedules
+      SET
+        claimed_at = NULL,
+        claimed_by = NULL,
+        updated_at = $3
+      WHERE id = $1
+        AND claimed_by = $2
+      RETURNING id`,
+      [scheduleId, claimedBy, clearedAt]
+    );
+
+    return result.rows.length === 1;
+  });
+}
+
+export async function refreshAppSyncScheduleClaim(
+  scheduleId: SyncScheduleId,
+  claimedBy: string,
+  refreshedAt = new Date().toISOString()
+): Promise<boolean> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const result = await db.query<{ id: string }>(
+      `UPDATE sync_schedules
+      SET
+        claimed_at = $3,
+        updated_at = $3
+      WHERE id = $1
+        AND claimed_by = $2
+      RETURNING id`,
+      [scheduleId, claimedBy, refreshedAt]
+    );
+
+    return result.rows.length === 1;
+  });
+}
+
 export async function updateAppSyncSchedule(
   input: SyncScheduleUpdateInput,
   scheduleId: SyncScheduleId = appSyncScheduleId
@@ -2740,7 +2843,8 @@ export async function updateAppSyncSchedule(
 
 export async function recordAppSyncScheduleRun(
   run: AppSyncRunRecord,
-  scheduleId: SyncScheduleId = appSyncScheduleId
+  scheduleId: SyncScheduleId,
+  claimedBy: string
 ): Promise<SyncScheduleRecord> {
   return enqueueDbWrite(async () => {
     const db = await getFinanceDb();
@@ -2749,7 +2853,7 @@ export async function recordAppSyncScheduleRun(
     const current = await readAppSyncScheduleInDb(db, scheduleId);
     const nextRunAt = current.enabled ? addMinutesIso(run.finishedAt, current.intervalMinutes) : null;
 
-    await db.query(
+    const result = await db.query<{ id: string }>(
       `UPDATE sync_schedules
       SET
         next_run_at = $2,
@@ -2758,8 +2862,12 @@ export async function recordAppSyncScheduleRun(
         last_run_id = $5,
         last_status = $6,
         last_error_message = $7,
+        claimed_at = NULL,
+        claimed_by = NULL,
         updated_at = $8
-      WHERE id = $1`,
+      WHERE id = $1
+        AND claimed_by = $9
+      RETURNING id`,
       [
         scheduleId,
         nextRunAt,
@@ -2768,9 +2876,14 @@ export async function recordAppSyncScheduleRun(
         run.id,
         run.status,
         run.errorMessage ?? null,
-        now
+        now,
+        claimedBy
       ]
     );
+
+    if (result.rows.length !== 1) {
+      throw new Error(`Sync schedule ${scheduleId} claim is no longer owned by ${claimedBy}.`);
+    }
 
     return readAppSyncScheduleInDb(db, scheduleId);
   });
@@ -4487,6 +4600,10 @@ export function getFinanceDbWriteQueueForTests(): Promise<void> {
   return getFinanceDbState().writeQueue;
 }
 
+export function enqueueDbWriteForTests<T>(operation: () => Promise<T>): Promise<T> {
+  return enqueueDbWrite(operation);
+}
+
 export async function readSyncStateValue(key: string): Promise<string | undefined> {
   if (!financeDbExists()) {
     return undefined;
@@ -4839,6 +4956,8 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       enabled BOOLEAN NOT NULL DEFAULT FALSE,
       interval_minutes INTEGER NOT NULL,
       next_run_at TEXT,
+      claimed_at TEXT,
+      claimed_by TEXT,
       last_started_at TEXT,
       last_finished_at TEXT,
       last_run_id TEXT,
@@ -4947,6 +5066,10 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'user';
     ALTER TABLE investment_positions
       ADD COLUMN IF NOT EXISTS cost_basis REAL;
+    ALTER TABLE sync_schedules
+      ADD COLUMN IF NOT EXISTS claimed_at TEXT;
+    ALTER TABLE sync_schedules
+      ADD COLUMN IF NOT EXISTS claimed_by TEXT;
   `);
 
   await db.exec(`
@@ -7032,6 +7155,8 @@ async function readAppSyncScheduleInDb(
 
 function syncScheduleFromRow(row: SyncScheduleRow): SyncScheduleRecord {
   return {
+    claimedAt: row.claimed_at ?? undefined,
+    claimedBy: row.claimed_by ?? undefined,
     createdAt: row.created_at,
     enabled: row.enabled,
     id: row.id,

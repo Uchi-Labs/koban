@@ -1,17 +1,29 @@
 const DOMAIN_IN_TEXT = /\b(?:www\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:ai|app|co|com|dev|io|money|net|org))\b/i;
 
-const KNOWN_MERCHANT_DOMAINS: Array<{ domain: string; pattern: RegExp }> = [
+const KNOWN_MERCHANT_DOMAINS: Array<{
+  domain: string;
+  pattern: RegExp;
+  validate?: (merchant: string) => boolean;
+}> = [
   { domain: "airbnb.com", pattern: /\bairbnb\b/i },
   { domain: "amazon.com", pattern: /\b(?:amazon|amzn)\b/i },
   { domain: "anthropic.com", pattern: /\banthropic\b/i },
-  { domain: "apple.com", pattern: /\bapple\b/i },
+  {
+    domain: "apple.com",
+    pattern: /\bapple\b/i,
+    validate: (merchant) => merchant === "apple" || /^apple(?:[./]|\s+(?:bill|com)\b)/i.test(merchant)
+  },
   // Deliberately NO bank/brokerage domains here: institution names resolved to
   // third-party favicon URLs (google/ddg) would leak which institutions the
   // user banks with from their own browser (SEC-03). Institutions fall back to
   // the tinted icon in account-favicon-badge.tsx. Restore bank logos only via
   // a same-origin favicon proxy if ever wanted.
   { domain: "copilot.money", pattern: /\bcopilot money\b/i },
-  { domain: "cursor.com", pattern: /\bcursor\b/i },
+  {
+    domain: "cursor.com",
+    pattern: /\bcursor\b/i,
+    validate: (merchant) => merchant === "cursor" || /^cursor\s+ai\b/i.test(merchant)
+  },
   { domain: "discord.com", pattern: /\bdiscord\b/i },
   { domain: "elevenlabs.io", pattern: /\belevenlabs?\b/i },
   { domain: "huggingface.co", pattern: /\bhugging face\b/i },
@@ -29,5 +41,15 @@ export function merchantDomain(merchant: string): string | null {
     return directDomain.toLowerCase();
   }
 
-  return KNOWN_MERCHANT_DOMAINS.find(({ pattern }) => pattern.test(merchant))?.domain ?? null;
+  const normalizedMerchant = merchant.trim().replace(/^[^a-z0-9]+/i, "").toLowerCase();
+  const match = KNOWN_MERCHANT_DOMAINS.find(({ pattern, validate }) => {
+    return pattern.test(normalizedMerchant) && (validate?.(normalizedMerchant) ?? true);
+  });
+
+  return match?.domain ?? null;
+}
+
+/** Institution names never resolve to third-party favicon requests. */
+export function institutionDomain(_institution: string): string | null {
+  return null;
 }

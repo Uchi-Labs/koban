@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
-import { merchantDomain } from "@/lib/merchant-domain";
+import { institutionDomain } from "@/lib/merchant-domain";
 
 /**
  * Per-account institution favicon, following the wave-2 dashboard pattern
@@ -22,7 +22,7 @@ export function AccountFaviconBadge({
   fallbackIcon: React.ReactNode;
   institutionName: string;
 }) {
-  const domain = merchantDomain(institutionName);
+  const domain = institutionDomain(institutionName);
   const [failed, setFailed] = useState(false);
 
   if (!domain || failed) {

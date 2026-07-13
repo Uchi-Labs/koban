@@ -53,12 +53,15 @@ export function buildTransactionTags(transaction, mappings) {
   return [...new Set(tags)];
 }
 
-export function findDuplicateTransaction(copilotTransaction, existingTransactions) {
+export function findDuplicateTransaction(copilotTransaction, existingTransactions, claimedTargetIds = new Set()) {
   const amountMinor = toMinor(-Number(copilotTransaction.amount));
   const date = dateOnly(copilotTransaction.date);
   const candidates = existingTransactions
     .filter((transaction) => {
       if (String(transaction.id).startsWith("copilot_txn_")) {
+        return false;
+      }
+      if (claimedTargetIds.has(String(transaction.id))) {
         return false;
       }
       return Number(transaction.amount_minor) === amountMinor && dayDistance(date, dateOnly(transaction.date)) <= 2;
@@ -226,6 +229,8 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
 
   const accountPlanBySourceId = new Map(accountPlans.map((plan) => [plan.sourceAccountId, plan]));
   const duplicates = [];
+  const claimedDuplicateTargetIds = new Set();
+  const duplicateTargetReuseWarnings = [];
   const importTransactions = [];
   const invalidTagJsonTransactionIds = [];
   const invalidTransactionAmountIds = [];
@@ -275,11 +280,28 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
 
     const duplicate =
       accountPlan.status === "matched"
-        ? findDuplicateTransaction(transaction, existingTransactionsByAccount.get(accountPlan.targetAccount.id) ?? [])
+        ? findDuplicateTransaction(
+            transaction,
+            existingTransactionsByAccount.get(accountPlan.targetAccount.id) ?? [],
+            claimedDuplicateTargetIds
+          )
         : undefined;
     if (duplicate) {
+      claimedDuplicateTargetIds.add(String(duplicate.id));
       duplicates.push({ source: transaction, target: duplicate, targetAccountId: accountPlan.targetAccount.id });
       continue;
+    }
+    if (accountPlan.status === "matched") {
+      const alreadyConsumedTarget = findDuplicateTransaction(
+        transaction,
+        existingTransactionsByAccount.get(accountPlan.targetAccount.id) ?? []
+      );
+      if (alreadyConsumedTarget && claimedDuplicateTargetIds.has(String(alreadyConsumedTarget.id))) {
+        duplicateTargetReuseWarnings.push({
+          sourceTransactionId: transaction.id,
+          targetTransactionId: alreadyConsumedTarget.id
+        });
+      }
     }
 
     importTransactions.push({
@@ -398,6 +420,7 @@ export function buildImportPlan({ balances, existingAccounts, existingSnapshots,
     accountPlans,
     blockingIssues,
     duplicates,
+    duplicateTargetReuseWarnings,
     importTransactions,
     invalidTagJsonTransactionIds,
     invalidTransactionAmountIds,
@@ -494,6 +517,9 @@ export function formatDryRunReport(plan) {
     "Transactions",
     `- To import/upsert: ${formatNumber(plan.importTransactions.length)} (${formatRange(plan.ranges.importedDateRange)})`,
     `- Existing Koban duplicates dropped: ${formatNumber(plan.duplicates.length)}`,
+    ...(plan.duplicateTargetReuseWarnings.length > 0
+      ? [`- WARNING: ${formatNumber(plan.duplicateTargetReuseWarnings.length)} additional Copilot rows matched an already-consumed Koban transaction and will be imported`]
+      : []),
     `- Target category: cat_other for every imported row; reviewed=false`,
     `- Copilot categories preserved as source tags: ${formatNumber(plan.sourceCounts.usedCategoryCount - plan.missingCategoryIds.length)}/${formatNumber(plan.sourceCounts.usedCategoryCount)} used category ids resolved`,
     `- Source rows without a Copilot category: ${formatNumber(plan.sourceCounts.uncategorizedTransactionCount)} (no category provenance tag added)`,

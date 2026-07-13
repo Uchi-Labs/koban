@@ -25,7 +25,6 @@ import { syncSourceAdaptersEffect, type SourceSyncBatchResult } from "@/lib/sour
 import {
   isSnapTradeConfigured,
   skippedSnapTradeSyncResult,
-  syncSnapTradeData,
   syncSnapTradeDataEffect,
   type SnapTradeSyncResult
 } from "@/lib/snaptrade-server";
@@ -52,6 +51,7 @@ export interface AppSyncOptions {
   enrichmentLimit?: number;
   includePlaid?: boolean;
   includeSimpleFin?: boolean;
+  signal?: AbortSignal;
   sourceIds?: string[];
 }
 
@@ -66,15 +66,15 @@ type StepResult<T> = {
 const syncStepRetryPolicy = Schedule.exponential("50 millis").pipe(Schedule.compose(Schedule.recurs(2)));
 
 export function runAppSync(options: AppSyncOptions = {}): Promise<AppSyncRunRecord> {
-  return runServerEffect(runAppSyncEffect(options));
+  return runServerEffect(runAppSyncEffect(options), { signal: options.signal });
 }
 
-export async function runSnapTradeSync(): Promise<{
+export async function runSnapTradeSync(signal?: AbortSignal): Promise<{
   run: AppSyncRunRecord;
   snaptrade: SnapTradeSyncResult;
 }> {
   const startedAt = new Date().toISOString();
-  const snaptrade = await syncSnapTradeData();
+  const snaptrade = await runServerEffect(syncSnapTradeDataEffect(), { signal });
   const finishedAt = new Date().toISOString();
   const snaptradeStatus = snaptradeSyncStepStatus(snaptrade);
   const run = await recordAppSyncRun({

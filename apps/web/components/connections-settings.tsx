@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { StatusDot, type StatusDotTone } from "@/components/ui/status-dot";
-import { merchantDomain } from "@/lib/merchant-domain";
+import { institutionDomain } from "@/lib/merchant-domain";
 import { playError, playSuccess } from "@/lib/ui-sound";
 import type { FinanceKitSetupStatus } from "@/lib/financekit-server";
 import type { PlaidSetupStatus } from "@/lib/plaid-server";
@@ -462,7 +462,7 @@ function RowActions({
  * AccountFaviconBadge, never a fabricated logo.
  */
 function ConnectionAvatar({ icon: Icon, name }: { icon: typeof Landmark; name: string }) {
-  const domain = merchantDomain(name);
+  const domain = institutionDomain(name);
 
   if (!domain) {
     return (
