@@ -224,6 +224,30 @@ export function accountHistory(accountId: string, snapshots: AccountBalanceSnaps
     .sort((left, right) => left.time - right.time);
 }
 
+/** Groups every account's snapshot history in one pass, preserving chronological order. */
+export function accountHistories(snapshots: AccountBalanceSnapshot[]): Map<string, PortfolioPoint[]> {
+  const historyByAccountId = new Map<string, PortfolioPoint[]>();
+
+  for (const snapshot of snapshots) {
+    const point = {
+      time: toUnixSeconds(snapshot.capturedAt || snapshot.asOfDate),
+      value: roundMoney(snapshot.ledgerBalance)
+    };
+    if (point.time <= 0) {
+      continue;
+    }
+    const history = historyByAccountId.get(snapshot.accountId) ?? [];
+    history.push(point);
+    historyByAccountId.set(snapshot.accountId, history);
+  }
+
+  for (const history of historyByAccountId.values()) {
+    history.sort((left, right) => left.time - right.time);
+  }
+
+  return historyByAccountId;
+}
+
 /** Compute portfolio period change from first→last point of a value timeline. */
 export function computePortfolioChange(history: PortfolioPoint[]): PortfolioChange | null {
   if (history.length < 2) {
@@ -281,6 +305,7 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
   for (const holding of holdings) {
     holdingsByAccount.set(holding.accountId, [...(holdingsByAccount.get(holding.accountId) ?? []), holding]);
   }
+  const historyByAccountId = accountHistories(balanceSnapshots);
 
   const accountViews: InvestmentAccountView[] = accounts.map((account) => ({
     id: account.id,
@@ -291,7 +316,7 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
     balance: account.currentBalance,
     currency: account.currency,
     lastSyncedAt: account.lastUpdatedAt,
-    history: accountHistory(account.id, balanceSnapshots),
+    history: historyByAccountId.get(account.id) ?? [],
     positions: (holdingsByAccount.get(account.id) ?? []).sort(
       (left, right) => Math.abs(right.marketValue) - Math.abs(left.marketValue)
     )

@@ -70,6 +70,7 @@ import { findWorkspaceRoot, readWorkspaceEnv } from "@/lib/workspace-env";
 type FinanceDb = FinanceDbDriver;
 
 const maxRegexRuleCandidateLength = 512;
+let categoryRegistrySeeded = false;
 
 export interface SemanticSearchResult {
   body: string;
@@ -4470,6 +4471,7 @@ async function getSemanticEmbeddingSummary() {
 export async function closeFinanceDbForTests(): Promise<void> {
   const state = getFinanceDbState();
   await state.writeQueue.catch(() => undefined);
+  categoryRegistrySeeded = false;
   if (!state.promise) {
     return;
   }
@@ -5107,6 +5109,10 @@ async function registerTagRegistryEntries(db: FinanceDb, tags: string[]): Promis
 }
 
 async function ensureCategoryRegistrySeeded(db: FinanceDb): Promise<void> {
+  if (categoryRegistrySeeded) {
+    return;
+  }
+
   const timestamp = new Date().toISOString();
 
   for (const category of appCategories) {
@@ -5125,6 +5131,8 @@ async function ensureCategoryRegistrySeeded(db: FinanceDb): Promise<void> {
       [category.id, category.name, category.emoji, category.color, category.sortOrder, timestamp]
     );
   }
+
+  categoryRegistrySeeded = true;
 }
 
 async function listCategoriesInDb(

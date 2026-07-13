@@ -1,6 +1,14 @@
 import type { Account, Category, DashboardSummary, RecurringItem, Transaction } from "@ai-finances/schema";
 import { isReviewActionableTransaction, isSpendingTransaction } from "@/lib/transaction-classification";
-import { getAccountName, getCategory } from "@/lib/view-models";
+import {
+  createViewModelLookups,
+  getAccountName,
+  getCategory,
+  type AccountLookupSource,
+  type CategoryLookupSource,
+  type ViewModelContext,
+  type ViewModelLookups
+} from "@/lib/view-models";
 
 export interface ListPage<T> {
   data: T[];
@@ -103,8 +111,8 @@ export function serializeTransaction(
     accounts,
     categories
   }: {
-    accounts: Account[];
-    categories: Category[];
+    accounts: AccountLookupSource;
+    categories: CategoryLookupSource;
   }
 ) {
   const category = getCategory(transaction.categoryId, categories);
@@ -141,8 +149,8 @@ export function serializeRecurring(
     accounts,
     categories
   }: {
-    accounts: Account[];
-    categories: Category[];
+    accounts: AccountLookupSource;
+    categories: CategoryLookupSource;
   }
 ) {
   return {
@@ -189,28 +197,24 @@ export function serializeDashboardSummary(summary: DashboardSummary) {
 export function filterTransactionsForList(
   transactions: Transaction[],
   filters: TransactionListFilters,
-  context: {
-    accounts: Account[];
-    categories: Category[];
-  }
+  context: ViewModelContext | ViewModelLookups
 ): Transaction[] {
+  const lookups = "accountById" in context ? context : createViewModelLookups(context);
+
   return transactions
     .filter((transaction) => (filters.accountId ? transaction.accountId === filters.accountId : true))
     .filter((transaction) => (filters.categoryId ? transaction.categoryId === filters.categoryId : true))
     .filter((transaction) => (filters.status ? transaction.status === filters.status : true))
     .filter((transaction) => transactionMatchesReviewFilter(transaction, filters.reviewFilter))
     .filter((transaction) => transactionMatchesAmountFilters(transaction, filters))
-    .filter((transaction) => transactionMatchesQuery(transaction, filters.query ?? "", context))
+    .filter((transaction) => transactionMatchesQuery(transaction, filters.query ?? "", lookups))
     .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id));
 }
 
 function transactionMatchesQuery(
   transaction: Transaction,
   query: string,
-  context?: {
-    accounts?: Account[];
-    categories?: Category[];
-  }
+  lookups?: ViewModelLookups
 ): boolean {
   const normalized = query.trim().toLowerCase();
 
@@ -223,8 +227,8 @@ function transactionMatchesQuery(
     transaction.description,
     transaction.notes ?? "",
     transaction.categoryId,
-    context?.accounts ? getAccountName(transaction.accountId, context.accounts) : "",
-    context?.categories ? getCategory(transaction.categoryId, context.categories).name : "",
+    lookups ? getAccountName(transaction.accountId, lookups.accountById) : "",
+    lookups ? getCategory(transaction.categoryId, lookups.categoryById).name : "",
     ...transaction.tags
   ].some((value) => value.toLowerCase().includes(normalized));
 }
@@ -275,8 +279,15 @@ export function transactionMatchesReviewFilter(transaction: Transaction, reviewF
 }
 
 export function categoryRollups(categories: Category[], transactions: Transaction[]) {
+  const transactionsByCategoryId = new Map<string, Transaction[]>();
+  for (const transaction of transactions) {
+    const categoryTransactions = transactionsByCategoryId.get(transaction.categoryId) ?? [];
+    categoryTransactions.push(transaction);
+    transactionsByCategoryId.set(transaction.categoryId, categoryTransactions);
+  }
+
   return categories.map((category) => {
-    const categoryTransactions = transactions.filter((transaction) => transaction.categoryId === category.id);
+    const categoryTransactions = transactionsByCategoryId.get(category.id) ?? [];
     const spending = categoryTransactions
       .filter(isSpendingTransaction)
       .reduce((total, transaction) => total + Math.abs(transaction.amount), 0);

@@ -3,6 +3,7 @@ import { transactionMatchesRulePattern } from "@/lib/db/finance-db";
 import { serializeTransaction } from "@/lib/finance-api";
 import { getFinanceData } from "@/lib/finance-data";
 import { parseRuleMatchSpec } from "@/lib/rule-match";
+import { createViewModelLookups } from "@/lib/view-models";
 
 export const runtime = "nodejs";
 
@@ -21,9 +22,13 @@ export async function GET(request: NextRequest) {
 
   const { accounts, categories, transactions } = await getFinanceData();
   const matched = transactions.filter((transaction) => transactionMatchesRulePattern(transaction, spec.value));
+  const { accountById, categoryById } = createViewModelLookups({ accounts, categories });
   const data = matched
     .slice(0, previewLimit)
-    .map((transaction) => serializeTransaction(transaction, { accounts, categories }));
+    .map((transaction) => serializeTransaction(transaction, {
+      accounts: accountById,
+      categories: categoryById
+    }));
 
   return NextResponse.json({
     object: "list",

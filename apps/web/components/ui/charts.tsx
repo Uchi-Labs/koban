@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import * as React from "react";
 import type { TooltipValueType } from "recharts";
 import * as RechartsPrimitive from "recharts";
@@ -207,7 +207,7 @@ function getChartAnimationTimeoutMs(seriesCount: number) {
   );
 }
 
-const MotionDiv = motion.div;
+const MotionDiv = m.div;
 
 type MotionSafeDivProps = Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -337,13 +337,14 @@ function ChartContainer({
   }, []);
 
   return (
-    <ChartContext.Provider
-      value={{
-        config,
-        chartAnimationActive,
-      }}
-    >
-      <MotionDiv
+    <LazyMotion features={domAnimation} strict>
+      <ChartContext.Provider
+        value={{
+          config,
+          chartAnimationActive,
+        }}
+      >
+        <MotionDiv
         animate={reduceMotion ? undefined : { opacity: 1 }}
         className={cn(
           componentThemeClassName,
@@ -366,8 +367,9 @@ function ChartContainer({
         >
           {children}
         </RechartsPrimitive.ResponsiveContainer>
-      </MotionDiv>
-    </ChartContext.Provider>
+        </MotionDiv>
+      </ChartContext.Provider>
+    </LazyMotion>
   );
 }
 

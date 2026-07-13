@@ -9,8 +9,8 @@ import { LivelineChart } from "@/components/liveline-chart";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { formatCurrency } from "@/lib/format";
-import { type AccountBalanceSnapshot, getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
-import { accountHistory, computePortfolioChange, type PortfolioPoint } from "@/lib/investments";
+import { getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
+import { accountHistories, computePortfolioChange, type PortfolioPoint } from "@/lib/investments";
 import { buildNetWorthRangeTrends } from "@/lib/net-worth-trend";
 import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
 import { cn } from "@/lib/utils";
@@ -93,7 +93,13 @@ function toneClassName(tone: "negative" | "neutral" | "positive") {
 export default async function AccountsPage() {
   const { accountGroups, accounts, dashboardSummary, tellerLedger, transactions } = await getFinanceData();
   const balanceSnapshots = tellerLedger?.balanceSnapshots ?? [];
-  const accountRows = accounts.map((account) => createAccountRow(account, transactions, balanceSnapshots));
+  const transactionsByAccountId = groupTransactionsByAccountId(transactions);
+  const historyByAccountId = accountHistories(balanceSnapshots);
+  const accountRows = accounts.map((account) => createAccountRow(
+    account,
+    transactionsByAccountId.get(account.id) ?? [],
+    historyByAccountId.get(account.id) ?? []
+  ));
   const accountRowsByGroup = new Map(accountGroups.map((group) => [
     group.id,
     accountRows.filter((row) => group.accountIds.includes(row.account.id))
@@ -317,10 +323,7 @@ function RowStat({ label, value }: { label: string; value: string }) {
 
 const ROW_HISTORY_WINDOW_DAYS = 90;
 
-function createAccountRow(account: Account, transactions: Transaction[], balanceSnapshots: AccountBalanceSnapshot[]) {
-  const accountTransactions = transactions
-    .filter((transaction) => transaction.accountId === account.id)
-    .sort((left, right) => right.date.localeCompare(left.date));
+function createAccountRow(account: Account, accountTransactions: Transaction[], history: PortfolioPoint[]) {
   const latestTransaction = accountTransactions[0];
 
   return {
@@ -329,11 +332,24 @@ function createAccountRow(account: Account, transactions: Transaction[], balance
     // history -- an account's whole lifetime first-to-last delta (e.g. a credit
     // card opened at $0, now carrying a balance) reads as a meaningless four-digit
     // percentage. Bounding to the trailing window keeps it honest and legible.
-    history: recentHistory(accountHistory(account.id, balanceSnapshots), ROW_HISTORY_WINDOW_DAYS),
+    history: recentHistory(history, ROW_HISTORY_WINDOW_DAYS),
     latestTransaction,
     netWorthContribution: getAccountNetWorthContribution(account),
     transactionCount: accountTransactions.length
   };
+}
+
+function groupTransactionsByAccountId(transactions: Transaction[]): Map<string, Transaction[]> {
+  const transactionsByAccountId = new Map<string, Transaction[]>();
+  for (const transaction of transactions) {
+    const accountTransactions = transactionsByAccountId.get(transaction.accountId) ?? [];
+    accountTransactions.push(transaction);
+    transactionsByAccountId.set(transaction.accountId, accountTransactions);
+  }
+  for (const accountTransactions of transactionsByAccountId.values()) {
+    accountTransactions.sort((left, right) => right.date.localeCompare(left.date));
+  }
+  return transactionsByAccountId;
 }
 
 function recentHistory(history: PortfolioPoint[], days: number): PortfolioPoint[] {

@@ -2,7 +2,7 @@ import { Upload, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { CategoryPill } from "@/components/category-pill";
 import { MiniLineChart } from "@/components/charts";
-import { DashboardNetWorthCard, type NetWorthRange } from "@/components/dashboard-net-worth-card";
+import { DashboardNetWorthCard } from "@/components/dashboard-net-worth-card";
 import { DashboardReviewCard } from "@/components/dashboard-review-card";
 import { DashboardCard } from "@/components/dashboard-card";
 import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
@@ -13,15 +13,13 @@ import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
 import { TextReveal } from "@/components/motion/text-reveal";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
-import { getFinanceData, type FinanceData } from "@/lib/finance-data";
+import { getFinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
+import { buildDashboardTrends } from "@/lib/net-worth-trend";
 import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
-import { isReviewActionableTransaction, isSpendingTransaction } from "@/lib/transaction-classification";
+import { isReviewActionableTransaction } from "@/lib/transaction-classification";
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
-
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
-const dateLabelFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" });
 
 export default async function DashboardPage() {
   const {
@@ -33,23 +31,25 @@ export default async function DashboardPage() {
     source,
     transactions
   } = await getFinanceData();
-  const reviewRows = getTransactionViews(transactions, { accounts, categories })
-    .filter(isReviewActionableTransaction)
-    .slice(0, 10);
+  const reviewRows = getTransactionViews(
+    transactions.filter(isReviewActionableTransaction).slice(0, 10),
+    { accounts, categories }
+  );
   const recurringViews = getUpcomingRecurringViews(recurringItems, categories);
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const monthlyBudget = categories.reduce((total, category) => total + (category.budgetAmount ?? 0), 0);
   const monthlySpending = Math.abs(dashboardSummary.monthlySpending);
   const monthlyBudgetDelta = monthlySpending - monthlyBudget;
-  const latestTransactionDate = getLatestTransactionDate(transactions);
+  const { latestTransactionDate, netWorthTrends, spendingTrend } = buildDashboardTrends(
+    dashboardSummary.netWorth,
+    transactions
+  );
   const monthlySpendingProjection = createMonthlySpendingProjection({
     latestDate: latestTransactionDate,
     monthlySpending,
     transactions
   });
   const projectedMonthlySpending = monthlySpendingProjection.amount;
-  const spendingTrend = createMonthlySpendingTrend(transactions);
-  const netWorthTrends = createNetWorthRangeTrends(dashboardSummary.netWorth, transactions);
   const reviewSectionLabel = reviewRows[0]?.dateLabel ?? "Latest";
   const investmentBalance = accountGroups.find((group) => group.id === "group_investments")?.totalBalance ?? 0;
 
@@ -289,172 +289,4 @@ export default async function DashboardPage() {
       ) : null}
     </main>
   );
-}
-
-function createMonthlySpendingTrend(transactions: FinanceData["transactions"]) {
-  const months = getRecentMonthKeys(transactions, 6);
-
-  return months.map((month) => ({
-    label: formatMonthLabel(month),
-    spending: roundMoney(
-      transactions
-        .filter((transaction) => transaction.date.startsWith(month) && isSpendingTransaction(transaction))
-        .reduce((total, transaction) => total + Math.abs(transaction.amount), 0)
-    )
-  }));
-}
-
-function createNetWorthRangeTrends(
-  currentNetWorth: number,
-  transactions: FinanceData["transactions"]
-) {
-  const latestDate = getLatestTransactionDate(transactions);
-  const latestMonth = latestDate.slice(0, 7);
-  const latestYear = Number.parseInt(latestDate.slice(0, 4), 10);
-  const earliestMonth = transactions.map((transaction) => transaction.date.slice(0, 7)).sort()[0] ?? latestMonth;
-  const ytdMonthCount = monthDifference(`${latestYear}-01`, latestMonth) + 1;
-
-  return [
-    {
-      label: "1W",
-      points: createDailyNetWorthTrend(currentNetWorth, transactions, latestDate, 7)
-    },
-    {
-      label: "1M",
-      points: createDailyNetWorthTrend(currentNetWorth, transactions, latestDate, 30)
-    },
-    {
-      label: "3M",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getRecentMonthKeys(transactions, 3))
-    },
-    {
-      label: "YTD",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getRecentMonthKeys(transactions, ytdMonthCount))
-    },
-    {
-      label: "1Y",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getRecentMonthKeys(transactions, 12))
-    },
-    {
-      label: "ALL",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getMonthRange(earliestMonth, latestMonth))
-    }
-  ] satisfies Array<{ label: NetWorthRange; points: Array<{ label: string; value: number }> }>;
-}
-
-function createDailyNetWorthTrend(
-  currentNetWorth: number,
-  transactions: FinanceData["transactions"],
-  latestDate: string,
-  dayCount: number
-) {
-  const keys = getRecentDateKeys(latestDate, dayCount);
-  const keySet = new Set(keys);
-  const netCashFlowByDate = new Map<string, number>();
-
-  for (const transaction of transactions) {
-    if (keySet.has(transaction.date)) {
-      netCashFlowByDate.set(transaction.date, roundMoney((netCashFlowByDate.get(transaction.date) ?? 0) + transaction.amount));
-    }
-  }
-
-  return createBackwardNetWorthPoints(currentNetWorth, keys, netCashFlowByDate, formatDateLabel);
-}
-
-function createMonthlyNetWorthTrend(
-  currentNetWorth: number,
-  transactions: FinanceData["transactions"],
-  months: string[]
-) {
-  const monthSet = new Set(months);
-  const netCashFlowByMonth = new Map<string, number>();
-
-  for (const transaction of transactions) {
-    const month = transaction.date.slice(0, 7);
-    if (monthSet.has(month)) {
-      netCashFlowByMonth.set(month, roundMoney((netCashFlowByMonth.get(month) ?? 0) + transaction.amount));
-    }
-  }
-
-  return createBackwardNetWorthPoints(currentNetWorth, months, netCashFlowByMonth, formatMonthLabel);
-}
-
-function createBackwardNetWorthPoints(
-  currentNetWorth: number,
-  keys: string[],
-  netCashFlowByKey: Map<string, number>,
-  formatLabel: (key: string) => string
-) {
-  let runningNetWorth = currentNetWorth;
-  const valuesByKey = new Map<string, number>();
-
-  for (const key of [...keys].reverse()) {
-    valuesByKey.set(key, roundMoney(runningNetWorth));
-    runningNetWorth = roundMoney(runningNetWorth - (netCashFlowByKey.get(key) ?? 0));
-  }
-
-  return keys.map((key) => ({
-    label: formatLabel(key),
-    value: valuesByKey.get(key) ?? currentNetWorth
-  }));
-}
-
-function getRecentMonthKeys(transactions: FinanceData["transactions"], count: number) {
-  const latestMonth = transactions
-    .map((transaction) => transaction.date.slice(0, 7))
-    .sort()
-    .at(-1) ?? new Date().toISOString().slice(0, 7);
-  const [year, month] = latestMonth.split("-").map(Number);
-  const cursor = new Date(Date.UTC(year, month - 1, 1));
-  const months: string[] = [];
-
-  for (let index = count - 1; index >= 0; index -= 1) {
-    const date = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() - index, 1));
-    months.push(date.toISOString().slice(0, 7));
-  }
-
-  return months;
-}
-
-function getMonthRange(startMonth: string, endMonth: string) {
-  const count = monthDifference(startMonth, endMonth) + 1;
-  return Array.from({ length: Math.max(1, count) }, (_, index) => addMonths(startMonth, index));
-}
-
-function monthDifference(startMonth: string, endMonth: string) {
-  const [startYear, start] = startMonth.split("-").map(Number);
-  const [endYear, end] = endMonth.split("-").map(Number);
-  return (endYear - startYear) * 12 + (end - start);
-}
-
-function addMonths(month: string, offset: number) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const date = new Date(Date.UTC(year, monthNumber - 1 + offset, 1));
-  return date.toISOString().slice(0, 7);
-}
-
-function getRecentDateKeys(latestDate: string, count: number) {
-  return Array.from({ length: count }, (_, index) => addDays(latestDate, index - count + 1));
-}
-
-function addDays(date: string, offset: number) {
-  const parsed = new Date(`${date}T12:00:00Z`);
-  parsed.setUTCDate(parsed.getUTCDate() + offset);
-  return parsed.toISOString().slice(0, 10);
-}
-
-function getLatestTransactionDate(transactions: FinanceData["transactions"]) {
-  return transactions.map((transaction) => transaction.date).sort().at(-1) ?? new Date().toISOString().slice(0, 10);
-}
-
-function formatMonthLabel(month: string) {
-  return monthLabelFormatter.format(new Date(`${month}-01T12:00:00Z`));
-}
-
-function formatDateLabel(date: string) {
-  return dateLabelFormatter.format(new Date(`${date}T12:00:00Z`));
-}
-
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
 }

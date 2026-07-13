@@ -11,13 +11,37 @@ export type TransactionView = Transaction & {
   relativeDateLabel: string;
 };
 
-interface ViewModelContext {
-  accounts?: Account[];
-  categories?: Category[];
+export type AccountLookupSource = readonly Account[] | ReadonlyMap<string, Account>;
+export type CategoryLookupSource = readonly Category[] | ReadonlyMap<string, Category>;
+
+export interface ViewModelContext {
+  accounts?: AccountLookupSource;
+  categories?: CategoryLookupSource;
 }
 
-export function getAccountName(accountId: string, sourceAccounts: Account[] = []) {
-  const accountById = new Map(sourceAccounts.map((account) => [account.id, account]));
+export interface ViewModelLookups {
+  accountById: ReadonlyMap<string, Account>;
+  categoryById: ReadonlyMap<string, Category>;
+}
+
+export function createViewModelLookups(context: ViewModelContext = {}): ViewModelLookups {
+  const accounts = context.accounts ?? [];
+  const categories = context.categories ?? appCategories;
+
+  return {
+    accountById: Array.isArray(accounts)
+      ? new Map(accounts.map((account) => [account.id, account]))
+      : accounts as ReadonlyMap<string, Account>,
+    categoryById: Array.isArray(categories)
+      ? new Map(categories.map((category) => [category.id, category]))
+      : categories as ReadonlyMap<string, Category>
+  };
+}
+
+export function getAccountName(accountId: string, sourceAccounts: AccountLookupSource = []) {
+  const accountById = Array.isArray(sourceAccounts)
+    ? new Map(sourceAccounts.map((account) => [account.id, account]))
+    : sourceAccounts as ReadonlyMap<string, Account>;
   const account = accountById.get(accountId);
   if (!account) {
     return "Unknown account";
@@ -26,8 +50,10 @@ export function getAccountName(accountId: string, sourceAccounts: Account[] = []
   return account.mask ? `${account.name} ${account.mask}` : account.name;
 }
 
-export function getCategory(categoryId: string, sourceCategories: Category[] = appCategories) {
-  const categoryById = new Map(sourceCategories.map((category) => [category.id, category]));
+export function getCategory(categoryId: string, sourceCategories: CategoryLookupSource = appCategories) {
+  const categoryById = Array.isArray(sourceCategories)
+    ? new Map(sourceCategories.map((category) => [category.id, category]))
+    : sourceCategories as ReadonlyMap<string, Category>;
 
   return (
     categoryById.get(categoryId) ?? categoryFallback()
@@ -35,6 +61,7 @@ export function getCategory(categoryId: string, sourceCategories: Category[] = a
 }
 
 export function getTransactionViews(source: Transaction[] = [], context: ViewModelContext = {}): TransactionView[] {
+  const { accountById, categoryById } = createViewModelLookups(context);
   const referenceDate = source
     .map((transaction) => transaction.date)
     .sort()
@@ -42,8 +69,8 @@ export function getTransactionViews(source: Transaction[] = [], context: ViewMod
 
   return source.map((transaction) => ({
     ...transaction,
-    accountName: getAccountName(transaction.accountId, context.accounts),
-    category: getCategory(transaction.categoryId, context.categories),
+    accountName: getAccountName(transaction.accountId, accountById),
+    category: getCategory(transaction.categoryId, categoryById),
     dateLabel: formatLongDate(transaction.date),
     merchant: transaction.merchantName,
     needsReview: !transaction.reviewed,
@@ -52,9 +79,11 @@ export function getTransactionViews(source: Transaction[] = [], context: ViewMod
 }
 
 export function getUpcomingRecurringViews(source: RecurringItem[] = [], sourceCategories: Category[] = appCategories) {
+  const categoryById = new Map(sourceCategories.map((category) => [category.id, category]));
+
   return source.map((item) => ({
     ...item,
-    category: getCategory(item.categoryId, sourceCategories),
+    category: getCategory(item.categoryId, categoryById),
     frequency: cadenceLabel(item.cadence),
     merchant: item.name,
     nextDateLabel: formatShortDate(item.nextDate)

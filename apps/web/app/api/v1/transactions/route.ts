@@ -8,6 +8,7 @@ import {
   serializeTransaction
 } from "@/lib/finance-api";
 import { getFinanceData } from "@/lib/finance-data";
+import { createViewModelLookups } from "@/lib/view-models";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,7 @@ export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status");
   const { limit, startingAfter } = parseListParams(request.nextUrl.searchParams);
   const amountFilters = parseTransactionAmountFilters(request.nextUrl.searchParams);
+  const lookups = createViewModelLookups({ accounts, categories });
   const rows = filterTransactionsForList(
     transactions,
     {
@@ -33,13 +35,16 @@ export async function GET(request: NextRequest) {
       status,
       ...amountFilters
     },
-    { accounts, categories }
+    lookups
   );
   const page = paginateById(rows, { limit, startingAfter });
 
   return NextResponse.json({
     ...page,
-    data: page.data.map((transaction) => serializeTransaction(transaction, { accounts, categories })),
+    data: page.data.map((transaction) => serializeTransaction(transaction, {
+      accounts: lookups.accountById,
+      categories: lookups.categoryById
+    })),
     total_count: rows.length
   });
 }

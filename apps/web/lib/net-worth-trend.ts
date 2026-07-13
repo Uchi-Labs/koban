@@ -1,49 +1,78 @@
 import type { Transaction } from "@ai-finances/schema";
 import type { NetWorthRange, NetWorthRangeTrend } from "@/components/dashboard-net-worth-card";
-
-// Shared with the dashboard's net-worth hero (app/page.tsx), which computes an
-// identical set of ranges inline. Kept as a separate copy here rather than a
-// cross-import so this wave never touches the already-shipped dashboard file --
-// both read the same `transactions` shape and produce the same six ranges.
+import { isSpendingTransaction } from "@/lib/transaction-classification";
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 const dateLabelFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" });
+
+interface TransactionTrendBuckets {
+  earliestMonth: string;
+  latestDate: string;
+  latestMonth: string;
+  netCashFlowByDate: Map<string, number>;
+  netCashFlowByMonth: Map<string, number>;
+  spendingByMonth: Map<string, number>;
+}
+
+export interface DashboardTrends {
+  latestTransactionDate: string;
+  netWorthTrends: NetWorthRangeTrend[];
+  spendingTrend: Array<{ label: string; spending: number }>;
+}
+
+/** Dashboard trend data from one transaction pass (plan 036-A shared extraction). */
+export function buildDashboardTrends(currentNetWorth: number, transactions: Transaction[]): DashboardTrends {
+  const buckets = bucketTransactionTrends(transactions);
+  return {
+    latestTransactionDate: buckets.latestDate,
+    netWorthTrends: buildNetWorthRangeTrendsFromBuckets(currentNetWorth, buckets),
+    spendingTrend: getRecentMonthKeys(buckets.latestMonth, 6).map((month) => ({
+      label: formatMonthLabel(month),
+      spending: roundMoney(buckets.spendingByMonth.get(month) ?? 0)
+    }))
+  };
+}
 
 /** Build 1W/1M/3M/YTD/1Y/ALL net-worth trend series purely from already-loaded transactions. */
 export function buildNetWorthRangeTrends(
   currentNetWorth: number,
   transactions: Transaction[]
 ): NetWorthRangeTrend[] {
-  const latestDate = getLatestTransactionDate(transactions);
-  const latestMonth = latestDate.slice(0, 7);
+  return buildNetWorthRangeTrendsFromBuckets(currentNetWorth, bucketTransactionTrends(transactions));
+}
+
+function buildNetWorthRangeTrendsFromBuckets(
+  currentNetWorth: number,
+  buckets: TransactionTrendBuckets
+): NetWorthRangeTrend[] {
+  const { earliestMonth, latestDate, latestMonth, netCashFlowByDate, netCashFlowByMonth } = buckets;
   const latestYear = Number.parseInt(latestDate.slice(0, 4), 10);
-  const earliestMonth = transactions.map((transaction) => transaction.date.slice(0, 7)).sort()[0] ?? latestMonth;
   const ytdMonthCount = monthDifference(`${latestYear}-01`, latestMonth) + 1;
 
   return [
     {
       label: "1W",
-      points: createDailyNetWorthTrend(currentNetWorth, transactions, latestDate, 7)
+      points: createDailyNetWorthTrend(currentNetWorth, netCashFlowByDate, latestDate, 7)
     },
     {
       label: "1M",
-      points: createDailyNetWorthTrend(currentNetWorth, transactions, latestDate, 30)
+      points: createDailyNetWorthTrend(currentNetWorth, netCashFlowByDate, latestDate, 30)
     },
     {
       label: "3M",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getRecentMonthKeys(transactions, 3))
+      points: createMonthlyNetWorthTrend(currentNetWorth, netCashFlowByMonth, getRecentMonthKeys(latestMonth, 3))
     },
     {
       label: "YTD",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getRecentMonthKeys(transactions, ytdMonthCount))
+      points: createMonthlyNetWorthTrend(currentNetWorth, netCashFlowByMonth, getRecentMonthKeys(latestMonth, ytdMonthCount))
     },
     {
       label: "1Y",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getRecentMonthKeys(transactions, 12))
+      points: createMonthlyNetWorthTrend(currentNetWorth, netCashFlowByMonth, getRecentMonthKeys(latestMonth, 12))
     },
     {
       label: "ALL",
-      points: createMonthlyNetWorthTrend(currentNetWorth, transactions, getMonthRange(earliestMonth, latestMonth))
+      points: createMonthlyNetWorthTrend(currentNetWorth, netCashFlowByMonth, getMonthRange(earliestMonth, latestMonth))
     }
   ] satisfies Array<{ label: NetWorthRange; points: Array<{ label: string; value: number }> }>;
 }
@@ -63,34 +92,15 @@ export function netWorthTrendPercent(points: Array<{ value: number }>): string {
 
 function createDailyNetWorthTrend(
   currentNetWorth: number,
-  transactions: Transaction[],
+  netCashFlowByDate: Map<string, number>,
   latestDate: string,
   dayCount: number
 ) {
   const keys = getRecentDateKeys(latestDate, dayCount);
-  const keySet = new Set(keys);
-  const netCashFlowByDate = new Map<string, number>();
-
-  for (const transaction of transactions) {
-    if (keySet.has(transaction.date)) {
-      netCashFlowByDate.set(transaction.date, roundMoney((netCashFlowByDate.get(transaction.date) ?? 0) + transaction.amount));
-    }
-  }
-
   return createBackwardNetWorthPoints(currentNetWorth, keys, netCashFlowByDate, formatDateLabel);
 }
 
-function createMonthlyNetWorthTrend(currentNetWorth: number, transactions: Transaction[], months: string[]) {
-  const monthSet = new Set(months);
-  const netCashFlowByMonth = new Map<string, number>();
-
-  for (const transaction of transactions) {
-    const month = transaction.date.slice(0, 7);
-    if (monthSet.has(month)) {
-      netCashFlowByMonth.set(month, roundMoney((netCashFlowByMonth.get(month) ?? 0) + transaction.amount));
-    }
-  }
-
+function createMonthlyNetWorthTrend(currentNetWorth: number, netCashFlowByMonth: Map<string, number>, months: string[]) {
   return createBackwardNetWorthPoints(currentNetWorth, months, netCashFlowByMonth, formatMonthLabel);
 }
 
@@ -114,8 +124,7 @@ function createBackwardNetWorthPoints(
   }));
 }
 
-function getRecentMonthKeys(transactions: Transaction[], count: number) {
-  const latestMonth = transactions.map((transaction) => transaction.date.slice(0, 7)).sort().at(-1) ?? new Date().toISOString().slice(0, 7);
+function getRecentMonthKeys(latestMonth: string, count: number) {
   const [year, month] = latestMonth.split("-").map(Number);
   const cursor = new Date(Date.UTC(year, month - 1, 1));
   const months: string[] = [];
@@ -155,8 +164,45 @@ function addDays(date: string, offset: number) {
   return parsed.toISOString().slice(0, 10);
 }
 
-function getLatestTransactionDate(transactions: Transaction[]) {
-  return transactions.map((transaction) => transaction.date).sort().at(-1) ?? new Date().toISOString().slice(0, 10);
+function bucketTransactionTrends(transactions: Transaction[]): TransactionTrendBuckets {
+  const fallbackDate = new Date().toISOString().slice(0, 10);
+  let earliestMonth = "";
+  let latestDate = "";
+  let latestMonth = "";
+  const netCashFlowByDate = new Map<string, number>();
+  const netCashFlowByMonth = new Map<string, number>();
+  const spendingByMonth = new Map<string, number>();
+
+  for (const transaction of transactions) {
+    const month = transaction.date.slice(0, 7);
+    if (!latestDate || transaction.date > latestDate) latestDate = transaction.date;
+    if (!latestMonth || month > latestMonth) latestMonth = month;
+    if (!earliestMonth || month < earliestMonth) earliestMonth = month;
+    netCashFlowByDate.set(
+      transaction.date,
+      roundMoney((netCashFlowByDate.get(transaction.date) ?? 0) + transaction.amount)
+    );
+    netCashFlowByMonth.set(
+      month,
+      roundMoney((netCashFlowByMonth.get(month) ?? 0) + transaction.amount)
+    );
+    if (isSpendingTransaction(transaction)) {
+      spendingByMonth.set(month, (spendingByMonth.get(month) ?? 0) + Math.abs(transaction.amount));
+    }
+  }
+
+  latestDate ||= fallbackDate;
+  latestMonth ||= latestDate.slice(0, 7);
+  earliestMonth ||= latestMonth;
+
+  return {
+    earliestMonth,
+    latestDate,
+    latestMonth,
+    netCashFlowByDate,
+    netCashFlowByMonth,
+    spendingByMonth
+  };
 }
 
 function formatMonthLabel(month: string) {
