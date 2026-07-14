@@ -76,6 +76,14 @@ interface SourceAdapterView {
     sourceItemCount: number;
   };
   syncCommand: string;
+  webAuth?: {
+    accountEmail?: string;
+    accountName?: string;
+    configured: boolean;
+    connected: boolean;
+    startPath: string;
+    statusPath: string;
+  };
 }
 
 interface SourceItemView {
@@ -146,6 +154,14 @@ interface SourcesApiResponse {
       source_item_count: number;
     };
     sync_command: string;
+    web_auth?: {
+      account_email?: string;
+      account_name?: string;
+      configured: boolean;
+      connected: boolean;
+      start_path: string;
+      status_path: string;
+    };
   }>;
   summary: SourceSummary;
 }
@@ -998,6 +1014,7 @@ function SourceAdapterCard({ adapter, model }: { adapter: SourceAdapterView; mod
       </div>
 
       <SourceAdapterDetails adapter={adapter} />
+      {adapter.webAuth ? <MicrosoftWebAuthActions adapter={adapter} /> : null}
       <SourceAdapterFileActions adapter={adapter} model={model} />
       <SourceAdapterPasteActions adapter={adapter} model={model} pastedImport={pastedImport} />
     </article>
@@ -1008,7 +1025,22 @@ function SourceAdapterDetails({ adapter }: { adapter: SourceAdapterView }) {
   return (
     <>
       <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-        <span>{adapter.installed ? `CLI found: ${adapter.binary}` : `Install: ${adapter.installCommand}`}</span>
+        {adapter.webAuth ? (
+          <span>
+            {adapter.webAuth.connected
+              ? `Microsoft account: ${adapter.webAuth.accountEmail ?? adapter.webAuth.accountName ?? "connected"}`
+              : adapter.webAuth.configured
+                ? "Microsoft web connection is ready to authorize."
+                : "Microsoft web connection needs server credentials."}
+          </span>
+        ) : null}
+        <span>
+          {adapter.installed && !adapter.webAuth?.connected
+            ? `CLI found: ${adapter.binary}`
+            : adapter.webAuth?.connected
+              ? `CLI fallback: ${adapter.binary}`
+              : `CLI fallback install: ${adapter.installCommand}`}
+        </span>
         {adapter.cache ? (
           <span>
             Local cache: {adapter.cache.summary}
@@ -1016,12 +1048,16 @@ function SourceAdapterDetails({ adapter }: { adapter: SourceAdapterView }) {
           </span>
         ) : null}
         <span>{formatSourceStorage(adapter.storage)}</span>
-        <span>Sync command: {adapter.syncCommand}</span>
+        <span>
+          {adapter.webAuth?.connected
+            ? "Sync source reads the latest Outlook mail and calendar events through Microsoft Graph."
+            : `Sync command: ${adapter.syncCommand}`}
+        </span>
         {adapter.lastSyncedAt ? <span>Last sync: {new Date(adapter.lastSyncedAt).toLocaleString()}</span> : null}
         {adapter.errorMessage ? <em className="text-destructive not-italic">{adapter.errorMessage}</em> : null}
         {adapter.refreshMessage ? <em className="text-muted-foreground not-italic">{adapter.refreshMessage}</em> : null}
       </div>
-      {adapter.setupSteps.length > 0 ? (
+      {adapter.setupSteps.length > 0 && !adapter.webAuth?.configured ? (
         <div className="flex flex-col gap-1" aria-label={`${adapter.displayName} setup steps`}>
           {adapter.setupSteps.map((step) => (
             <CodeLine key={step}>{step}</CodeLine>
@@ -1029,6 +1065,61 @@ function SourceAdapterDetails({ adapter }: { adapter: SourceAdapterView }) {
         </div>
       ) : null}
     </>
+  );
+}
+
+function MicrosoftWebAuthActions({ adapter }: { adapter: SourceAdapterView }) {
+  const [disconnecting, setDisconnecting] = useState(false);
+  const webAuth = adapter.webAuth;
+
+  if (!webAuth) {
+    return null;
+  }
+
+  if (!webAuth.connected) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          aria-disabled={!webAuth.configured}
+          className={cn(
+            buttonVariants({ variant: "default", size: "sm" }),
+            !webAuth.configured && "pointer-events-none opacity-50"
+          )}
+          href={webAuth.configured ? webAuth.startPath : undefined}
+        >
+          Connect Microsoft
+        </a>
+        <span className="text-xs text-muted-foreground">Read-only mail and calendar access.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        disabled={disconnecting}
+        onClick={() => {
+          setDisconnecting(true);
+          void fetch(webAuth.statusPath, { method: "DELETE" })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error("Unable to disconnect Microsoft.");
+              }
+
+              window.location.reload();
+            })
+            .catch(() => {
+              setDisconnecting(false);
+            });
+        }}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        {disconnecting ? "Disconnecting..." : "Disconnect Microsoft"}
+      </Button>
+      <span className="text-xs text-muted-foreground">Mail.Read · Calendars.Read</span>
+    </div>
   );
 }
 
@@ -1197,7 +1288,17 @@ function adapterFromApi(adapter: SourcesApiResponse["data"][number]): SourceAdap
       latestOccurredAt: adapter.storage.latest_occurred_at,
       sourceItemCount: adapter.storage.source_item_count
     },
-    syncCommand: adapter.sync_command
+    syncCommand: adapter.sync_command,
+    webAuth: adapter.web_auth
+      ? {
+          accountEmail: adapter.web_auth.account_email,
+          accountName: adapter.web_auth.account_name,
+          configured: adapter.web_auth.configured,
+          connected: adapter.web_auth.connected,
+          startPath: adapter.web_auth.start_path,
+          statusPath: adapter.web_auth.status_path
+        }
+      : undefined
   };
 }
 

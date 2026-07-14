@@ -17,6 +17,7 @@ const publicPaths = new Set([
   "/api/health",
   "/api/login",
   "/api/auth/chatgpt/callback",
+  "/api/auth/microsoft/callback",
   "/favicon.ico",
   "/robots.txt",
   "/sitemap.xml"

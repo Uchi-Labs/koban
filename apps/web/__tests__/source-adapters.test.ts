@@ -980,6 +980,7 @@ describe("source adapter normalization", () => {
     expect(mergeAdapterStatus("connected", "error", { sourceItemCount: 3 })).toBe("connected");
     expect(mergeAdapterStatus("connected", "not_configured", { sourceItemCount: 0 })).toBe("not_configured");
     expect(mergeAdapterStatus(undefined, "not_configured", { sourceItemCount: 3 })).toBe("not_configured");
+    expect(mergeAdapterStatus(undefined, "connected", { sourceItemCount: 0 })).toBe("connected");
   });
 
   it("does not surface refresh auth errors as current errors for connected imported-ready sources", () => {

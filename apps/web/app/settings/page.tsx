@@ -187,6 +187,16 @@ export default async function SettingsPage() {
         latestOccurredAt: adapter.storage.latestOccurredAt,
         sourceItemCount: adapter.storage.sourceItemCount
       },
+      webAuth: adapter.webAuth
+        ? {
+            accountEmail: adapter.webAuth.accountEmail,
+            accountName: adapter.webAuth.accountName,
+            configured: adapter.webAuth.configured,
+            connected: adapter.webAuth.connected,
+            startPath: adapter.webAuth.startPath,
+            statusPath: adapter.webAuth.statusPath
+          }
+        : undefined,
       syncCommand: adapter.syncCommand
     }))
   );
