@@ -41,6 +41,16 @@ export async function GET() {
         latest_occurred_at: adapter.storage.latestOccurredAt,
         source_item_count: adapter.storage.sourceItemCount
       },
+      web_auth: adapter.webAuth
+        ? {
+            account_email: adapter.webAuth.accountEmail,
+            account_name: adapter.webAuth.accountName,
+            configured: adapter.webAuth.configured,
+            connected: adapter.webAuth.connected,
+            start_path: adapter.webAuth.startPath,
+            status_path: adapter.webAuth.statusPath
+          }
+        : undefined,
       last_synced_at: adapter.lastSyncedAt,
       error_message: adapter.errorMessage,
       refresh_message: adapter.refreshMessage,

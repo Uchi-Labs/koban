@@ -21,6 +21,10 @@ import { inferCurrencyCodeFromText, normalizeCurrencyCode } from "@/lib/currency
 import { runServerEffect } from "@/lib/effect/runtime";
 import { SourceRefreshError, syncErrorMessage } from "@/lib/effect/sync-errors";
 import { maxSourceImportBytes } from "@/lib/source-import-limits";
+import {
+  fetchMicrosoftSourceRecords,
+  microsoftSourceOAuthStatus
+} from "@/lib/microsoft-source-oauth";
 import { Effect, Schedule } from "effect";
 
 const execFileAsync = promisify(execFile);
@@ -65,6 +69,14 @@ export interface SourceAdapterDiagnostic extends SourceAdapterDefinition {
   setup: SourceSetupChecklist;
   status: ExternalSourceStatus;
   storage: SourceStoreSourceSummary;
+  webAuth?: {
+    accountEmail?: string;
+    accountName?: string;
+    configured: boolean;
+    connected: boolean;
+    startPath: string;
+    statusPath: string;
+  };
 }
 
 export interface SourceAdapterDiagnostics {
@@ -239,19 +251,35 @@ export const sourceAdapterDefinitions = [
 
 export async function getSourceAdapterDiagnostics(): Promise<SourceAdapterDiagnostics> {
   await ensureSourceCatalog();
-  const states = await getExternalSourceStates();
-  const sourceSummaries = await getSourceStoreSourceSummaries();
+  const [states, sourceSummaries, microsoftOAuth] = await Promise.all([
+    getExternalSourceStates(),
+    getSourceStoreSourceSummaries(),
+    microsoftSourceOAuthStatus()
+  ]);
   const adapters = await Promise.all(
     sourceAdapterDefinitions.map(async (adapter) => {
-      const installed = await commandExists(adapter.binary);
+      const cliInstalled = await commandExists(adapter.binary);
+      const webAuth =
+        adapter.kind === "outlook_email"
+          ? {
+              accountEmail: microsoftOAuth.accountEmail,
+              accountName: microsoftOAuth.accountName,
+              configured: microsoftOAuth.configured,
+              connected: microsoftOAuth.connected,
+              startPath: "/api/auth/microsoft/start",
+              statusPath: "/api/auth/microsoft/status"
+            }
+          : undefined;
+      const installed = cliInstalled || webAuth?.connected === true;
       const [authState, cache] = await Promise.all([
-        installed ? checkAdapterAuthState(adapter) : Promise.resolve(undefined),
-        installed ? probeSourceAdapterCache(adapter) : Promise.resolve(undefined)
+        cliInstalled && !webAuth?.connected ? checkAdapterAuthState(adapter) : Promise.resolve(undefined),
+        cliInstalled ? probeSourceAdapterCache(adapter) : Promise.resolve(undefined)
       ]);
       const state = states.get(adapter.id);
 
       const storage = sourceSummaries.get(adapter.id) ?? emptySourceStorage(adapter.id);
-      const status = installed ? mergeAdapterStatus(state?.status, authState?.status, storage) : "not_configured";
+      const authStatus = webAuth?.connected ? "connected" : authState?.status;
+      const status = installed ? mergeAdapterStatus(state?.status, authStatus, storage) : "not_configured";
       const setup = buildSourceSetupChecklist(adapter, installed, status, storage);
 
       return {
@@ -275,7 +303,8 @@ export async function getSourceAdapterDiagnostics(): Promise<SourceAdapterDiagno
         }),
         setup,
         status,
-        storage
+        storage,
+        webAuth
       } satisfies SourceAdapterDiagnostic;
     })
   );
@@ -360,7 +389,10 @@ function syncSourceAdapterEffect(sourceId: string): Effect.Effect<SourceSyncResu
     }
 
     const installed = yield* sourcePromise(
-      () => commandExists(definition.binary),
+      async () =>
+        definition.kind === "outlook_email" && (await microsoftSourceOAuthStatus()).connected
+          ? true
+          : commandExists(definition.binary),
       `Source adapter installation check failed for ${definition.displayName}.`
     );
     const startedAt = new Date().toISOString();
@@ -898,7 +930,7 @@ function sourceRecordsNextAction(adapter: SourceAdapterDefinition): string {
     case "airbnb":
       return "Run airbnb-pp-cli wishlist sync --agent, or import a real Airbnb reservation/trip CSV/ICS/ZIP export in Settings.";
     case "outlook_email":
-      return "Run outlook-email-pp-cli sync --resources messages --since 365d --agent, or import real Outlook JSON/JSONL/CSV/EML/MBOX/ICS/ZIP output.";
+      return "Use Sync source after connecting Microsoft, or import real Outlook JSON/JSONL/CSV/EML/MBOX/ICS/ZIP output.";
     case "gmail":
       return "Run a gog Gmail receipt search or import real Gmail JSON/JSONL/CSV/EML/MBOX/ICS/ZIP output.";
     case "amazon_orders":
@@ -2617,6 +2649,17 @@ async function fetchAdapterItems(adapter: SourceAdapterDefinition): Promise<Adap
       });
     }
     case "outlook_email": {
+      if ((await microsoftSourceOAuthStatus()).connected) {
+        const payload = await fetchMicrosoftSourceRecords();
+        const items = normalizeAdapterItems(adapter, payload);
+
+        return {
+          errorMessage: items.length === 0 ? "No recent Outlook messages or calendar events were returned." : undefined,
+          items,
+          sourceStatus: "connected"
+        };
+      }
+
       return fetchAdapterItemsWithCacheFallback(
         adapter,
         [
@@ -3247,6 +3290,10 @@ export function mergeAdapterStatus(
 
   if (authStatus === "not_configured" || authStatus === "error") {
     return authStatus;
+  }
+
+  if (authStatus === "connected") {
+    return "connected";
   }
 
   return storedStatus ?? "stale";
