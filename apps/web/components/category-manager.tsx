@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Check } from "lucide-react";
+import { Archive, Check, Lock, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { CategoryPill } from "@/components/category-pill";
@@ -17,19 +17,23 @@ import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralC
 const PALETTE = [...categoryColorPalette];
 
 export interface EditableCategory {
+  archived: boolean;
   budgetAmount?: number;
   color: string;
   emoji: string;
   id: string;
   isBuiltIn: boolean;
   name: string;
+  sortOrder: number;
 }
 
 export function CategoryEditDialog({
+  categories,
   category,
   onOpenChange,
   open
 }: {
+  categories: EditableCategory[];
   category: EditableCategory;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -39,13 +43,15 @@ export function CategoryEditDialog({
   const [emojiDraft, setEmojiDraft] = useState<string | null>(null);
   const [colorDraft, setColorDraft] = useState<string | null>(null);
   const [budgetDraft, setBudgetDraft] = useState<string | null>(null);
+  const [largeBudgetConfirmed, setLargeBudgetConfirmed] = useState(false);
+  const [replacementId, setReplacementId] = useState("cat_other");
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [busy, setBusy] = useState<"save" | "archive" | null>(null);
+  const [busy, setBusy] = useState<"save" | "archive" | "delete" | null>(null);
   const [message, setMessage] = useState("");
   const name = nameDraft ?? category.name;
   const emoji = (emojiDraft ?? category.emoji) || neutralCategoryEmoji;
   const color = colorDraft ?? category.color;
-  const budget = budgetDraft ?? (category.budgetAmount ? String(category.budgetAmount) : "");
+  const budget = budgetDraft ?? (category.budgetAmount ? formatBudget(category.budgetAmount) : "");
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -53,9 +59,14 @@ export function CategoryEditDialog({
       setMessage("Category name is required.");
       return;
     }
-    setBusy("save");
     setMessage("");
     const budgetAmount = Number(budget.replace(/[$,\s]/g, ""));
+    if (budgetAmount > 20_000 && !largeBudgetConfirmed) {
+      setLargeBudgetConfirmed(true);
+      setMessage("That monthly budget is over $20,000. Save again to confirm.");
+      return;
+    }
+    setBusy("save");
 
     try {
       const response = await fetch(`/api/v1/categories/${encodeURIComponent(category.id)}`, {
@@ -81,22 +92,42 @@ export function CategoryEditDialog({
     }
   }
 
-  async function archive() {
+  async function toggleArchive() {
     setBusy("archive");
     setMessage("");
     try {
-      const response = await fetch(`/api/v1/categories/${encodeURIComponent(category.id)}`, { method: "DELETE" });
+      const response = await fetch(`/api/v1/categories/${encodeURIComponent(category.id)}`, {
+        body: JSON.stringify({ archived: !category.archived }), headers: { "Content-Type": "application/json" }, method: "PATCH"
+      });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Unable to archive category.");
+        throw new Error(body.error ?? "Unable to update category visibility.");
       }
       router.refresh();
       onOpenChange(false);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to archive category.");
+      setMessage(error instanceof Error ? error.message : "Unable to update category visibility.");
     } finally {
       setBusy(null);
     }
+  }
+
+  async function remove() {
+    setBusy("delete");
+    setMessage("");
+    try {
+      const response = await fetch(`/api/v1/categories/${encodeURIComponent(category.id)}`, {
+        body: JSON.stringify({ reassign_to: replacementId }), headers: { "Content-Type": "application/json" }, method: "DELETE"
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Unable to delete category.");
+      }
+      router.refresh();
+      onOpenChange(false);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete category.");
+    } finally { setBusy(null); }
   }
 
   return (
@@ -184,7 +215,10 @@ export function CategoryEditDialog({
                 aria-label="Monthly budget"
                 className="w-20 bg-transparent text-right outline-hidden placeholder:text-muted-foreground/50"
                 inputMode="decimal"
-              onChange={(event) => setBudgetDraft(event.target.value.replace(/[^0-9.]/g, ""))}
+                onChange={(event) => {
+                  setLargeBudgetConfirmed(false);
+                  setBudgetDraft(formatBudgetDraft(event.target.value));
+                }}
                 placeholder="None"
                 value={budget}
               />
@@ -205,6 +239,16 @@ export function CategoryEditDialog({
             <p className="mt-1.5 text-xs text-muted-foreground">
               Renaming or recoloring never changes this ID, so provider metadata and existing transactions keep mapping through.
             </p>
+            {category.isBuiltIn ? <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Lock className="size-3.5" />System category — it can be hidden, but not deleted.</p> : (
+              <div className="mt-3 grid gap-2 border-t border-border/60 pt-3">
+                <label className="grid gap-1 text-xs text-muted-foreground">Reassign transactions before deleting
+                  <select className="h-9 rounded-lg border border-border bg-background px-2 text-foreground" onChange={(event) => setReplacementId(event.target.value)} value={replacementId}>
+                    {categories.filter((item) => !item.archived && item.id !== category.id).map((item) => <option key={item.id} value={item.id}>{item.emoji} {item.name}</option>)}
+                  </select>
+                </label>
+                <Button disabled={busy !== null} onClick={() => void remove()} size="sm" type="button" variant="destructive"><Trash2 className="size-4" />Delete category</Button>
+              </div>
+            )}
           </details>
 
           {message ? (
@@ -214,14 +258,10 @@ export function CategoryEditDialog({
           ) : null}
 
           <div className="flex items-center justify-between gap-2">
-            {!category.isBuiltIn ? (
-              <Button disabled={busy !== null} onClick={archive} size="sm" type="button" variant="ghost">
+            <Button disabled={busy !== null} onClick={toggleArchive} size="sm" type="button" variant="ghost">
                 <Archive className="size-4" />
-                Archive
+                {category.archived ? "Restore" : "Hide"}
               </Button>
-            ) : (
-              <span />
-            )}
             <div className="flex items-center gap-2">
               <Button onClick={() => onOpenChange(false)} size="sm" type="button" variant="outline">
                 Cancel
@@ -236,4 +276,16 @@ export function CategoryEditDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatBudget(value: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+}
+
+function formatBudgetDraft(value: string): string {
+  const cleaned = value.replace(/[^0-9.]/g, "");
+  if (!cleaned) return "";
+  const [whole = "", ...decimalParts] = cleaned.split(".");
+  const grouped = Number.parseInt(whole || "0", 10).toLocaleString("en-US");
+  return decimalParts.length > 0 ? `${grouped}.${decimalParts.join("").slice(0, 2)}` : grouped;
 }

@@ -21,20 +21,19 @@ export default async function CategoriesPage() {
 
   const details: CategoryDetail[] = [];
   for (const category of categories) {
-    if (!category.archived) {
-      details.push(buildCategoryDetail(
-        category,
-        categories,
-        transactionsByCategoryId.get(category.id) ?? [],
-        months,
-        latestMonth
-      ));
-    }
+    details.push(buildCategoryDetail(
+      category,
+      categories,
+      transactionsByCategoryId.get(category.id) ?? [],
+      months,
+      latestMonth
+    ));
   }
-  details.sort((left, right) => right.spentThisMonth - left.spentThisMonth || right.allTimeSpending - left.allTimeSpending);
+  details.sort((left, right) => left.sortOrder - right.sortOrder);
 
   const summaries: CategorySummary[] = details.map((detail) => ({
     allTimeSpending: detail.allTimeSpending,
+    archived: detail.archived,
     budgetAmount: detail.budgetAmount,
     color: detail.color,
     emoji: detail.emoji,
@@ -42,6 +41,7 @@ export default async function CategoriesPage() {
     isBuiltIn: BUILT_IN_IDS.has(detail.id),
     latestMerchant: detail.latestMerchant,
     name: detail.name,
+    sortOrder: detail.sortOrder,
     spentThisMonth: detail.spentThisMonth,
     transactionCount: detail.transactionCount
   }));
@@ -112,6 +112,7 @@ function buildCategoryDetail(
 
   return {
     allTimeSpending,
+    archived: Boolean(category.archived),
     budgetAmount: category.budgetAmount,
     color: view.color,
     emoji: view.emoji ?? "🏷️",
@@ -120,6 +121,7 @@ function buildCategoryDetail(
     latestMerchant: categoryTransactions[0]?.merchantName,
     monthly: monthlySeries,
     name: view.name,
+    sortOrder: category.sortOrder,
     spentThisMonth,
     transactionCount: categoryTransactions.length,
     yearly: buildYearlyMetrics(spendingTransactions)
@@ -141,7 +143,7 @@ function buildAllDetail(
   monthlySpending: number,
   months: string[]
 ): CategoryDetail {
-  const spendingDetails = details.filter((detail) => detail.id !== "cat_income" && detail.id !== "cat_transfer");
+  const spendingDetails = details.filter((detail) => !detail.archived && detail.id !== "cat_income" && detail.id !== "cat_transfer");
 
   const monthly = months.map((month, index) => ({
     month,
@@ -180,6 +182,7 @@ function buildAllDetail(
 
   return {
     allTimeSpending: roundMoney(spendingDetails.reduce((total, detail) => total + detail.allTimeSpending, 0)),
+    archived: false,
     budgetAmount: totalBudget > 0 ? totalBudget : undefined,
     color: "var(--positive)",
     emoji: "🗂️",
@@ -188,6 +191,7 @@ function buildAllDetail(
     latestMerchant: undefined,
     monthly,
     name: "All Regular Categories",
+    sortOrder: 0,
     spentThisMonth,
     transactionCount: spendingDetails.reduce((total, detail) => total + detail.transactionCount, 0),
     yearly

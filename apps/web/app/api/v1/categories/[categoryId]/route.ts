@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api-error";
 import { readJsonObject } from "@/lib/api-request";
 import { setCategoryBudgetOverride } from "@/lib/category-budgets";
-import { updateCategory } from "@/lib/db/finance-db";
+import { deleteCustomCategoryAndReassign, updateCategory } from "@/lib/db/finance-db";
 import { serializeCategory } from "@/lib/finance-api";
 
 export const runtime = "nodejs";
@@ -44,22 +44,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ca
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ categoryId: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ categoryId: string }> }) {
   const { categoryId } = await params;
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const replacementId = typeof parsed.body.reassign_to === "string" ? parsed.body.reassign_to : "cat_other";
+  const id = decodeURIComponent(categoryId);
 
   try {
-    const category = await updateCategory(decodeURIComponent(categoryId), { archived: true });
-
-    if (!category) {
+    const deleted = await deleteCustomCategoryAndReassign(id, replacementId);
+    if (!deleted) {
       return NextResponse.json({ error: "Category not found." }, { status: 404 });
     }
+    await setCategoryBudgetOverride(id, null);
 
     return NextResponse.json({
       deleted: true,
-      id: category.id,
+      id,
       object: "category"
     });
   } catch (error) {
-    return errorResponse(error, "Unable to archive category.", 400);
+    return errorResponse(error, "Unable to delete category.", 400);
   }
 }

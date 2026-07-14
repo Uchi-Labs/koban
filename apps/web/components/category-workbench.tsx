@@ -1,9 +1,9 @@
 "use client";
 
 import type { Category } from "@ai-finances/schema";
-import { Pencil, Plus } from "lucide-react";
+import { GripVertical, Lock, Pencil, Plus } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CategoryEditDialog } from "@/components/category-manager";
 import { CategoryPill } from "@/components/category-pill";
 import { NewCategoryDialog } from "@/components/new-category-dialog";
@@ -27,6 +27,7 @@ export interface YearMetric {
 
 export interface CategoryDetail {
   allTimeSpending: number;
+  archived: boolean;
   budgetAmount?: number;
   color: string;
   emoji: string;
@@ -35,6 +36,7 @@ export interface CategoryDetail {
   latestMerchant?: string;
   monthly: MonthPoint[];
   name: string;
+  sortOrder: number;
   spentThisMonth: number;
   transactionCount: number;
   yearly: YearMetric[];
@@ -42,6 +44,7 @@ export interface CategoryDetail {
 
 export interface CategorySummary {
   allTimeSpending: number;
+  archived: boolean;
   budgetAmount?: number;
   color: string;
   emoji: string;
@@ -49,6 +52,7 @@ export interface CategorySummary {
   isBuiltIn: boolean;
   latestMerchant?: string;
   name: string;
+  sortOrder: number;
   spentThisMonth: number;
   transactionCount: number;
 }
@@ -77,12 +81,16 @@ export function CategoryWorkbench({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<CategorySummary | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [orderedSummaries, setOrderedSummaries] = useState(summaries);
+  useEffect(() => setOrderedSummaries(summaries), [summaries]);
+  const visibleSummaries = orderedSummaries.filter((summary) => showArchived || !summary.archived);
 
   const detailById = useMemo(() => new Map(details.map((detail) => [detail.id, detail])), [details]);
   const activeDetail = (selectedId ? detailById.get(selectedId) : null) ?? allDetail;
 
   const totalBudget = useMemo(
-    () => summaries.reduce((total, summary) => total + (summary.budgetAmount ?? 0), 0),
+    () => summaries.filter((summary) => !summary.archived).reduce((total, summary) => total + (summary.budgetAmount ?? 0), 0),
     [summaries]
   );
 
@@ -104,7 +112,7 @@ export function CategoryWorkbench({
             onSelectAll={() => setSelectedId(null)}
             selectedAll={selectedId === null}
             spent={allDetail.spentThisMonth}
-            summaries={summaries}
+            summaries={summaries.filter((summary) => !summary.archived)}
           />
         </div>
 
@@ -114,7 +122,7 @@ export function CategoryWorkbench({
           monthLabel={monthLabel}
           onSelect={setSelectedId}
           selectedId={selectedId}
-          summaries={summaries}
+          summaries={summaries.filter((summary) => !summary.archived)}
           transactionsToReview={transactionsToReview}
         />
 
@@ -124,12 +132,25 @@ export function CategoryWorkbench({
           onEdit={setEditing}
           onSelect={(id) => setSelectedId((current) => (current === id ? null : id))}
           selectedId={selectedId}
-          summaries={summaries}
+          onReorder={async (next) => {
+            let activeIndex = 0;
+            const reordered = showArchived
+              ? next
+              : orderedSummaries.map((summary) => summary.archived ? summary : next[activeIndex++] ?? summary);
+            setOrderedSummaries(reordered);
+            await Promise.all(reordered.map((summary, index) => fetch(`/api/v1/categories/${encodeURIComponent(summary.id)}`, {
+              body: JSON.stringify({ sort_order: (index + 1) * 10 }), headers: { "Content-Type": "application/json" }, method: "PATCH"
+            })));
+          }}
+          showArchived={showArchived}
+          summaries={visibleSummaries}
+          toggleArchived={() => setShowArchived((value) => !value)}
         />
       </div>
 
       {editing ? (
         <CategoryEditDialog
+          categories={orderedSummaries}
           category={editing}
           key={editing.id}
           onOpenChange={(open) => {
@@ -297,16 +318,23 @@ function CategoryTable({
   onCreate,
   onEdit,
   onSelect,
+  onReorder,
   selectedId,
-  summaries
+  showArchived,
+  summaries,
+  toggleArchived
 }: {
   monthLabel: string;
   onCreate: () => void;
   onEdit: (summary: CategorySummary) => void;
   onSelect: (id: string) => void;
+  onReorder: (summaries: CategorySummary[]) => void;
   selectedId: string | null;
+  showArchived: boolean;
   summaries: CategorySummary[];
+  toggleArchived: () => void;
 }) {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
   return (
     <section
       aria-label="Regular categories"
@@ -317,9 +345,12 @@ function CategoryTable({
           <h2 className="text-sm font-semibold tracking-tight">Regular Categories</h2>
           <p className="text-xs text-muted-foreground">Spend against budget · {monthLabel}</p>
         </div>
-        <Button aria-label="New category" onClick={onCreate} size="icon-sm" type="button" variant="ghost">
-          <Plus className="size-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button aria-label="New category" onClick={onCreate} size="icon-sm" type="button" variant="ghost">
+            <Plus className="size-4" />
+          </Button>
+          <Button onClick={toggleArchived} size="sm" type="button" variant="ghost">{showArchived ? "Hide archived" : "Show archived"}</Button>
+        </div>
       </div>
       <div className="hidden grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem] items-center gap-3 border-b border-border px-4 pb-2 sm:grid">
         <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Category</span>
@@ -332,9 +363,22 @@ function CategoryTable({
       <div className="px-1.5 py-1.5">
         {summaries.map((summary) => (
           <CategoryTableRow
+            draggable
             key={summary.id}
             monthLabel={monthLabel}
             onEdit={() => onEdit(summary)}
+            onDragEnd={() => setDraggedId(null)}
+            onDragOver={(event) => event.preventDefault()}
+            onDragStart={() => setDraggedId(summary.id)}
+            onDrop={() => {
+              if (!draggedId || draggedId === summary.id) return;
+              const from = summaries.findIndex((item) => item.id === draggedId);
+              const to = summaries.findIndex((item) => item.id === summary.id);
+              const next = [...summaries];
+              const [moved] = next.splice(from, 1);
+              if (moved) next.splice(to, 0, moved);
+              onReorder(next);
+            }}
             onSelect={() => onSelect(summary.id)}
             selected={selectedId === summary.id}
             summary={summary}
@@ -349,14 +393,24 @@ function CategoryTable({
 }
 
 function CategoryTableRow({
+  draggable,
   monthLabel,
   onEdit,
+  onDragEnd,
+  onDragOver,
+  onDragStart,
+  onDrop,
   onSelect,
   selected,
   summary
 }: {
+  draggable: boolean;
   monthLabel: string;
   onEdit: () => void;
+  onDragEnd: () => void;
+  onDragOver: (event: React.DragEvent) => void;
+  onDragStart: () => void;
+  onDrop: () => void;
   onSelect: () => void;
   selected: boolean;
   summary: CategorySummary;
@@ -379,8 +433,10 @@ function CategoryTableRow({
       aria-pressed={selected}
       className={cn(
         "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_1.75rem] items-center gap-3 rounded-xl px-2.5 py-2 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem]",
-        selected ? "bg-accent" : "hover:bg-muted/50"
+        selected ? "bg-accent" : "hover:bg-muted/50",
+        summary.archived && "opacity-55"
       )}
+      draggable={draggable}
       onClick={onSelect}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -388,12 +444,19 @@ function CategoryTableRow({
           onSelect();
         }
       }}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragStart={onDragStart}
+      onDrop={onDrop}
       role="button"
       tabIndex={0}
       title={`${summary.name} · spent ${formatCurrency(summary.spentThisMonth)} in ${monthLabel}`}
     >
       <span className="flex min-w-0 items-center gap-2">
+        <GripVertical aria-label={`Drag to reorder ${summary.name}`} className="size-3.5 shrink-0 cursor-grab text-muted-foreground" />
         <CategoryPill category={category} className="max-w-full" />
+        {summary.isBuiltIn ? <Lock aria-label="System category" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+        {summary.archived ? <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Archived</span> : null}
       </span>
       <div className="hidden sm:block">
         {summary.budgetAmount ? (

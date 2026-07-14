@@ -15,7 +15,11 @@ import { TextReveal } from "@/components/motion/text-reveal";
 import { buildTopCategoryCells } from "@/lib/dashboard-top-categories";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
 import { getFinanceData } from "@/lib/finance-data";
+import { applyBudgetOverrides, getCategoryBudgetOverrides } from "@/lib/category-budgets";
 import { formatCurrency } from "@/lib/format";
+import { getDismissedInsightIds } from "@/lib/insight-dismissals";
+import { deriveInsights } from "@/lib/insights";
+import { InsightsFeed } from "@/components/insights-feed";
 import { merchantDomain } from "@/lib/merchant-domain";
 import { buildDashboardTrends } from "@/lib/net-worth-trend";
 import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
@@ -23,6 +27,11 @@ import { isReviewActionableTransaction } from "@/lib/transaction-classification"
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
 
 export default async function DashboardPage() {
+  const [financeData, budgetOverrides, dismissedInsights] = await Promise.all([
+    getFinanceData(),
+    getCategoryBudgetOverrides(),
+    getDismissedInsightIds()
+  ]);
   const {
     accountGroups,
     accounts,
@@ -31,7 +40,8 @@ export default async function DashboardPage() {
     recurringItems,
     source,
     transactions
-  } = await getFinanceData();
+  } = financeData;
+  const insights = deriveInsights(transactions, applyBudgetOverrides(categories, budgetOverrides)).filter((item) => !dismissedInsights.has(item.id));
   const reviewRows = getTransactionViews(
     transactions.filter(isReviewActionableTransaction).slice(0, 10),
     { accounts, categories }
@@ -201,6 +211,10 @@ export default async function DashboardPage() {
                 );
               })}
             </div>
+          </DashboardCard>
+
+          <DashboardCard title="Insights" action={{ label: "View all", href: "/insights" }} surface="iconiq">
+            <InsightsFeed compact initialInsights={insights} />
           </DashboardCard>
 
           <DashboardCard title="Next two weeks" action={{ label: "Recurrings", href: "/recurrings" }} surface="iconiq">
