@@ -1148,6 +1148,44 @@ export async function updateCategory(categoryId: string, input: CategoryUpdateIn
   });
 }
 
+const seededCategoryIds = new Set([
+  "cat_income", "cat_housing", "cat_food", "cat_transportation", "cat_software",
+  "cat_shopping", "cat_travel", "cat_transfer", "cat_other"
+]);
+
+export async function deleteCustomCategoryAndReassign(categoryId: string, replacementCategoryId: string): Promise<boolean> {
+  if (seededCategoryIds.has(categoryId)) throw new Error("System categories cannot be deleted.");
+  if (categoryId === replacementCategoryId) throw new Error("Choose a different replacement category.");
+
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const [category, replacement] = await Promise.all([
+      getCategoryInDb(db, categoryId),
+      getCategoryInDb(db, replacementCategoryId)
+    ]);
+    if (!category) return false;
+    if (!replacement || replacement.archived) throw new Error("Choose an active replacement category.");
+
+    await db.exec("BEGIN");
+    try {
+      const affected = await db.query<{ id: string }>("SELECT id FROM transactions WHERE category_id = $1", [categoryId]);
+      await db.query("UPDATE transactions SET category_id = $2 WHERE category_id = $1", [categoryId, replacementCategoryId]);
+      await db.query("UPDATE transaction_rules SET category_id = $2 WHERE category_id = $1", [categoryId, replacementCategoryId]);
+      await db.query("UPDATE enrichment_suggestions SET category_id = $2 WHERE category_id = $1", [categoryId, replacementCategoryId]);
+      await db.query("DELETE FROM categories WHERE id = $1", [categoryId]);
+      for (const transaction of affected.rows) {
+        await refreshTransactionSemanticDocument(db, transaction.id);
+      }
+      await db.exec("COMMIT");
+      invalidateShellDataCache();
+      return true;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
 export async function getCategoryIdsForValidation(): Promise<Set<string>> {
   const categories = await listCategories({ includeArchived: false });
   return new Set(categories.map((category) => category.id));

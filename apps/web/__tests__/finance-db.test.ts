@@ -52,6 +52,7 @@ import {
   semanticSearchTransactions,
   setTransactionFinancialGoal,
   createCategory,
+  deleteCustomCategoryAndReassign,
   deleteFinancialGoal,
   updateCategory,
   updateAppSyncSchedule,
@@ -504,6 +505,19 @@ describe("finance db", () => {
       color: "#10b981"
     });
   });
+
+  it("deletes custom categories only after atomically reassigning their transactions", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    const custom = await createCategory({ name: "Old custom category" });
+    await updateDbTransaction("txn_1", { categoryId: custom.id });
+
+    await expect(deleteCustomCategoryAndReassign("cat_food", "cat_other")).rejects.toThrow(/system categories/i);
+    await expect(deleteCustomCategoryAndReassign(custom.id, "cat_other")).resolves.toBe(true);
+
+    expect((await listCategories()).some((category) => category.id === custom.id)).toBe(false);
+    expect((await readFinanceDbSnapshot())?.transactions[0]?.categoryId).toBe("cat_other");
+  }, 15_000);
 
   it("persists a custom oklch() color exactly on category create", async () => {
     useTempDb();

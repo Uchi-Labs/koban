@@ -11,6 +11,7 @@ import {
   Flag,
   Layers,
   LayoutDashboard,
+  Lightbulb,
   LoaderCircle,
   PieChart,
   RefreshCw,
@@ -63,6 +64,8 @@ const accountColorByType = {
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, activePath: "/" },
   { label: "Transactions", href: "/transactions", icon: Layers, activePath: "/transactions" },
+  { label: "Review", href: "/review", icon: Check, activePath: "/review" },
+  { label: "Insights", href: "/insights", icon: Lightbulb, activePath: "/insights" },
   { label: "Goals", href: "/goals", icon: Flag, activePath: "/goals" },
   { label: "Cash flow", href: "/cash-flow", icon: ArrowLeftRight, activePath: "/cash-flow" },
   { label: "Accounts", href: "/accounts", icon: CreditCard, activePath: "/accounts" },
@@ -76,6 +79,7 @@ const navItems = [
 const mobileNavItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Transactions", href: "/transactions", icon: Layers },
+  { label: "Review", href: "/review", icon: Check },
   { label: "Recurrings", href: "/recurrings", icon: Repeat2 },
   { label: "Cash flow", href: "/cash-flow", icon: ArrowLeftRight }
 ];

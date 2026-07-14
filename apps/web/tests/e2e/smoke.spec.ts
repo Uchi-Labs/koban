@@ -688,6 +688,45 @@ test("semantic search returns local finance results", async ({ page }) => {
   await page.screenshot({ fullPage: true, path: "test-results/search-smoke.png" });
 });
 
+test("Dollarwise-inspired review, insights, and category management flows render in both themes", async ({ page }) => {
+  await page.goto("/review");
+  await expect(page.getByTestId("review-page")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review Transactions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Accept/ })).toBeEnabled();
+  await setTheme(page, "light");
+  await page.screenshot({ fullPage: true, path: "test-results/review-light.png" });
+  await setTheme(page, "dark");
+  await page.screenshot({ fullPage: true, path: "test-results/review-dark.png" });
+
+  await page.getByRole("button", { name: /Accept/ }).click();
+  await expect(page.getByRole("heading", { name: "E2E Cloud Tools" })).toBeVisible();
+  await page.getByRole("button", { name: /Undo/ }).click();
+  await expect(page.getByRole("heading", { name: "E2E Grocer Market" })).toBeVisible();
+
+  await page.goto("/insights");
+  await expect(page.getByTestId("insights-page")).toBeVisible();
+  await setTheme(page, "light");
+  await page.screenshot({ fullPage: true, path: "test-results/insights-light.png" });
+  await setTheme(page, "dark");
+  await page.screenshot({ fullPage: true, path: "test-results/insights-dark.png" });
+
+  await page.goto("/categories");
+  await expect(page.getByTestId("categories-page")).toBeVisible();
+  await expect(page.getByLabel("System category").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show archived" })).toBeVisible();
+  await setTheme(page, "light");
+  await page.screenshot({ fullPage: true, path: "test-results/categories-management-light.png" });
+  await setTheme(page, "dark");
+  await page.screenshot({ fullPage: true, path: "test-results/categories-management-dark.png" });
+});
+
+async function setTheme(page: Page, theme: "dark" | "light") {
+  await page.evaluate((nextTheme) => {
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+    document.documentElement.style.colorScheme = nextTheme;
+  }, theme);
+}
+
 test("finance agent answers with local ledger evidence and a chart", async ({ page }) => {
   const question = "Where did my money go this month?";
 
