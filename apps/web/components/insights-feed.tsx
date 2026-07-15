@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { NotificationStack } from "@/components/motion/notification-stack";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
 import {
   ReasoningStep,
@@ -111,7 +112,11 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
               transition={{ delay: reduce ? 0.1 : 0.15, duration: 0.1, ease: EASE_OUT }}
             >
               <EmptyState
-                actions={<Button render={<Link href="/transactions" />}>Review transactions</Button>}
+                actions={
+                  <Link className={buttonVariants()} href="/transactions">
+                    Review transactions
+                  </Link>
+                }
                 description="Insights appear as your transaction history grows. Review recent activity while the ledger gathers more context."
                 icon={<BellOff className="size-4" />}
                 size="sm"
@@ -120,7 +125,6 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
             </m.div>
           )}
         </AnimatePresence>
-        {compact && insights.length > 3 ? <Link className="mt-1 text-xs font-medium text-primary hover:underline" href="/insights">View {insights.length - 3} more insights</Link> : null}
       </div>
     </LazyMotion>
   );

@@ -91,7 +91,7 @@ function CommandInput({
           <InputGroupAddon align="inline-end">
             <button
               aria-label="Clear command input"
-              className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none sm:size-10"
               onClick={() => props.onValueChange?.("")}
               onMouseDown={(event) => event.preventDefault()}
               onPointerDown={(event) => event.preventDefault()}

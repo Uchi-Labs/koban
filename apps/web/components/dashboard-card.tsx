@@ -113,8 +113,8 @@ function DashboardCardAction({
   return (
     <Link
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground motion-reduce:transition-none",
-        compact ? "px-2 py-0.5" : "border border-border/50 bg-muted/35 px-2.5 py-1"
+        "link-underline inline-flex min-h-10 items-center gap-0.5 px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none",
+        compact && "self-start"
       )}
       href={action.href}
     >

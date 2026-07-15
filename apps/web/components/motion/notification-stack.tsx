@@ -108,7 +108,7 @@ function NotificationCardContent({
             {item.onDismiss ? (
               <button
                 aria-label={item.dismissLabel ?? "Dismiss notification"}
-                className="-m-2 grid size-10 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none"
+                className="-m-2 grid size-11 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none sm:size-10"
                 onClick={(event) => {
                   event.stopPropagation();
                   item.onDismiss?.();
@@ -171,7 +171,7 @@ export function NotificationStack({
     return (
       <div
         className={cn(
-          "flex w-full max-w-[22rem] items-center justify-center gap-2 rounded-3xl bg-muted/70 px-5 py-8 text-sm font-medium text-muted-foreground",
+          "flex w-full max-w-[22rem] items-center justify-center gap-2 rounded-[28px] bg-muted/70 px-5 py-8 text-sm font-medium text-muted-foreground",
           className,
         )}
       >
@@ -230,7 +230,7 @@ export function NotificationStack({
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       className={cn(
-        "relative z-10 block w-full max-w-[22rem] rounded-3xl text-left text-foreground",
+        "relative z-10 block w-full max-w-[22rem] rounded-[28px] text-left text-foreground",
         className,
       )}
     >
@@ -258,7 +258,7 @@ export function NotificationStack({
           layout
           initial={false}
           transition={backgroundTransition}
-          className="absolute inset-0 rounded-3xl bg-muted"
+          className="absolute inset-0 rounded-[28px] bg-muted"
         />
         <span
           className={cn(

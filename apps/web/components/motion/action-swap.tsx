@@ -213,7 +213,7 @@ export function ActionSwapText({
                   key={i}
                   custom={i * CASCADE_STAGGER}
                   variants={CASCADE_LETTER_VARIANTS}
-                  className="inline-block whitespace-pre will-change-[opacity,filter,transform]"
+                  className="inline-block whitespace-pre"
                 >
                   {char}
                 </motion.span>
@@ -229,7 +229,7 @@ export function ActionSwapText({
             initial={reduce ? false : "initial"}
             animate={reduce ? { opacity: 1, filter: "blur(0px)", scale: 1, y: 0 } : "animate"}
             exit={reduce ? undefined : "exit"}
-            className="absolute left-0 top-0 inline-block will-change-[opacity,filter,transform]"
+            className="absolute left-0 top-0 inline-block"
           >
             {children}
           </motion.span>
@@ -260,7 +260,7 @@ export function ActionSwapIcon({
           initial={reduce ? false : "initial"}
           animate={reduce ? { opacity: 1, filter: "blur(0px)", scale: 1, y: 0 } : "animate"}
           exit={reduce ? undefined : "exit"}
-          className="col-start-1 row-start-1 inline-flex items-center justify-center will-change-[opacity,filter,transform]"
+          className="col-start-1 row-start-1 inline-flex items-center justify-center"
         >
           {children}
         </motion.span>

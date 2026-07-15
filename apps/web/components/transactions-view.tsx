@@ -2836,7 +2836,7 @@ function TransactionRowButton({
           >
             <button
               aria-label={`Assign goal to ${transaction.merchant}`}
-              className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
+              className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground motion-reduce:transition-none sm:size-10"
               onClick={stopPropagation}
               onPointerDown={stopPropagation}
               type="button"
@@ -2946,7 +2946,11 @@ function TransactionListEmptyState({ model }: { model: TransactionsViewModel }) 
           <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/transactions">
             Clear filters
           </Link>
-        ) : null
+        ) : (
+          <Link className={buttonVariants({ variant: "secondary", size: "sm" })} href="/settings">
+            Sync or import
+          </Link>
+        )
       }
       className="m-6"
       description="Adjust the search, category, or review filters to get back to the local ledger."
@@ -3019,7 +3023,11 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
               <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/settings">
                 Open settings
               </Link>
-            ) : null
+            ) : (
+              <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/transactions?review=actionable">
+                Review transactions
+              </Link>
+            )
           }
           className="mt-0 border-border bg-background/40"
           description={
@@ -3464,6 +3472,16 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
       ) : null}
       {!model.evidenceLoading && model.evidenceItems.length === 0 ? (
         <EmptyState
+          actions={
+            <Button
+              onClick={() => document.getElementById("evidence-source-search")?.focus()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Link evidence
+            </Button>
+          }
           className="mt-2"
           description="Link receipts, emails, or imported source items when a transaction needs supporting context."
           icon={<Link2 className="size-5" />}
@@ -3515,6 +3533,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
           <Input
             aria-label="Search imported evidence"
             className="h-7"
+            id="evidence-source-search"
             onChange={(event) =>
               model.setLinkEvidenceState((current) => ({
                 loading: current.transactionId === transaction.id ? current.loading : false,
@@ -3543,6 +3562,20 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
         ) : null}
         {!model.linkEvidenceLoading && model.linkEvidenceSearched && model.linkEvidenceResults.length === 0 ? (
           <EmptyState
+            actions={
+              <Button
+                onClick={() => {
+                  const input = document.getElementById("evidence-source-search") as HTMLInputElement | null;
+                  input?.focus();
+                  input?.select();
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Try another search
+              </Button>
+            }
             className="mt-2"
             description="Try the merchant name, amount, or a receipt keyword from your imported evidence sources."
             icon={<Search className="size-5" />}
@@ -3588,7 +3621,11 @@ function ReviewTab({ model }: { model: TransactionsViewModel }) {
     return (
       <div className="px-6 py-16">
         <EmptyState
-          actions={<Badge variant="synced">Review clear</Badge>}
+          actions={
+            <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/transactions">
+              View all transactions
+            </Link>
+          }
           className="mx-auto max-w-xl"
           description="Every transaction matching the current filters has been reviewed."
           icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none" />}

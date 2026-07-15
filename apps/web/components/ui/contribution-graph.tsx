@@ -807,7 +807,7 @@ export const ContributionGraphBlock = ({
         LEVEL_CLASSES,
         loading
           ? "animate-pulse"
-          : "transition-transform duration-200 ease-out hover:scale-125 motion-reduce:transform-none motion-reduce:transition-none",
+          : "transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:scale-125 motion-reduce:transform-none motion-reduce:transition-none",
         showEntrance &&
           (activity.level === 0
             ? "animate-[iconiq-cg-fade_0.4s_ease-out_backwards]"
@@ -955,7 +955,7 @@ export const ContributionGraphTotalCount = ({
   if (loading) {
     return (
       <div
-        className={cn("animate-pulse text-muted-foreground", className)}
+        className={cn("animate-pulse text-muted-foreground motion-reduce:animate-none", className)}
         {...props}
       >
         Loading contributions…

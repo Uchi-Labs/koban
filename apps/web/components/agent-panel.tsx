@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import { Send, X } from "lucide-react";
+import { Send, Sparkles, X } from "lucide-react";
 import * as React from "react";
 import { AgentAnswer } from "@/components/agent-answer";
 import { Alert } from "@/components/ui/alert";
@@ -198,7 +198,13 @@ export function AgentPanel({
               transition={reduce ? { duration: 0.15 } : SPRING_PANEL}
             >
               <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-[var(--blur-small)]">
-                <h2 className="text-sm font-semibold tracking-tight">Finance agent</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold tracking-tight">Finance agent</h2>
+                  <span className="sheen-pill inline-flex h-5 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 text-[10px] font-semibold tracking-wide text-primary uppercase">
+                    <Sparkles aria-hidden="true" className="size-3" />
+                    AI
+                  </span>
+                </div>
                 <Button
                   aria-label="Close finance agent"
                   data-sound="none"

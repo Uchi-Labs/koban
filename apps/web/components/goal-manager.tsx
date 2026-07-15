@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent, EmptyState } from "@/components/ui/card";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,11 @@ export function GoalManager({ initialGoals }: { initialGoals: GoalView[] }) {
 
       {activeGoals.length === 0 ? (
         <EmptyState
+          actions={
+            <a className={buttonVariants()} href="#new-goal">
+              Create a goal
+            </a>
+          }
           description="Assign transactions to a goal to track money you set aside. Create one to get started."
           mascot
           title="No goals yet — create one"
@@ -111,7 +117,7 @@ function GoalCreateForm() {
   }
 
   return (
-    <Card size="sm">
+    <Card id="new-goal" size="sm">
       <CardContent>
         <form className="flex flex-col gap-3" onSubmit={create}>
           <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2">
@@ -131,7 +137,7 @@ function GoalCreateForm() {
                   {emojiOpen ? (
                     <m.div
                       animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
-                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-9 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
+                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-6 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
                       exit={reduce
                         ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
                         : { opacity: 0, transform: "translateY(0) scale(0.99)", transition: { duration: 0.1, ease: EASE_OUT } }}
@@ -141,7 +147,7 @@ function GoalCreateForm() {
                       {financeEmojiOptions.map((option, index) => (
                         <button
                           aria-label={`Use ${option}`}
-                          className="grid size-7 place-items-center rounded-lg text-base transition-colors hover:bg-muted"
+                          className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
                           key={`${option}-${index}`}
                           onClick={() => {
                             setEmoji(option);

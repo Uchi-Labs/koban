@@ -158,7 +158,7 @@ export function CategoryEditDialog({
                   {emojiOpen ? (
                     <m.div
                       animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
-                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-9 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
+                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-6 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
                       exit={reduce
                         ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
                         : { opacity: 0, transform: "translateY(0) scale(0.99)", transition: { duration: 0.1, ease: EASE_OUT } }}
@@ -168,7 +168,7 @@ export function CategoryEditDialog({
                       {financeEmojiOptions.map((option, index) => (
                         <button
                           aria-label={`Use ${option}`}
-                          className="grid size-7 place-items-center rounded-lg text-base transition-colors hover:bg-muted"
+                          className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
                           key={`${option}-${index}`}
                           onClick={() => {
                             setEmojiDraft(option);
@@ -207,7 +207,7 @@ export function CategoryEditDialog({
                   <button
                     aria-label={`Use color ${swatch}`}
                     aria-pressed={swatch === color}
-                    className="grid h-7 flex-1 place-items-center rounded-full transition-transform hover:scale-110 motion-reduce:hover:scale-100"
+                    className="grid h-11 flex-1 place-items-center rounded-full transition-transform [@media(hover:hover)_and_(pointer:fine)]:hover:scale-110 motion-reduce:transition-none sm:h-10"
                     key={swatch}
                     onClick={() => setColorDraft(swatch)}
                     style={{ backgroundColor: swatch }}

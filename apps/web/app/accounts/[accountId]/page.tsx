@@ -19,6 +19,7 @@ import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { GainLossPill } from "@/components/gain-loss-pill";
 import { EmptyState } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
 import {
   Card as IconiqCard,
@@ -126,6 +127,11 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
               </div>
             ) : (
               <EmptyState
+                actions={
+                  <Link className={buttonVariants({ size: "sm", variant: "outline" })} href={`/transactions?account_id=${encodeURIComponent(account.id)}`}>
+                    View transactions
+                  </Link>
+                }
                 description="No synced transactions belong to this account yet."
                 icon={<ReceiptText className="size-5" />}
                 size="sm"
@@ -163,6 +169,11 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
               </div>
             ) : (
               <EmptyState
+                actions={
+                  <Link className={buttonVariants({ size: "sm", variant: "outline" })} href={`/transactions?account_id=${encodeURIComponent(account.id)}`}>
+                    Browse account activity
+                  </Link>
+                }
                 description="Spending categories will appear after this account has posted outflows."
                 icon={<ChartPie className="size-5" />}
                 size="sm"
@@ -217,6 +228,11 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
             </div>
           ) : (
             <EmptyState
+              actions={
+                <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/recurrings">
+                  View recurrings
+                </Link>
+              }
               description="No recurring pattern has enough evidence on this account yet."
               icon={<CalendarClock className="size-5" />}
               size="sm"
@@ -313,6 +329,11 @@ function InvestmentsSection({ holdings }: { holdings: HoldingView[] }) {
         </div>
       ) : (
         <EmptyState
+          actions={
+            <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/investments">
+              View investments
+            </Link>
+          }
           description="This investment account has a synced balance but no position-level rows."
           icon={<TrendingUp className="size-5" />}
           size="sm"

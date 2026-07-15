@@ -672,7 +672,7 @@ function ReasoningStep({
           <span
             aria-hidden="true"
             className={cn(
-              "reasoning-step-connector my-1 w-px flex-1 rounded-full transition-colors duration-500",
+              "reasoning-step-connector my-1 w-px flex-1 rounded-full transition-colors duration-500 motion-reduce:transition-none",
               status === "done" ? "bg-foreground/25" : "bg-foreground/10"
             )}
           />
@@ -680,7 +680,7 @@ function ReasoningStep({
         <div className="min-w-0 flex-1">
           <p
             className={cn(
-              "text-[13px] leading-5 transition-colors duration-300",
+              "text-[13px] leading-5 transition-colors duration-300 motion-reduce:transition-none",
               isActive ? "font-medium text-foreground" : "text-foreground/80"
             )}
           >
@@ -721,7 +721,7 @@ function ReasoningStepDetails({
       open={open}
     >
       <CollapsiblePrimitive.Trigger
-        className="flex items-center gap-1.5 rounded-md px-1 py-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-1.5 rounded-md px-1 py-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
         render={(triggerProps) => (
           <button {...triggerProps} type="button">
             {summary}
@@ -770,7 +770,7 @@ function ReasoningStepSource({
 }: ReasoningStepSourceProps) {
   const { reduceMotion } = useReasoningStepsContext("ReasoningStepSource");
   const pillClassName = cn(
-    "inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-muted/60 px-2 py-0.5 text-[11px] text-foreground/70 transition-colors",
+    "inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-muted/60 px-2 py-0.5 text-[11px] text-foreground/70 transition-colors motion-reduce:transition-none",
     href && "hover:bg-muted hover:text-foreground",
     className
   );

@@ -98,13 +98,13 @@ const GROUP_GAP_CLASS: Record<OverflowActionsSize, string> = {
 };
 
 const ACTION_SIZE_CLASS: Record<OverflowActionsSize, string> = {
-  sm: "h-8 min-w-8 gap-1.5 px-3",
-  md: "h-9 min-w-9 gap-2 px-3.5",
+  sm: "h-11 min-w-11 gap-1.5 px-3 sm:h-10 sm:min-w-10",
+  md: "h-11 min-w-11 gap-2 px-3.5 sm:h-10 sm:min-w-10",
 };
 
 const TOGGLE_SIZE_CLASS: Record<OverflowActionsSize, string> = {
-  sm: "h-8 w-8",
-  md: "h-9 w-9",
+  sm: "size-11 sm:size-10",
+  md: "size-11 sm:size-10",
 };
 
 const ICON_SIZE_CLASS: Record<OverflowActionsSize, string> = {
