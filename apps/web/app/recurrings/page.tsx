@@ -1,5 +1,6 @@
 import type { RecurringItem, Transaction } from "@ai-finances/schema";
 import type React from "react";
+import type { CSSProperties } from "react";
 import { CalendarClock, RefreshCw, Repeat2, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { RecurringCalendar, type CalendarRecurring, type RecurringDonutSegment } from "@/components/recurring-calendar";
 import { formatCurrency } from "@/lib/format";
 import { getFinanceData } from "@/lib/finance-data";
-import { merchantDomain } from "@/lib/merchant-domain";
+import { merchantBrandColor, merchantDomain } from "@/lib/merchant-domain";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { getAccountName, getUpcomingRecurringViews } from "@/lib/view-models";
 
@@ -19,6 +20,7 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", mo
 // only — an `auto`-sized last column would resize per row and cascade misalignment into
 // every fr-based column before it).
 const RECURRING_ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3";
+type RecurringRowStyle = CSSProperties & { "--merchant-accent": string };
 
 /**
  * Merchant favicon when the merchant name resolves to a real domain (rare for bank-derived
@@ -27,6 +29,7 @@ const RECURRING_ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_128px_96px_116px_
  */
 function MerchantAvatar({ color, merchant }: { color: string; merchant: string }) {
   const domain = merchantDomain(merchant);
+  const accentColor = merchantBrandColor(merchant) ?? color;
 
   if (!domain) {
     return (
@@ -34,8 +37,8 @@ function MerchantAvatar({ color, merchant }: { color: string; merchant: string }
         aria-hidden="true"
         className="flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
         style={{
-          backgroundColor: `color-mix(in oklab, ${color} 18%, transparent)`,
-          color
+          backgroundColor: `color-mix(in oklab, ${accentColor} 18%, transparent)`,
+          color: accentColor
         }}
       >
         {merchant.trim().charAt(0).toUpperCase() || "?"}
@@ -43,7 +46,7 @@ function MerchantAvatar({ color, merchant }: { color: string; merchant: string }
     );
   }
 
-  return <FaviconBadge size="sm" website={domain} />;
+  return <FaviconBadge badgeClassName="bg-background/80" size="sm" website={domain} />;
 }
 
 export default async function RecurringsPage() {
@@ -53,6 +56,7 @@ export default async function RecurringsPage() {
     .map((candidate) => ({
       ...candidate,
       accountName: candidate.accountId ? getAccountName(candidate.accountId, accounts) : "Unknown account",
+      accentColor: merchantBrandColor(candidate.merchant) ?? candidate.category.color,
       monthlyizedAmount: monthlyize(candidate),
       observedCount: countRecurringObservations(candidate, transactions)
     }))
@@ -64,7 +68,7 @@ export default async function RecurringsPage() {
   const calendarItems: CalendarRecurring[] = candidateRows.map((candidate) => ({
     amount: candidate.averageAmount,
     cadence: candidate.cadence,
-    color: candidate.category.color,
+    color: candidate.accentColor,
     currency: candidate.currency,
     frequencyLabel: candidate.frequency,
     href: recurringTransactionHref(candidate),
@@ -132,11 +136,12 @@ export default async function RecurringsPage() {
             {candidateRows.map((candidate) => (
               <Link
                 aria-label={`View transactions for recurring candidate ${candidate.merchant}`}
-                className={`${RECURRING_ROW_GRID} items-center rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/60`}
+                className={`${RECURRING_ROW_GRID} items-center rounded-xl px-3 py-2 text-sm transition-colors hover:bg-[color-mix(in_oklab,var(--merchant-accent)_9%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none`}
                 href={recurringTransactionHref(candidate)}
                 key={candidate.id}
+                style={{ "--merchant-accent": candidate.accentColor } as RecurringRowStyle}
               >
-                <MerchantAvatar color={candidate.category.color} merchant={candidate.merchant} />
+                <MerchantAvatar color={candidate.accentColor} merchant={candidate.merchant} />
                 <div className="min-w-0">
                   <p className="truncate font-medium">{candidate.merchant}</p>
                   <p className="truncate text-xs text-muted-foreground">{candidate.accountName}</p>

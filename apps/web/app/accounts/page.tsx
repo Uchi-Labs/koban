@@ -137,8 +137,8 @@ export default async function AccountsPage() {
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <section>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Synced accounts</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Balance by account</h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+          <h1 className="app-page-title mt-1">Balance by account</h1>
+          <p className="app-page-description mt-1.5">
             {accounts.length > 0
               ? `${accounts.length.toLocaleString()} synced accounts · last sync ${formatDateTime(tellerLedger?.lastSyncedAt)}`
               : "No accounts have been synced into the local database yet."}

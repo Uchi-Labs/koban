@@ -11,7 +11,7 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const pwaThemeColor = "#07090b";
 
 export const metadata: Metadata = {
@@ -48,7 +48,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   if (!shouldRenderShell) {
     return (
       <html lang="en" className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}>
-        <body>
+        <body className="antialiased">
           <PwaServiceWorker />
           {children}
           <Toaster />
@@ -62,7 +62,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
   return (
     <html lang="en" className={cn(theme === "dark" && "dark", "font-sans", inter.variable)}>
-      <body>
+      <body className="antialiased">
         <PwaServiceWorker />
         <AppShell
           accounts={shellData.accounts}

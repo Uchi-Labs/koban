@@ -13,6 +13,7 @@ import {
   Flag,
   Link2,
   Mic,
+  Pencil,
   Plus,
   Search,
   Shapes,
@@ -93,6 +94,15 @@ interface TransactionEvidenceView {
     title: string;
   };
   status: "accepted" | "dismissed" | "suggested";
+}
+
+interface TagStyleApiResponse {
+  color?: string | null;
+  created_at?: string;
+  error?: string;
+  kind?: string;
+  name?: string;
+  updated_at?: string;
 }
 
 interface TransactionEvidenceApiResponse {
@@ -991,6 +1001,7 @@ function useTransactionsViewModel({
     toggleTransactionRow,
     updateEvidenceStatus,
     updateTagColor,
+    renameTagStyle,
     updateTransactionCategory,
     updateTransactionTags,
     toggleTransactionTagByName,
@@ -1757,49 +1768,99 @@ function useTransactionsViewModel({
     toast.success(goal ? `Added to ${goal.name}` : "Removed from goal");
   }
 
-  async function updateTagColor(tag: string, color: string | null) {
+  function storeTagStyle(body: TagStyleApiResponse, replacedName?: string) {
+    if (!body.name) {
+      return;
+    }
+
+    const nextName = body.name;
+    setTagStyles((currentStyles) => {
+      const existing = currentStyles.find(
+        (style) => style.name.toLowerCase() === nextName.toLowerCase()
+          || (replacedName ? style.name.toLowerCase() === replacedName.toLowerCase() : false)
+      );
+      const nextStyle: TagStyle = {
+        ...existing,
+        color: body.color ?? undefined,
+        createdAt: body.created_at ?? existing?.createdAt,
+        kind: body.kind === "source" ? "source" : "user",
+        name: nextName,
+        updatedAt: body.updated_at ?? existing?.updatedAt
+      };
+
+      return [
+        ...currentStyles.filter((style) => {
+          const key = style.name.toLowerCase();
+          return key !== nextName.toLowerCase()
+            && (!replacedName || key !== replacedName.toLowerCase());
+        }),
+        nextStyle
+      ];
+    });
+  }
+
+  async function saveTagStyle(tag: string, update: { color?: string | null }) {
     const name = tag.trim();
 
     if (!name) {
-      setInspectorMessage("Type a tag before choosing a color.");
-      return;
+      setInspectorMessage("Type a tag before editing its style.");
+      return null;
     }
 
-    setInspectorMessage("Saving tag color...");
-
+    setInspectorMessage("Saving tag style...");
     const response = await fetch("/api/v1/tag-colors", {
-      body: JSON.stringify({ color, name }),
+      body: JSON.stringify({ name, ...update }),
       headers: { "Content-Type": "application/json" },
       method: "POST"
     });
-    const body = (await response.json().catch(() => ({}))) as {
-      color?: string;
-      error?: string;
-      kind?: string;
-      name?: string;
-    };
+    const body = (await response.json().catch(() => ({}))) as TagStyleApiResponse;
 
     if (!response.ok || !body.name) {
-      setInspectorMessage(body.error ?? "Unable to save tag color.");
-      return;
+      setInspectorMessage(body.error ?? "Unable to save tag style.");
+      return null;
     }
 
-    const tagName = body.name;
-    setTagStyles((currentStyles) => {
-      const nextStyle: TagStyle = {
-        kind: body.kind === "source" ? "source" : "user",
-        name: tagName,
-        ...(body.color ? { color: body.color } : {})
-      };
-      const existingIndex = currentStyles.findIndex((style) => style.name.toLowerCase() === tagName.toLowerCase());
+    storeTagStyle(body);
+    return body;
+  }
 
-      if (existingIndex === -1) {
-        return [...currentStyles, nextStyle];
-      }
+  async function updateTagColor(tag: string, color: string | null) {
+    const saved = await saveTagStyle(tag, { color });
+    if (saved) {
+      setInspectorMessage("Tag color saved.");
+    }
+  }
 
-      return currentStyles.map((style, index) => (index === existingIndex ? { ...style, ...nextStyle } : style));
+  async function renameTagStyle(tag: string, newName: string, transactionId: string): Promise<boolean> {
+    const currentName = tag.trim();
+    const nextName = newName.trim();
+
+    if (!currentName || !nextName) {
+      setInspectorMessage("Enter a new tag name.");
+      return false;
+    }
+
+    setInspectorMessage("Renaming tag...");
+    const response = await fetch(`/api/v1/tags/${encodeURIComponent(currentName)}`, {
+      body: JSON.stringify({ new_name: nextName }),
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH"
     });
-    setInspectorMessage("Tag color saved.");
+    const body = (await response.json().catch(() => ({}))) as TagStyleApiResponse;
+
+    if (!response.ok || !body.name) {
+      setInspectorMessage(body.error ?? "Unable to rename tag.");
+      return false;
+    }
+
+    storeTagStyle(body, currentName);
+    updateRows((currentRows) => currentRows.map((row) => ({
+      ...row,
+      tags: renameTags(row.tags, currentName, body.name!)
+    })));
+    setTagDraftState({ transactionId, value: body.name });
+    setInspectorMessage(`Tag renamed to ${body.name}.`);
+    return true;
   }
 
   async function toggleReviewed(transaction: TransactionView) {
@@ -3177,6 +3238,10 @@ function TransactionInspectorCategory({ model, transaction }: { model: Transacti
 function TransactionInspectorTags({ model, transaction }: { model: TransactionsViewModel; transaction: TransactionView }) {
   const tagDraft = model.tagDraft.trim();
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+  const selectedStyle = tagDraft ? model.tagStyleByName.get(tagDraft.toLowerCase()) : undefined;
+  const sourceStyleSelected = selectedStyle?.kind === "source";
   // Source/machine tags (simplefin, teller:card_payment, ...) are kept on the
   // transaction and stay searchable, but they're a sync adapter's bookkeeping,
   // not something to edit — render them separately, muted, and non-removable.
@@ -3194,6 +3259,11 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
     });
     return () => window.cancelAnimationFrame(frame);
   }, [model, transaction.id]);
+
+  useEffect(() => {
+    setRenameOpen(false);
+    setRenameDraft("");
+  }, [tagDraft, transaction.id]);
 
   return (
     <section className="border-b border-border/35 px-4 py-4 last:border-b-0">
@@ -3236,32 +3306,69 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
         </Button>
       </form>
       {tagDraft ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            aria-label={`Use default color for ${tagDraft}`}
-            className="h-5 rounded-2xl border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
-            onClick={() => model.updateTagColor(tagDraft, null)}
-            type="button"
-          >
-            Default
-          </button>
-          <BloomColorPicker
-            ariaLabel={`Color for tag ${tagDraft}`}
-            onChange={(color) => model.updateTagColor(tagDraft, color)}
-            value={model.tagStyleByName.get(tagDraft.toLowerCase())?.color ?? "#7c8794"}
-          />
+        <div className="mt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              aria-label={`Use default color for ${tagDraft}`}
+              className="h-5 rounded-2xl border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+              onClick={() => model.updateTagColor(tagDraft, null)}
+              type="button"
+            >
+              Default
+            </button>
+            <BloomColorPicker
+              ariaLabel={`Color for tag ${tagDraft}`}
+              onChange={(color) => model.updateTagColor(tagDraft, color)}
+              value={selectedStyle?.color ?? "#7c8794"}
+            />
+            {!sourceStyleSelected && selectedStyle ? (
+              <Button
+                aria-label={`Rename tag ${tagDraft}`}
+                onClick={() => {
+                  setRenameDraft(selectedStyle.name);
+                  setRenameOpen((current) => !current);
+                }}
+                size="icon-sm"
+                type="button"
+                variant="outline"
+              >
+                <Pencil className="size-3.5" />
+              </Button>
+            ) : null}
+          </div>
+          {renameOpen ? (
+            <form
+              className="mt-2 flex items-center gap-1.5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void model.renameTagStyle(tagDraft, renameDraft, transaction.id).then((renamed) => {
+                  if (renamed) {
+                    setRenameOpen(false);
+                  }
+                });
+              }}
+            >
+              <Input
+                aria-label={`New name for ${tagDraft}`}
+                className="h-7"
+                onChange={(event) => setRenameDraft(event.target.value)}
+                value={renameDraft}
+              />
+              <Button size="sm" type="submit" variant="outline">Rename</Button>
+            </form>
+          ) : null}
         </div>
       ) : null}
       {sourceTags.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
           <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
           {sourceTags.map((tag) => (
-            <span
-              className="inline-flex h-5 items-center rounded-full border border-border/60 bg-muted/50 px-2 text-[11px] text-muted-foreground"
+            <TagChip
+              className="h-5 border-border/60 bg-muted/50 text-[11px] text-muted-foreground"
+              color={model.tagStyleByName.get(tag.toLowerCase())?.color}
               key={tag}
-            >
-              {tag}
-            </span>
+              tag={tag}
+            />
           ))}
         </div>
       ) : null}
@@ -4160,6 +4267,11 @@ function normalizeTags(tags: string[]): string[] {
   }
 
   return normalized;
+}
+
+function renameTags(tags: string[], oldName: string, newName: string): string[] {
+  const oldKey = oldName.toLowerCase();
+  return normalizeTags(tags.map((tag) => tag.toLowerCase() === oldKey ? newName : tag));
 }
 
 function groupByDate(transactions: TransactionView[]) {

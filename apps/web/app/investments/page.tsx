@@ -12,7 +12,7 @@ export default async function InvestmentsPage() {
     return (
       <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="investments-page">
         <div className="mb-5 flex items-center gap-3">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">Investments</h1>
+          <h1 className="app-page-title">Investments</h1>
         </div>
         <EmptyState
           actions={

@@ -2,6 +2,7 @@
 
 import type { Category, TagStyle, TransactionRuleMatchOperator } from "@ai-finances/schema";
 import { Check, Pause, Play, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { formatCurrency } from "@/lib/format";
+import { EASE_OUT, EASE_SMOOTH_OUT } from "@/lib/motion";
 import { useShakeReplay } from "@/lib/transitions";
 import { playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
@@ -616,6 +618,8 @@ function RulesPanelLayout({ model }: { model: RulesPanelModel }) {
 }
 
 function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
+  const reduce = useReducedMotion();
+
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-4">
@@ -684,23 +688,47 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-2">
-          {model.suggestions.map((suggestion) => (
-            <SuggestionRow
-              category={suggestion.categoryId ? model.categoryById.get(suggestion.categoryId) : undefined}
-              key={suggestion.id}
-              onResolve={model.resolveSuggestion}
-              onToggleSelected={model.toggleSuggestionSelection}
-              selected={model.selectedSuggestionIds.has(suggestion.id)}
-              suggestion={suggestion}
-              suggestionBusy={model.suggestionBusy}
-              tagStyleByName={model.tagStyleByName}
-            />
-          ))}
-          {model.suggestions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No pending enrichment suggestions. Generate suggestions to analyze the local ledger.</p>
-          ) : null}
-        </div>
+        <LazyMotion features={domAnimation}>
+          <div className="flex flex-col gap-2">
+            <AnimatePresence initial={false} mode="popLayout">
+              {model.suggestions.length > 0 ? model.suggestions.map((suggestion) => (
+                <m.div
+                  animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
+                  exit={reduce
+                    ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                    : { opacity: 0, transform: "translateY(-4px) scale(0.98)", transition: { duration: 0.15, ease: EASE_OUT } }}
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px) scale(0.98)" }}
+                  key={suggestion.id}
+                  layout={reduce ? false : "position"}
+                  transition={reduce
+                    ? { duration: 0.1, ease: EASE_OUT }
+                    : { duration: 0.15, ease: EASE_OUT, layout: { duration: 0.2, ease: EASE_SMOOTH_OUT } }}
+                >
+                  <SuggestionRow
+                    category={suggestion.categoryId ? model.categoryById.get(suggestion.categoryId) : undefined}
+                    onResolve={model.resolveSuggestion}
+                    onToggleSelected={model.toggleSuggestionSelection}
+                    selected={model.selectedSuggestionIds.has(suggestion.id)}
+                    suggestion={suggestion}
+                    suggestionBusy={model.suggestionBusy}
+                    tagStyleByName={model.tagStyleByName}
+                  />
+                </m.div>
+              )) : (
+                <m.p
+                  animate={{ opacity: 1 }}
+                  className="text-sm text-muted-foreground"
+                  initial={{ opacity: 0 }}
+                  key="suggestions-empty"
+                  layout={reduce ? false : "position"}
+                  transition={{ delay: reduce ? 0.1 : 0.15, duration: 0.1, ease: EASE_OUT }}
+                >
+                  No pending enrichment suggestions. Generate suggestions to analyze the local ledger.
+                </m.p>
+              )}
+            </AnimatePresence>
+          </div>
+        </LazyMotion>
         {model.suggestionMessage ? <p className="text-sm text-muted-foreground">{model.suggestionMessage}</p> : null}
         {model.selectedSuggestionIds.size > 0 ? (
           <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-border bg-card/95 py-2.5 backdrop-blur">
@@ -787,7 +815,11 @@ function SuggestionRow({
         <div className="flex flex-wrap items-center gap-1.5">
           {category ? <CategoryPill category={category} /> : null}
           {suggestion.tags.map((tag) => (
-            <TagChip color={tagStyleByName.get(tag.toLowerCase())?.color} key={tag} tag={tag} />
+            <TagChip
+              color={tagStyleByName.get(tag.toLowerCase())?.color}
+              key={tag}
+              tag={tag}
+            />
           ))}
           {suggestion.rulePattern ? <Badge variant="secondary">{suggestion.rulePattern}</Badge> : null}
           {suggestion.markReviewed ? <Badge variant="secondary">reviewed</Badge> : null}
@@ -1059,7 +1091,11 @@ function RuleRow({
         <div className="flex flex-wrap items-center gap-1.5">
           {category ? <CategoryPill category={category} /> : null}
           {rule.tags.map((tag) => (
-            <TagChip color={tagStyleByName.get(tag.toLowerCase())?.color} key={tag} tag={tag} />
+            <TagChip
+              color={tagStyleByName.get(tag.toLowerCase())?.color}
+              key={tag}
+              tag={tag}
+            />
           ))}
           {rule.markReviewed ? <Badge variant="secondary">reviewed</Badge> : null}
         </div>

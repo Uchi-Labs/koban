@@ -1431,6 +1431,122 @@ export async function upsertTagStyle(name: string, color?: string | null): Promi
   });
 }
 
+export async function renameTag(oldName: string, newName: string): Promise<TagStyle> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const normalizedOldName = normalizeTagName(oldName);
+    const normalizedNewName = normalizeTagName(newName);
+
+    if (!normalizedOldName) {
+      throw new Error("Current tag name is required.");
+    }
+    if (!normalizedNewName) {
+      throw new Error("New tag name is required.");
+    }
+
+    await db.exec("BEGIN");
+    try {
+      const oldResult = await db.query<TagRegistryRow>(
+        "SELECT * FROM tag_registry WHERE lower(name) = lower($1) ORDER BY name",
+        [normalizedOldName]
+      );
+      const oldRows = oldResult.rows;
+      const oldRow = oldRows.find((row) => row.name === normalizedOldName)
+        ?? oldRows.find((row) => row.color !== null)
+        ?? oldRows[0];
+
+      if (!oldRow) {
+        throw new Error(`Tag "${normalizedOldName}" was not found.`);
+      }
+      if (oldRows.some((row) => row.kind === "source")) {
+        throw new Error(`Source tag "${oldRow.name}" cannot be renamed because provider resync would restore it.`);
+      }
+
+      const sameCaseInsensitiveName = normalizedOldName.toLowerCase() === normalizedNewName.toLowerCase();
+      const targetResult = sameCaseInsensitiveName
+        ? oldResult
+        : await db.query<TagRegistryRow>(
+            "SELECT * FROM tag_registry WHERE lower(name) = lower($1) ORDER BY name",
+            [normalizedNewName]
+          );
+      const targetRow = targetResult.rows.find((row) => row.name === normalizedNewName)
+        ?? (!sameCaseInsensitiveName
+          ? targetResult.rows.find((row) => row.color !== null) ?? targetResult.rows[0]
+          : undefined);
+      const timestamp = new Date().toISOString();
+      let renamedRow: TagRegistryRow;
+
+      if (targetRow) {
+        const sourceRows = oldRows.filter((row) => row.name !== targetRow.name);
+        const duplicateTargetRows = sameCaseInsensitiveName
+          ? []
+          : targetResult.rows.filter((row) => row.name !== targetRow.name);
+        const fallbackRows = [...duplicateTargetRows, ...sourceRows];
+        const fallbackColor = fallbackRows.find((row) => row.color !== null)?.color ?? null;
+        const merged = await db.query<TagRegistryRow>(
+          `UPDATE tag_registry
+          SET
+            color = COALESCE(color, $2),
+            updated_at = $3
+          WHERE name = $1
+          RETURNING *`,
+          [targetRow.name, fallbackColor, timestamp]
+        );
+        renamedRow = merged.rows[0];
+        for (const sourceRow of sourceRows) {
+          await db.query("DELETE FROM tag_registry WHERE name = $1", [sourceRow.name]);
+        }
+        for (const duplicateTargetRow of duplicateTargetRows) {
+          await db.query("DELETE FROM tag_registry WHERE name = $1", [duplicateTargetRow.name]);
+        }
+      } else {
+        const duplicateRows = oldRows.filter((row) => row.name !== oldRow.name);
+        const fallbackColor = oldRows.find((row) => row.color !== null)?.color ?? null;
+
+        for (const duplicateRow of duplicateRows) {
+          await db.query("DELETE FROM tag_registry WHERE name = $1", [duplicateRow.name]);
+        }
+        const renamed = await db.query<TagRegistryRow>(
+          `UPDATE tag_registry
+          SET
+            name = $2,
+            color = COALESCE(color, $3),
+            updated_at = $4
+          WHERE name = $1
+          RETURNING *`,
+          [oldRow.name, normalizedNewName, fallbackColor, timestamp]
+        );
+        renamedRow = renamed.rows[0];
+      }
+
+      const replacementName = renamedRow.name;
+      const transactionRows = await db.query<Pick<TransactionRow, "id" | "tags">>(
+        "SELECT id, tags FROM transactions"
+      );
+
+      for (const transactionRow of transactionRows.rows) {
+        const currentTags = parseTags(transactionRow.tags);
+        if (!currentTags.some((tag) => tag.toLowerCase() === normalizedOldName.toLowerCase())) {
+          continue;
+        }
+
+        const nextTags = replaceTagName(currentTags, normalizedOldName, replacementName);
+        await db.query("UPDATE transactions SET tags = $2 WHERE id = $1", [
+          transactionRow.id,
+          JSON.stringify(nextTags)
+        ]);
+        await refreshTransactionSemanticDocument(db, transactionRow.id);
+      }
+
+      await db.exec("COMMIT");
+      return tagStyleFromRow(renamedRow);
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
 async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
   const normalizedLedger = normalizeTellerLedgerAmounts(ledger).ledger;
   const db = await getFinanceDb();
@@ -7807,6 +7923,26 @@ function normalizeTags(tags: string[]): string[] {
         .slice(0, 20)
     )
   );
+}
+
+function replaceTagName(tags: string[], oldName: string, newName: string): string[] {
+  const oldKey = oldName.toLowerCase();
+  const seen = new Set<string>();
+  const renamed: string[] = [];
+
+  for (const tag of tags) {
+    const candidate = tag.toLowerCase() === oldKey ? newName : tag;
+    const key = candidate.toLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    renamed.push(candidate);
+  }
+
+  return renamed;
 }
 
 function moneyToMinor(value: number): number {

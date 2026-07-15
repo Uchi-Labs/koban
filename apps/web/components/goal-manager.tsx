@@ -1,6 +1,7 @@
 "use client";
 
 import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
+import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { RollingDigits } from "@/components/ui/rolling-digits";
 import { financeEmojiOptions } from "@/lib/category-style";
 import { formatCurrency } from "@/lib/format";
-import { ROLLING_DIGITS_HERO } from "@/lib/motion";
+import { EASE_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 
 export interface GoalView {
   emoji: string | null;
@@ -61,6 +62,7 @@ export function GoalManager({ initialGoals }: { initialGoals: GoalView[] }) {
 
 function GoalCreateForm() {
   const router = useRouter();
+  const reduce = useReducedMotion();
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState(defaultGoalEmoji);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -123,24 +125,36 @@ function GoalCreateForm() {
               >
                 <span aria-hidden="true">{emoji}</span>
               </Button>
-              {emojiOpen ? (
-                <div className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 grid-cols-9 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg">
-                  {financeEmojiOptions.map((option, index) => (
-                    <button
-                      aria-label={`Use ${option}`}
-                      className="grid size-7 place-items-center rounded-lg text-base transition-colors hover:bg-muted"
-                      key={`${option}-${index}`}
-                      onClick={() => {
-                        setEmoji(option);
-                        setEmojiOpen(false);
-                      }}
-                      type="button"
+              <LazyMotion features={domAnimation}>
+                <AnimatePresence initial={false}>
+                  {emojiOpen ? (
+                    <m.div
+                      animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
+                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-9 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
+                      exit={reduce
+                        ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                        : { opacity: 0, transform: "translateY(0) scale(0.99)", transition: { duration: 0.1, ease: EASE_OUT } }}
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.96)" }}
+                      transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
                     >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+                      {financeEmojiOptions.map((option, index) => (
+                        <button
+                          aria-label={`Use ${option}`}
+                          className="grid size-7 place-items-center rounded-lg text-base transition-colors hover:bg-muted"
+                          key={`${option}-${index}`}
+                          onClick={() => {
+                            setEmoji(option);
+                            setEmojiOpen(false);
+                          }}
+                          type="button"
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </m.div>
+                  ) : null}
+                </AnimatePresence>
+              </LazyMotion>
             </div>
 
             <Input

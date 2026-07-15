@@ -14,8 +14,8 @@ export default async function InsightsPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-5 md:px-6" data-testid="insights-page">
       <header className="mb-5">
-        <h1 className="text-lg font-semibold tracking-tight">Insights</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Deterministic signals from your transactions, recurring activity, and budgets.</p>
+        <h1 className="app-page-title">Insights</h1>
+        <p className="app-page-description mt-1.5">Deterministic signals from your transactions, recurring activity, and budgets.</p>
       </header>
       <InsightsFeed initialInsights={insights} />
     </main>

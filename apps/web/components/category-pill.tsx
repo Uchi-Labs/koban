@@ -36,7 +36,9 @@ export function CategoryPill({ category, className }: { category: Category; clas
       data-transfer={category.id === "cat_transfer" ? "true" : undefined}
       style={{ "--pill-color": color } as PillStyle}
     >
-      <span aria-hidden="true" className="inline-flex shrink-0 items-center justify-center">
+      {/* Apple Color Emoji paints above the baseline at small sizes, so the glyph
+          rides 1px high in the 20px pill; nudge only the emoji case back to center. */}
+      <span aria-hidden="true" className={cn("inline-flex shrink-0 items-center justify-center", emoji && "translate-y-px")}>
         {emoji ? emoji : CategoryIcon ? <CategoryIcon className="size-3" /> : category.name.trim().charAt(0).toUpperCase() || "?"}
       </span>
       <span className="truncate">{category.name}</span>

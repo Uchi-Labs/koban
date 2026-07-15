@@ -5,40 +5,40 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --background: oklch(0.982 0.006 95);
+  --foreground: oklch(0.18 0.012 250);
+  --card: oklch(0.997 0.003 95);
+  --card-foreground: oklch(0.18 0.012 250);
+  --popover: oklch(0.997 0.003 95);
+  --popover-foreground: oklch(0.18 0.012 250);
+  --primary: oklch(0.5 0.12 165);
+  --primary-foreground: oklch(0.985 0.004 165);
+  --secondary: oklch(0.94 0.012 245);
+  --secondary-foreground: oklch(0.24 0.014 250);
+  --muted-foreground: oklch(0.43 0.018 245);
+  --accent: oklch(0.92 0.03 165);
+  --accent-foreground: oklch(0.22 0.035 165);
+  --destructive: oklch(0.54 0.19 22);
+  --input: oklch(0.875 0.012 245);
+  --ring: oklch(0.54 0.13 165);
   --chart-1: oklch(0.62 0.16 245);
   --chart-2: oklch(0.72 0.16 80);
   --chart-3: oklch(0.62 0.18 340);
   --chart-4: oklch(0.58 0.18 295);
   --chart-5: oklch(0.64 0.13 190);
   --radius: 0.625rem;
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --muted: oklch(0.97 0 0);
-  --positive: oklch(0.5 0.14 165);
-  --negative: oklch(0.58 0.2 15);
+  --sidebar-foreground: oklch(0.24 0.014 250);
+  --sidebar-primary: oklch(0.5 0.12 165);
+  --sidebar-primary-foreground: oklch(0.985 0.004 165);
+  --sidebar-accent: oklch(0.92 0.025 165);
+  --sidebar-accent-foreground: oklch(0.22 0.035 165);
+  --sidebar-border: oklch(0.87 0.012 245);
+  --sidebar-ring: oklch(0.54 0.13 165);
+  --sidebar: oklch(0.965 0.009 95);
+  --border: oklch(0.875 0.012 245);
+  --muted: oklch(0.95 0.008 245);
+  --positive: oklch(0.46 0.12 165);
+  --negative: oklch(0.54 0.18 22);
 }
 
 @theme inline {
@@ -786,6 +786,36 @@
   html {
     @apply font-sans;
   }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: var(--primary);
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 28%, transparent);
+    color: var(--foreground);
+  }
+}
+
+@layer components {
+  .app-page-title {
+    @apply text-2xl leading-tight font-semibold text-foreground;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  .app-page-description {
+    @apply max-w-2xl text-sm leading-relaxed text-muted-foreground;
+    text-wrap: pretty;
+  }
 }
 
 /* ── Surface & light ───────────────────────────────────────────────────
@@ -797,6 +827,18 @@
     radial-gradient(1100px 520px at 18% -12%, oklch(0.4 0.06 168 / 0.07), transparent 62%),
     radial-gradient(900px 500px at 95% -20%, oklch(0.45 0.05 250 / 0.05), transparent 55%),
     var(--background);
+}
+
+:root:not(.dark) [data-slot="sidebar-inset"] {
+  background:
+    radial-gradient(900px 420px at 12% -14%, oklch(0.82 0.08 165 / 0.11), transparent 62%),
+    var(--background);
+}
+
+:root:not(.dark) [data-slot="card"] {
+  box-shadow:
+    0 1px 2px oklch(0.18 0.012 250 / 0.04),
+    0 12px 32px -24px oklch(0.18 0.03 250 / 0.24);
 }
 
 .dark [data-slot="card"] {
@@ -908,7 +950,7 @@ button:active:not(:disabled),
 [role="button"]:active,
 [role="tab"]:active,
 a[data-slot="sidebar-menu-button"]:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 /* Press-scale reads as a row wiggle on full-width list rows — keep them still. */

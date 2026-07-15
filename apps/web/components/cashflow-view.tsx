@@ -159,7 +159,7 @@ export function CashflowView({
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="cashflow-page">
       <header className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-3">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">Cash flow</h1>
+        <h1 className="app-page-title">Cash flow</h1>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Select onValueChange={(value) => setPeriod(value as PeriodPreset)} value={period}>
