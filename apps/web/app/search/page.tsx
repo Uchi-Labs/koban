@@ -25,8 +25,8 @@ export default async function SearchPage({
 
       <div className="flex flex-1 flex-col gap-6 p-6">
         <section>
-          <h1 className="text-2xl font-semibold tracking-tight">Semantic finance search</h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+          <h1 className="app-page-title">Semantic finance search</h1>
+          <p className="app-page-description mt-1.5">
             Local pgvector search over synced Teller transactions, linked evidence, and user context.
           </p>
         </section>

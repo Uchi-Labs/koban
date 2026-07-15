@@ -268,8 +268,8 @@ export default async function SettingsPage() {
     <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 p-4 sm:p-6">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="app-page-title">Settings</h1>
+          <p className="app-page-description">
             Connect banks and context sources, control syncing, and manage local data.
           </p>
         </div>

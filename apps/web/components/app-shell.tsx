@@ -53,12 +53,12 @@ import { deriveSyncIslandState, SYNC_ISLAND_PHASE_COUNT } from "@/lib/sync-islan
 import { cn } from "@/lib/utils";
 
 const accountColorByType = {
-  cash: "#94a3b8",
-  checking: "#1594f2",
-  credit_card: "#f59e0b",
-  investment: "#14b8a6",
-  loan: "#ef4444",
-  savings: "#1f9bd7"
+  cash: "var(--muted-foreground)",
+  checking: "var(--chart-1)",
+  credit_card: "var(--chart-2)",
+  investment: "var(--chart-5)",
+  loan: "var(--negative)",
+  savings: "var(--primary)"
 };
 
 const navItems = [

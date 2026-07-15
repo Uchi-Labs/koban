@@ -75,7 +75,7 @@ export default async function DashboardPage() {
         <TextReveal
           as="h1"
           blur={4}
-          className="text-lg font-semibold tracking-tight text-foreground"
+          className="app-page-title"
           stagger={0}
           text="Dashboard"
           yOffset={6}

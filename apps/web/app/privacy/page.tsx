@@ -50,7 +50,7 @@ export default function PrivacyPage() {
           Back to Koban
         </Link>
         <div className="grid gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Koban Privacy Policy</h1>
+          <h1 className="app-page-title">Koban Privacy Policy</h1>
           <p className="text-sm text-muted-foreground">Effective date: July 6, 2026</p>
         </div>
       </header>

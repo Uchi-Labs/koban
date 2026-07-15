@@ -137,7 +137,7 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="investments-page">
       <div className="mb-5 flex items-center gap-3">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">Investment accounts</h1>
+        <h1 className="app-page-title">Investment accounts</h1>
         <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
           {data.accounts.length.toLocaleString()} accounts
         </Badge>

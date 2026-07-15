@@ -2,7 +2,7 @@
 
 import type { Category } from "@ai-finances/schema";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, RotateCcw } from "lucide-react";
-import { LazyMotion, domAnimation, m, useReducedMotion, type PanInfo } from "motion/react";
+import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion, type PanInfo } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CategoryPill } from "@/components/category-pill";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { CategoryPicker } from "@/components/ui/category-picker";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
-import { SPRING_LAYOUT } from "@/lib/motion";
+import { EASE_OUT, EASE_SMOOTH_OUT, SPRING_LAYOUT } from "@/lib/motion";
 import type { TransactionView } from "@/lib/view-models";
 
 type ReviewAction = "accept" | "categorize" | "review" | "skip";
@@ -110,44 +110,68 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   return (
     <main className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col px-4 py-5 md:px-6" data-testid="review-page">
       <header className="mb-5 flex items-start justify-between gap-4">
-        <div><h1 className="text-lg font-semibold tracking-tight">Review Transactions</h1><p className="mt-1 text-sm text-muted-foreground">{weekLabel}</p></div>
+        <div><h1 className="app-page-title">Review transactions</h1><p className="mt-1.5 text-sm text-muted-foreground">{weekLabel}</p></div>
         <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium tabular-nums">{Math.min(history.length + 1, initialTransactions.length)} of {initialTransactions.length}</span>
       </header>
 
       <div className="relative mx-auto flex w-full max-w-lg flex-1 flex-col justify-center">
-        {current ? (
-          <LazyMotion features={domAnimation}>
-            <m.article
-              animate={exit ?? { opacity: 1, rotate: 0, scale: 1, x: 0, y: 0 }}
-              className="relative touch-none select-none rounded-3xl border border-border bg-card p-6 shadow-xl"
-              drag={busy ? false : true}
-              dragConstraints={{ bottom: 0, left: 0, right: 0, top: 0 }}
-              dragElastic={0.72}
-              dragMomentum={false}
-              initial={reduce ? false : { opacity: 0, scale: 0.96, y: 12 }}
-              key={current.id}
-              onDragEnd={onDragEnd}
-              transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-              whileDrag={{ cursor: "grabbing", rotate: 1.5, scale: 1.015 }}
-            >
-              <div className="flex items-center gap-3">
-                {merchantDomain(current.merchant) ? <FaviconBadge size="lg" website={merchantDomain(current.merchant)!} /> : <span className="grid size-11 place-items-center rounded-full bg-muted text-sm font-semibold">{current.merchant.slice(0, 1)}</span>}
-                <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold">{current.merchant}</h2><p className="truncate text-sm text-muted-foreground">{current.accountName} · {current.dateLabel}</p></div>
-              </div>
-              <p className="my-10 text-center text-4xl font-semibold tracking-tight tabular-nums">{formatCurrency(Math.abs(current.amount), current.currency)}</p>
-              <div className="flex items-center justify-between gap-3 rounded-2xl bg-muted/45 p-3">
-                <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Suggested category</p><div className="mt-1">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div></div>
-                {suggestedId !== current.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
-              </div>
-            </m.article>
-          </LazyMotion>
-        ) : (
-          <section className="rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
-            <span className="mx-auto grid size-12 place-items-center rounded-full bg-[color-mix(in_oklab,var(--positive)_16%,transparent)] text-[var(--positive)]"><Check className="size-6" /></span>
-            <h2 className="mt-4 text-xl font-semibold">Review complete</h2>
-            <p className="mt-2 text-sm text-muted-foreground">{reviewed} reviewed · {recategorized} recategorized · {history.length - reviewed} skipped</p>
-          </section>
-        )}
+        <LazyMotion features={domAnimation}>
+          <AnimatePresence mode="wait">
+            {current ? (
+              <m.article
+                animate={exit ?? { opacity: 1, rotate: 0, scale: 1, x: 0, y: 0 }}
+                className="relative touch-none select-none rounded-3xl border border-border bg-card p-6 shadow-xl"
+                drag={busy ? false : true}
+                dragConstraints={{ bottom: 0, left: 0, right: 0, top: 0 }}
+                dragElastic={0.72}
+                dragMomentum={false}
+                exit={exit
+                  ? reduce
+                    ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                    : {
+                        opacity: 0,
+                        transform: `translate3d(${exit.x}px, ${exit.y}px, 0) scale(0.98)`,
+                        transition: { duration: 0.15, ease: EASE_OUT }
+                      }
+                  : {
+                      opacity: 1,
+                      transform: "translate3d(0, 0, 0) scale(1)",
+                      transition: { duration: 0 }
+                    }}
+                initial={reduce ? false : { opacity: 0, scale: 0.96, y: 12 }}
+                key={current.id}
+                onDragEnd={onDragEnd}
+                transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                whileDrag={{ cursor: "grabbing", rotate: 1.5, scale: 1.015 }}
+              >
+                <div className="flex items-center gap-3">
+                  {merchantDomain(current.merchant) ? <FaviconBadge size="lg" website={merchantDomain(current.merchant)!} /> : <span className="grid size-11 place-items-center rounded-full bg-muted text-sm font-semibold">{current.merchant.slice(0, 1)}</span>}
+                  <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold">{current.merchant}</h2><p className="truncate text-sm text-muted-foreground">{current.accountName} · {current.dateLabel}</p></div>
+                </div>
+                <p className="my-10 text-center text-4xl font-semibold tracking-tight tabular-nums">{formatCurrency(Math.abs(current.amount), current.currency)}</p>
+                <div className="flex items-center justify-between gap-3 rounded-2xl bg-muted/45 p-3">
+                  <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Suggested category</p><div className="mt-1">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div></div>
+                  {suggestedId !== current.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
+                </div>
+              </m.article>
+            ) : (
+              <m.section
+                animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
+                className="rounded-3xl border border-border bg-card p-8 text-center shadow-sm"
+                exit={reduce
+                  ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                  : { opacity: 0, transform: "translateY(-4px) scale(0.99)", transition: { duration: 0.15, ease: EASE_OUT } }}
+                initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(8px) scale(0.96)" }}
+                key="review-complete"
+                transition={{ duration: reduce ? 0.15 : 0.25, ease: EASE_SMOOTH_OUT }}
+              >
+                <span className="mx-auto grid size-12 place-items-center rounded-full bg-[color-mix(in_oklab,var(--positive)_16%,transparent)] text-[var(--positive)]"><Check className="size-6" /></span>
+                <h2 className="mt-4 text-xl font-semibold">Review complete</h2>
+                <p className="mt-2 text-sm text-muted-foreground">{reviewed} reviewed · {recategorized} recategorized · {history.length - reviewed} skipped</p>
+              </m.section>
+            )}
+          </AnimatePresence>
+        </LazyMotion>
 
         <div className="mt-5 grid grid-cols-4 gap-2">
           <Button disabled={!current || busy} onClick={() => void advance("skip")} type="button" variant="outline"><ArrowLeft className="size-4" /><span className="hidden sm:inline">Skip</span></Button>

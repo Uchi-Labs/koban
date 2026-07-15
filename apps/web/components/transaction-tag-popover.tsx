@@ -112,7 +112,7 @@ export function TransactionTagPopover({
                     </span>
                     <span
                       aria-hidden="true"
-                      className="size-2 shrink-0 rounded-full"
+                      className="size-1.5 shrink-0 rounded-full"
                       style={{ backgroundColor: tag.color ?? "var(--muted-foreground)" }}
                     />
                     <span className="min-w-0 flex-1 truncate">{tag.name}</span>

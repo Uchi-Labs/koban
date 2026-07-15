@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { RollingDigits } from "@/components/ui/rolling-digits";
 import { formatCurrency } from "@/lib/format";
-import { EASE_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
+import { EASE_OUT, EASE_SMOOTH_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export interface MonthPoint {
@@ -334,6 +334,7 @@ function CategoryTable({
   summaries: CategorySummary[];
   toggleArchived: () => void;
 }) {
+  const reduce = useReducedMotion();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   return (
     <section
@@ -360,40 +361,45 @@ function CategoryTable({
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
         <span aria-hidden="true" />
       </div>
-      <div className="px-1.5 py-1.5">
-        {summaries.map((summary) => (
-          <CategoryTableRow
-            draggable
-            key={summary.id}
-            monthLabel={monthLabel}
-            onEdit={() => onEdit(summary)}
-            onDragEnd={() => setDraggedId(null)}
-            onDragOver={(event) => event.preventDefault()}
-            onDragStart={() => setDraggedId(summary.id)}
-            onDrop={() => {
-              if (!draggedId || draggedId === summary.id) return;
-              const from = summaries.findIndex((item) => item.id === draggedId);
-              const to = summaries.findIndex((item) => item.id === summary.id);
-              const next = [...summaries];
-              const [moved] = next.splice(from, 1);
-              if (moved) next.splice(to, 0, moved);
-              onReorder(next);
-            }}
-            onSelect={() => onSelect(summary.id)}
-            selected={selectedId === summary.id}
-            summary={summary}
-          />
-        ))}
-        {summaries.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">No categories yet.</p>
-        ) : null}
-      </div>
+      <LazyMotion features={domAnimation}>
+        <div className="px-1.5 py-1.5">
+          {summaries.map((summary) => (
+            <CategoryTableRow
+              draggable
+              isDragging={draggedId === summary.id}
+              key={summary.id}
+              monthLabel={monthLabel}
+              onEdit={() => onEdit(summary)}
+              onDragEnd={() => setDraggedId(null)}
+              onDragOver={(event) => event.preventDefault()}
+              onDragStart={() => setDraggedId(summary.id)}
+              onDrop={() => {
+                if (!draggedId || draggedId === summary.id) return;
+                const from = summaries.findIndex((item) => item.id === draggedId);
+                const to = summaries.findIndex((item) => item.id === summary.id);
+                const next = [...summaries];
+                const [moved] = next.splice(from, 1);
+                if (moved) next.splice(to, 0, moved);
+                onReorder(next);
+              }}
+              onSelect={() => onSelect(summary.id)}
+              reduce={Boolean(reduce)}
+              selected={selectedId === summary.id}
+              summary={summary}
+            />
+          ))}
+          {summaries.length === 0 ? (
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">No categories yet.</p>
+          ) : null}
+        </div>
+      </LazyMotion>
     </section>
   );
 }
 
 function CategoryTableRow({
   draggable,
+  isDragging,
   monthLabel,
   onEdit,
   onDragEnd,
@@ -401,10 +407,12 @@ function CategoryTableRow({
   onDragStart,
   onDrop,
   onSelect,
+  reduce,
   selected,
   summary
 }: {
   draggable: boolean;
+  isDragging: boolean;
   monthLabel: string;
   onEdit: () => void;
   onDragEnd: () => void;
@@ -412,6 +420,7 @@ function CategoryTableRow({
   onDragStart: () => void;
   onDrop: () => void;
   onSelect: () => void;
+  reduce: boolean;
   selected: boolean;
   summary: CategorySummary;
 }) {
@@ -428,73 +437,85 @@ function CategoryTableRow({
   };
 
   return (
-    <div
-      aria-label={`View ${summary.name}`}
-      aria-pressed={selected}
-      className={cn(
-        "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_1.75rem] items-center gap-3 rounded-xl px-2.5 py-2 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem]",
-        selected ? "bg-accent" : "hover:bg-muted/50",
-        summary.archived && "opacity-55"
-      )}
-      draggable={draggable}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDragStart={onDragStart}
-      onDrop={onDrop}
-      role="button"
-      tabIndex={0}
-      title={`${summary.name} · spent ${formatCurrency(summary.spentThisMonth)} in ${monthLabel}`}
+    <m.div
+      layout={reduce ? false : "position"}
+      transition={reduce ? undefined : { layout: { duration: 0.25, ease: EASE_SMOOTH_OUT } }}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <GripVertical aria-label={`Drag to reorder ${summary.name}`} className="size-3.5 shrink-0 cursor-grab text-muted-foreground" />
-        <CategoryPill category={category} className="max-w-full" />
-        {summary.isBuiltIn ? <Lock aria-label="System category" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
-        {summary.archived ? <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Archived</span> : null}
-      </span>
-      <div className="hidden sm:block">
-        {summary.budgetAmount ? (
-          <BudgetBar color={summary.color} pct={pct} />
-        ) : (
-          <span className="block text-[11px] text-muted-foreground">No budget</span>
-        )}
-      </div>
-      <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
-      <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block">
-        {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
-      </span>
-      <span
-        className={cn(
-          "hidden text-right text-sm tabular-nums sm:block",
-          remaining === undefined
-            ? "text-muted-foreground"
-            : remaining < 0
-              ? "text-[var(--negative)]"
-              : "text-[var(--positive)]"
-        )}
+      <m.div
+        animate={reduce
+          ? { opacity: isDragging ? 0.85 : 1 }
+          : { opacity: isDragging ? 0.94 : 1, transform: isDragging ? "scale(1.01)" : "scale(1)" }}
+        transition={{ duration: reduce ? 0.1 : 0.15, ease: reduce ? EASE_OUT : EASE_SMOOTH_OUT }}
       >
-        {remaining === undefined ? "—" : formatCurrency(remaining)}
-      </span>
-      <Button
-        aria-label={`Edit ${summary.name}`}
-        className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={(event) => {
-          event.stopPropagation();
-          onEdit();
-        }}
-        size="icon-sm"
-        type="button"
-        variant="ghost"
-      >
-        <Pencil className="size-3.5" />
-      </Button>
-    </div>
+        <div
+          aria-label={`View ${summary.name}`}
+          aria-pressed={selected}
+          className={cn(
+            "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_1.75rem] items-center gap-3 rounded-xl px-2.5 py-2 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem]",
+            selected ? "bg-accent" : "hover:bg-muted/50",
+            summary.archived && "opacity-55"
+          )}
+          draggable={draggable}
+          onClick={onSelect}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onSelect();
+            }
+          }}
+          onDragEnd={onDragEnd}
+          onDragOver={onDragOver}
+          onDragStart={onDragStart}
+          onDrop={onDrop}
+          role="button"
+          tabIndex={0}
+          title={`${summary.name} · spent ${formatCurrency(summary.spentThisMonth)} in ${monthLabel}`}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <GripVertical aria-label={`Drag to reorder ${summary.name}`} className="size-3.5 shrink-0 cursor-grab text-muted-foreground" />
+            <CategoryPill category={category} className="max-w-full" />
+            {summary.isBuiltIn ? <Lock aria-label="System category" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
+            {summary.archived ? <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Archived</span> : null}
+          </span>
+          <div className="hidden sm:block">
+            {summary.budgetAmount ? (
+              <BudgetBar color={summary.color} pct={pct} />
+            ) : (
+              <span className="block text-[11px] text-muted-foreground">No budget</span>
+            )}
+          </div>
+          <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
+          <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block">
+            {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
+          </span>
+          <span
+            className={cn(
+              "hidden text-right text-sm tabular-nums sm:block",
+              remaining === undefined
+                ? "text-muted-foreground"
+                : remaining < 0
+                  ? "text-[var(--negative)]"
+                  : "text-[var(--positive)]"
+            )}
+          >
+            {remaining === undefined ? "—" : formatCurrency(remaining)}
+          </span>
+          <Button
+            aria-label={`Edit ${summary.name}`}
+            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+        </div>
+      </m.div>
+    </m.div>
   );
 }
 

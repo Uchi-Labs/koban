@@ -30,8 +30,8 @@ export default async function GoalsPage() {
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <section>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Savings goals</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Goals</h1>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+          <h1 className="app-page-title mt-1">Goals</h1>
+          <p className="app-page-description mt-1.5">
             Group transactions under a goal to track money set aside. Assignments live on the transaction as a user
             overlay and survive every provider resync.
           </p>

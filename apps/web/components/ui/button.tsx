@@ -40,7 +40,7 @@ function Button({
   const handlePointerDown: ButtonPrimitive.Props["onPointerDown"] = (event) => {
     onPointerDown?.(event)
     if (!event.defaultPrevented) {
-      animateScale(0.97)
+      animateScale(0.96)
     }
   }
 

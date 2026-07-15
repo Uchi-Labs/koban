@@ -1,9 +1,11 @@
 "use client";
 
 import { CalendarDays, ChevronLeft, ChevronRight, PieChart, Undo2 } from "lucide-react";
+import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { FaviconBadge } from "@/components/ui/favicon-badge";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +14,8 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/format";
+import { merchantBrandColor, merchantDomain } from "@/lib/merchant-domain";
+import { EASE_OUT } from "@/lib/motion";
 import { addMonths, daysInCalendarMonth, mondayIndexOfFirst, occurrencesInMonth } from "@/lib/recurring-calendar";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +84,7 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
   segments: RecurringDonutSegment[];
   today: string;
 }) {
+  const reduce = useReducedMotion();
   const [month, setMonth] = useState(initialMonth);
   const [view, setView] = useState<"breakdown" | "calendar">("calendar");
   const [totalHovered, setTotalHovered] = useState(false);
@@ -136,10 +141,32 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
         </Button>
       ) : null}
 
-      {showBreakdown ? (
-        <BreakdownDonut segments={segments} />
-      ) : (
-        <>
+      <LazyMotion features={domAnimation}>
+        <AnimatePresence initial={false} mode="wait">
+          {showBreakdown ? (
+            <m.div
+              animate={{ opacity: 1, transform: "translateY(0)" }}
+              className="w-full"
+              exit={reduce
+                ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                : { opacity: 0, transform: "translateY(-4px)", transition: { duration: 0.15, ease: EASE_OUT } }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" }}
+              key="recurring-breakdown"
+              transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
+            >
+              <BreakdownDonut segments={segments} />
+            </m.div>
+          ) : (
+            <m.div
+              animate={{ opacity: 1, transform: "translateY(0)" }}
+              className="flex w-full flex-col items-center gap-5"
+              exit={reduce
+                ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                : { opacity: 0, transform: "translateY(-4px)", transition: { duration: 0.15, ease: EASE_OUT } }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(4px)" }}
+              key="recurring-calendar"
+              transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
+            >
       <div className="flex flex-col items-center gap-2">
         <div className="flex items-center gap-1">
           <Button aria-label="Previous month" onClick={() => setMonth((current) => addMonths(current, -1))} size="icon-sm" type="button" variant="ghost">
@@ -228,8 +255,10 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
           Current month
         </Button>
       ) : null}
-        </>
-      )}
+            </m.div>
+          )}
+        </AnimatePresence>
+      </LazyMotion>
 
       <Dialog onOpenChange={(open) => (!open ? setSelectedDay(null) : undefined)} open={selectedDay !== null}>
         <DialogContent className="sm:max-w-sm">
@@ -349,6 +378,20 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
 }
 
 function ItemAvatar({ color, name, size = "md" }: { color: string; name: string; size?: "md" | "sm" }) {
+  const domain = merchantDomain(name);
+  const accentColor = merchantBrandColor(name) ?? color;
+
+  if (domain) {
+    return (
+      <FaviconBadge
+        aria-hidden="true"
+        badgeClassName={cn("bg-background/85 ring-1 ring-background/60", size === "sm" && "!size-5 !p-0.5")}
+        size={size === "md" ? "lg" : "sm"}
+        website={domain}
+      />
+    );
+  }
+
   return (
     <span
       aria-hidden="true"
@@ -357,8 +400,8 @@ function ItemAvatar({ color, name, size = "md" }: { color: string; name: string;
         size === "md" ? "size-8 text-sm" : "size-5 text-[10px]"
       )}
       style={{
-        backgroundColor: `color-mix(in oklab, ${color} 30%, var(--background))`,
-        color: `color-mix(in oklab, ${color} 55%, var(--foreground))`
+        backgroundColor: `color-mix(in oklab, ${accentColor} 30%, var(--background))`,
+        color: `color-mix(in oklab, ${accentColor} 55%, var(--foreground))`
       }}
     >
       {(name.trim()[0] ?? "?").toUpperCase()}
@@ -388,7 +431,7 @@ function BreakdownDonut({ segments }: { segments: RecurringDonutSegment[] }) {
   const active = segments.find((segment) => segment.id === activeId) ?? null;
 
   return (
-    <div className="flex flex-col items-center gap-3 py-2 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
+    <div className="flex flex-col items-center gap-3 py-2">
       <span className="text-sm text-muted-foreground">Recurring cost by category</span>
       <div className="relative size-60">
         <svg

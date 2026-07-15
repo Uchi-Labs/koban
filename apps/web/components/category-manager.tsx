@@ -1,6 +1,7 @@
 "use client";
 
 import { Archive, Check, Lock, Trash2 } from "lucide-react";
+import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { CategoryPill } from "@/components/category-pill";
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
 import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralCategoryEmoji } from "@/lib/category-style";
+import { EASE_OUT } from "@/lib/motion";
 
 // The registry persists any structurally valid CSS color (hex, rgb/hsl,
 // oklch/oklab — see isValidCssColor in lib/category-style.ts), not just these
@@ -39,6 +41,7 @@ export function CategoryEditDialog({
   open: boolean;
 }) {
   const router = useRouter();
+  const reduce = useReducedMotion();
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [emojiDraft, setEmojiDraft] = useState<string | null>(null);
   const [colorDraft, setColorDraft] = useState<string | null>(null);
@@ -150,24 +153,36 @@ export function CategoryEditDialog({
               >
                 <span aria-hidden="true">{emoji}</span>
               </Button>
-              {emojiOpen ? (
-                <div className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 grid-cols-9 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg">
-                  {financeEmojiOptions.map((option, index) => (
-                    <button
-                      aria-label={`Use ${option}`}
-                      className="grid size-7 place-items-center rounded-lg text-base transition-colors hover:bg-muted"
-                      key={`${option}-${index}`}
-                      onClick={() => {
-	                        setEmojiDraft(option);
-	                        setEmojiOpen(false);
-                      }}
-                      type="button"
+              <LazyMotion features={domAnimation}>
+                <AnimatePresence initial={false}>
+                  {emojiOpen ? (
+                    <m.div
+                      animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
+                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-9 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
+                      exit={reduce
+                        ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                        : { opacity: 0, transform: "translateY(0) scale(0.99)", transition: { duration: 0.1, ease: EASE_OUT } }}
+                      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.96)" }}
+                      transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
                     >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+                      {financeEmojiOptions.map((option, index) => (
+                        <button
+                          aria-label={`Use ${option}`}
+                          className="grid size-7 place-items-center rounded-lg text-base transition-colors hover:bg-muted"
+                          key={`${option}-${index}`}
+                          onClick={() => {
+                            setEmojiDraft(option);
+                            setEmojiOpen(false);
+                          }}
+                          type="button"
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </m.div>
+                  ) : null}
+                </AnimatePresence>
+              </LazyMotion>
             </div>
             <Input
               aria-label="Category name"

@@ -45,6 +45,7 @@ import {
   refreshAppSyncScheduleClaim,
   recordSourceSyncRun,
   refreshSourceEvidenceMatches,
+  renameTag,
   replaceTellerLedgerInDb,
   resetLocalAppData,
   runInternalTransferPairMatching,
@@ -330,6 +331,68 @@ describe("finance db", () => {
         name: "uncategorized"
       })
     ]);
+  });
+
+  it("renames a user tag case-insensitively and rewrites transaction tags", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await updateDbTransaction("txn_1", { tags: ["Boston Trip", "food"] });
+    await upsertTagStyle("Boston Trip", "#8B5CF6");
+
+    const renamed = await renameTag("boston trip", "Summer Trip");
+    const snapshot = await readFinanceDbSnapshot();
+
+    expect(renamed).toMatchObject({
+      color: "#8B5CF6",
+      kind: "user",
+      name: "Summer Trip"
+    });
+    expect(snapshot?.transactions.find((transaction) => transaction.id === "txn_1")?.tags).toEqual([
+      "Summer Trip",
+      "food"
+    ]);
+    expect((await listTagStyles()).some((style) => style.name === "Boston Trip")).toBe(false);
+  });
+
+  it("merges a renamed tag into an existing target and dedupes transaction tags", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await updateDbTransaction("txn_1", { tags: ["Trip", "vacation", "TRIP"] });
+    await upsertTagStyle("Trip", "#111111");
+    await upsertTagStyle("Vacation", "#222222");
+
+    const merged = await renameTag("trip", "VACATION");
+    const snapshot = await readFinanceDbSnapshot();
+
+    expect(merged).toMatchObject({
+      color: "#222222",
+      name: "Vacation"
+    });
+    expect(snapshot?.transactions.find((transaction) => transaction.id === "txn_1")?.tags).toEqual(["Vacation"]);
+    expect((await listTagStyles()).filter((style) => ["trip", "vacation"].includes(style.name.toLowerCase()))).toEqual([
+      expect.objectContaining({ color: "#222222", name: "Vacation" })
+    ]);
+  });
+
+  it("blocks renaming source tags with a provider-resync explanation", async () => {
+    useTempDb();
+    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+
+    await expect(renameTag("TELLER", "Bank Sync")).rejects.toThrow(/source tag.*provider resync/i);
+    expect((await readFinanceDbSnapshot())?.transactions.find((transaction) => transaction.id === "txn_1")?.tags).toEqual([
+      "teller"
+    ]);
+  });
+
+  it("preserves color on a plain tag re-key", async () => {
+    useTempDb();
+    await upsertTagStyle("client work", "oklch(0.6 0.2 45)");
+
+    await expect(renameTag("CLIENT WORK", "Consulting")).resolves.toMatchObject({
+      color: "oklch(0.6 0.2 45)",
+      kind: "user",
+      name: "Consulting"
+    });
   });
 
   it("classifies tag registry entries as 'source' for provider-shaped names and 'user' otherwise", async () => {
