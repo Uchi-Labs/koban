@@ -1,9 +1,10 @@
 "use client";
 
 import { m, useReducedMotion, type Variants } from "motion/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { AgentMeta, AgentStreamStatus } from "@/lib/hooks/use-agent-stream";
-import { Loader } from "@/components/ui/loader";
+import { EvidenceCitation } from "@/components/ui/evidence-citation";
+import { ThinkingIndicator } from "@/components/ui/thinking-indicator";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ export function AgentAnswer({
   variant = "panel"
 }: AgentAnswerProps) {
   const reduce = useReducedMotion();
+  const receivingTokens = useTokenActivity(answer, status);
   const compact = variant === "inline";
   const showStructured = status === "done" && Boolean(meta);
 
@@ -61,15 +63,16 @@ export function AgentAnswer({
         data-testid="agent-answer-text"
       >
         {status === "streaming" && !answer ? (
-          <span className="inline-flex items-center gap-2 text-muted-foreground">
-            <Loader label="Reading your ledger" size={16} variant="dots" />
-            Reading your ledger...
-          </span>
+          <ThinkingIndicator words={["Reading your ledger…", "Checking context…", "Working…"]} />
         ) : (
           renderAnswerParagraphs(answer)
         )}
-        {status === "streaming" ? (
-          <span aria-hidden className="agent-stream-caret ml-0.5 text-primary">
+        {status === "streaming" && answer ? (
+          <span
+            aria-hidden
+            className="agent-stream-caret ml-0.5 text-primary"
+            data-receiving={receivingTokens ? "true" : "false"}
+          >
             ▍
           </span>
         ) : null}
@@ -102,6 +105,27 @@ export function AgentAnswer({
       ) : null}
     </section>
   );
+}
+
+function useTokenActivity(answer: string, status: AgentStreamStatus) {
+  const [receiving, setReceiving] = useState(false);
+  const previousAnswer = useRef(answer);
+
+  useEffect(() => {
+    const grew = answer.length > previousAnswer.current.length;
+    previousAnswer.current = answer;
+
+    if (status !== "streaming" || !grew) {
+      setReceiving(false);
+      return;
+    }
+
+    setReceiving(true);
+    const timer = window.setTimeout(() => setReceiving(false), 180);
+    return () => window.clearTimeout(timer);
+  }, [answer, status]);
+
+  return receiving;
 }
 
 function renderAnswerParagraphs(answer: string) {
@@ -211,7 +235,7 @@ function EvidenceList({
     <div className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold">Evidence</h3>
       <div className="flex flex-col gap-2">
-        {evidence.map((item) => (
+        {evidence.map((item, index) => (
           <article
             className={cn(
               "flex min-w-0 items-start justify-between gap-3 rounded-2xl bg-muted/45",
@@ -219,7 +243,14 @@ function EvidenceList({
             )}
             key={item.transactionId}
           >
-            <div className="min-w-0">
+            <EvidenceCitation
+              description={`${item.date} · ${item.category} · ${item.reason}`}
+              href={`/transactions?transaction_id=${encodeURIComponent(item.transactionId)}`}
+              index={index + 1}
+              linkLabel="View transaction"
+              title={item.merchant}
+            />
+            <div className="min-w-0 flex-1">
               <strong className="block truncate text-sm font-medium">{item.merchant}</strong>
               <p className="truncate text-xs text-muted-foreground">
                 {item.date} · {item.category}

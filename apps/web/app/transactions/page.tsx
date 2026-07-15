@@ -23,8 +23,9 @@ export default async function TransactionsPage({
   const accountId = firstParam(params.account_id);
   const categoryId = firstParam(params.category_id);
   const query = firstParam(params.q);
+  const transactionId = firstParam(params.transaction_id);
   const lookups = createViewModelLookups({ accounts, categories });
-  const transactionRows = filterTransactionsForList(
+  let transactionRows = filterTransactionsForList(
     transactions,
     {
       accountId,
@@ -35,6 +36,14 @@ export default async function TransactionsPage({
     },
     lookups
   );
+  const selectedRowIndex = transactionId
+    ? transactionRows.findIndex((transaction) => transaction.id === transactionId)
+    : -1;
+
+  if (selectedRowIndex > 0) {
+    const selectedRow = transactionRows[selectedRowIndex]!;
+    transactionRows = [selectedRow, ...transactionRows.slice(0, selectedRowIndex), ...transactionRows.slice(selectedRowIndex + 1)];
+  }
   const reviewRows = filterTransactionsForList(
     transactions,
     {
@@ -59,6 +68,7 @@ export default async function TransactionsPage({
       initialQuery={query}
       initialReviewFilter={reviewFilter}
       initialTab={tabFromParams(firstParam(params.tab), reviewFilter)}
+      initialSelectedTransactionId={transactionId}
       reviewTotalCount={reviewRows.length}
       reviewTransactions={getTransactionViews(reviewPage.data, {
         accounts: lookups.accountById,
