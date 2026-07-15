@@ -327,6 +327,7 @@ interface TransactionsViewProps {
   initialMinAmount?: string;
   initialQuery?: string;
   initialReviewFilter?: TransactionReviewFilter;
+  initialSelectedTransactionId?: string;
   initialTab?: TransactionTab;
   reviewTotalCount?: number;
   reviewTransactions?: TransactionView[];
@@ -396,6 +397,7 @@ function useTransactionsViewModel({
   initialMinAmount,
   initialQuery,
   initialReviewFilter = "all",
+  initialSelectedTransactionId,
   initialTab = "all",
   reviewTotalCount: initialReviewTotalCount,
   reviewTransactions: initialReviewTransactions,
@@ -487,6 +489,7 @@ function useTransactionsViewModel({
   }
 
   const initialSelectedTransaction =
+    transactions.find((transaction) => transaction.id === initialSelectedTransactionId) ??
     transactions.find((transaction) =>
       transactionMatchesInitialFilters(transaction, {
         accountId,

@@ -1098,11 +1098,38 @@ button.transaction-review-row:active {
   }
 }
 
+@property --review-pie {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+.review-progress-pie {
+  background: conic-gradient(currentColor var(--review-pie), color-mix(in oklab, currentColor 16%, transparent) 0);
+  transition: opacity 140ms ease, --review-pie 400ms ease;
+}
+
+.review-progress-pie::after {
+  position: absolute;
+  inset: 3px;
+  content: "";
+  border-radius: inherit;
+  background: var(--muted);
+}
+
 .agent-stream-caret {
-  animation: agent-caret-blink var(--duration-slow) steps(1, end) infinite;
+  animation: agent-caret-blink 1s steps(1, end) infinite;
+}
+
+.agent-stream-caret[data-receiving="true"] {
+  animation: none;
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .review-progress-pie {
+    transition: none;
+  }
   .agent-stream-caret {
     animation: none;
     opacity: 1;

@@ -18,8 +18,10 @@ describe("ReviewStack", () => {
 
   it("accepts a suggested category and can undo the review", async () => {
     render(<ReviewStack categories={categories} initialTransactions={getTransactionViews([transaction], { accounts: [account], categories })} suggestions={{ txn_1: "cat_transportation" }} />);
+    expect(screen.getByLabelText("0 of 1 reviewed")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Accept/ }));
     expect(await screen.findByRole("heading", { name: "Review complete" })).toBeInTheDocument();
+    expect(screen.getByLabelText("1 of 1 reviewed")).toBeInTheDocument();
     expect(fetch).toHaveBeenNthCalledWith(1, "/api/v1/transactions/txn_1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ category_id: "cat_transportation", reviewed: true }) }));
 
     await userEvent.click(screen.getByRole("button", { name: /Undo/ }));

@@ -3,11 +3,12 @@
 import type { Category } from "@ai-finances/schema";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, RotateCcw } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion, type PanInfo } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { CategoryPill } from "@/components/category-pill";
 import { Button } from "@/components/ui/button";
 import { CategoryPicker } from "@/components/ui/category-picker";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
+import { RollingDigits } from "@/components/ui/rolling-digits";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
 import { EASE_OUT, EASE_SMOOTH_OUT, SPRING_LAYOUT } from "@/lib/motion";
@@ -33,6 +34,7 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   const suggestedCategory = suggestedId ? categoryById.get(suggestedId) ?? current?.category : undefined;
   const reviewed = history.filter((item) => item.action !== "skip").length;
   const recategorized = history.filter((item) => item.action === "categorize" || (item.action === "accept" && item.categoryId !== item.previousCategoryId)).length;
+  const reviewProgress = initialTransactions.length === 0 ? 100 : (history.length / initialTransactions.length) * 100;
 
   const advance = useCallback(async (action: ReviewAction, categoryId?: string) => {
     if (!current || busy) return;
@@ -111,7 +113,21 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
     <main className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col px-4 py-5 md:px-6" data-testid="review-page">
       <header className="mb-5 flex items-start justify-between gap-4">
         <div><h1 className="app-page-title">Review transactions</h1><p className="mt-1.5 text-sm text-muted-foreground">{weekLabel}</p></div>
-        <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium tabular-nums">{Math.min(history.length + 1, initialTransactions.length)} of {initialTransactions.length}</span>
+        <div
+          aria-label={`${history.length} of ${initialTransactions.length} reviewed`}
+          aria-live="polite"
+          className="inline-flex min-h-8 shrink-0 items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs font-medium tabular-nums"
+        >
+          <span
+            aria-hidden="true"
+            className="review-progress-pie relative size-4 shrink-0 rounded-full text-primary"
+            style={{ "--review-pie": `${reviewProgress}%` } as CSSProperties}
+          />
+          <span aria-hidden="true" className="inline-flex items-center gap-1">
+            <RollingDigits ariaLive={false} coalesceUpdates startOnView={false} value={history.length} />
+            <span>of {initialTransactions.length.toLocaleString()} reviewed</span>
+          </span>
+        </div>
       </header>
 
       <div className="relative mx-auto flex w-full max-w-lg flex-1 flex-col justify-center">
