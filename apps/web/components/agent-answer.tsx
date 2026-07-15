@@ -4,6 +4,7 @@ import { m, useReducedMotion, type Variants } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { AgentMeta, AgentStreamStatus } from "@/lib/hooks/use-agent-stream";
 import { EvidenceCitation } from "@/components/ui/evidence-citation";
+import { Alert } from "@/components/ui/alert";
 import { ThinkingIndicator } from "@/components/ui/thinking-indicator";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -79,9 +80,7 @@ export function AgentAnswer({
       </div>
 
       {status === "error" ? (
-        <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          The finance agent could not finish this answer.
-        </p>
+        <Alert appearance="destructive" message="The finance agent could not finish this answer." variant="inline" width="100%" />
       ) : null}
 
       {showStructured && blocks.length > 0 ? (

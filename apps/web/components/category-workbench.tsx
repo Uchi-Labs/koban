@@ -519,19 +519,30 @@ function CategoryTableRow({
   );
 }
 
-/** Category-color fill on a low-alpha track of the same color; over-budget switches the fill to --negative. */
+/** Category-color fill up to the budget threshold; only the overflow segment uses the negative money semantic. */
 function BudgetBar({ color, pct }: { color: string; pct: number }) {
-  const clamped = Math.min(100, Math.max(pct > 0 ? 4 : 0, pct));
-  const overBudget = pct >= 100;
+  const safePct = Math.max(0, pct);
+  const withinBudget = Math.min(100, safePct);
+  const scale = Math.max(100, safePct);
+  const withinWidth = safePct > 0 ? Math.max(4, (withinBudget / scale) * 100) : 0;
+  const overflowWidth = safePct > 100 ? ((safePct - 100) / scale) * 100 : 0;
+
   return (
     <div
-      className="h-1.5 w-full overflow-hidden rounded-full"
+      className="flex h-1.5 w-full overflow-hidden rounded-full"
       style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)` }}
     >
       <span
-        className="block h-full rounded-full transition-[width]"
-        style={{ backgroundColor: overBudget ? "var(--negative)" : color, width: `${clamped}%` }}
+        className="block h-full shrink-0 transition-[width] duration-[var(--duration-fast)] ease-[var(--ease-smooth-out)] motion-reduce:transition-none"
+        style={{ backgroundColor: color, width: `${withinWidth}%` }}
       />
+      {overflowWidth > 0 ? (
+        <span
+          aria-hidden="true"
+          className="block h-full shrink-0 bg-[var(--negative)] transition-[width] duration-[var(--duration-fast)] ease-[var(--ease-smooth-out)] motion-reduce:transition-none"
+          style={{ width: `${overflowWidth}%` }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, EmptyState } from "@/components/ui/card";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/b-progress";
 import { RollingDigits } from "@/components/ui/rolling-digits";
 import { financeEmojiOptions } from "@/lib/category-style";
 import { formatCurrency } from "@/lib/format";
@@ -241,11 +242,6 @@ function GoalRow({ goal }: { goal: GoalView }) {
     }
   }
 
-  // FinancialGoal carries no per-goal color today (packages/schema), so this always
-  // resolves to the --positive fallback -- kept as a named value (not a hardcoded
-  // class) so a future per-goal color field is a one-line change, not a rewrite.
-  const goalColor = "var(--positive)";
-
   return (
     <IconiqCard className="rounded-xl border-border/60 bg-card/95 py-4 shadow-[var(--ic-card-rest-shadow)]" data-state={goal.state} interactive>
       <IconiqCardContent className="flex flex-col gap-3">
@@ -332,15 +328,15 @@ function GoalRow({ goal }: { goal: GoalView }) {
 
         {percent !== null ? (
           <div className="flex flex-col gap-1">
-            <div
-              className="h-1.5 w-full overflow-hidden rounded-full"
-              style={{ backgroundColor: `color-mix(in oklab, ${goalColor} 14%, transparent)` }}
-            >
-              <span
-                className="block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none"
-                style={{ backgroundColor: goalColor, width: `${percent}%` }}
-              />
-            </div>
+            <Progress
+              ariaLabel={`${goal.name} funding progress`}
+              getValueLabel={() => `${percent}% of target`}
+              max={target ?? 100}
+              showValue={false}
+              size="sm"
+              tone="success"
+              value={saved}
+            />
             <small className="text-xs text-muted-foreground tabular-nums">{percent}% of target</small>
           </div>
         ) : null}
