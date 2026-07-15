@@ -209,7 +209,7 @@ export default async function AccountsPage() {
                           {/* Stretched-link overlay keeps the whole row clickable while the
                               card-detail button stays independently interactive above it. */}
                           <Link
-                            aria-label={`View account page for ${row.account.name}`}
+                            aria-label={`Open account page for ${row.account.name}`}
                             className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                             href={`/accounts/${encodeURIComponent(row.account.id)}`}
                           />
@@ -281,9 +281,9 @@ export default async function AccountsPage() {
 
               return (
                 <Link
-                  aria-label={`View account page for ${row.account.name}`}
+                  aria-label={`View transactions for ${row.account.name}`}
                   className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none"
-                  href={`/accounts/${encodeURIComponent(row.account.id)}`}
+                  href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
                   key={`${row.account.id}-activity`}
                 >
                   <div className="flex min-w-0 items-start gap-2">

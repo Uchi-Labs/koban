@@ -286,7 +286,7 @@ export function SyncEverythingPanel({
   }, [runDueSchedule, schedule.enabled, schedule.next_run_at]);
 
   return (
-    <Card size="sm" className="sync-everything-panel">
+    <Card size="sm" className="grid gap-[18px]">
       <CardHeader className="flex flex-row items-start justify-between gap-3 border-b pb-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-base font-medium">Sync everything</h1>

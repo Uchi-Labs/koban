@@ -628,7 +628,7 @@ function AppSidebarSections({
                     <li className={cn("rounded-lg", pathname === href && "bg-sidebar-accent/70")} key={account.id}>
                       <Link
                         aria-current={pathname === href ? "page" : undefined}
-                        aria-label={`View account page for ${account.name}`}
+                        aria-label={`Open account page for ${account.name}`}
                         className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
                         href={href}
                       >

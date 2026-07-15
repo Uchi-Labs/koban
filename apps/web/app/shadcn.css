@@ -1470,6 +1470,30 @@ button.transaction-review-row:active {
   font-variant-numeric: tabular-nums;
 }
 
+/* Originkit's compact pill sheen, remapped to the app's foreground token. */
+.sheen-pill {
+  position: relative;
+  overflow: hidden;
+}
+
+.sheen-pill::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: color-mix(in oklab, var(--foreground) 16%, transparent);
+  mask-image: linear-gradient(to right, transparent 30%, oklch(0 0 0) 50%, transparent 70%);
+  mask-position: 200% 0;
+  mask-size: 150% 100%;
+  animation: sheen-pill-sweep 1.5s ease-in-out infinite;
+}
+
+@keyframes sheen-pill-sweep {
+  to {
+    mask-position: -100% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   button:active:not(:disabled),
   [role="button"]:active,
@@ -1498,5 +1522,9 @@ button.transaction-review-row:active {
   }
   [data-overflowing] {
     mask-image: none;
+  }
+  .sheen-pill::after {
+    animation: none;
+    opacity: 0;
   }
 }
