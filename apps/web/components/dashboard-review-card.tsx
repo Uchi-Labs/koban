@@ -177,7 +177,14 @@ export function DashboardReviewCard({
         })}
         {displayRows.length === 0 ? (
           <EmptyState
-            actions={<Badge variant="synced">Reviewed</Badge>}
+            actions={
+              <>
+                <Badge variant="synced">Reviewed</Badge>
+                <Link className="link-underline min-h-10 content-center text-xs font-medium text-primary" href="/transactions">
+                  View transactions
+                </Link>
+              </>
+            }
             className="my-2"
             description="New imported transactions will appear here when they need category or evidence review."
             icon={<Check className="size-5 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none" />}

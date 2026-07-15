@@ -527,7 +527,7 @@ function AppSidebarSections({
             <div className="mx-2 mb-1 flex items-center gap-1 group-data-[collapsible=icon]:mx-0 group-data-[collapsible=icon]:justify-center">
               <button
                 aria-label="Open search"
-                className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-input/30 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-input/50 hover:text-foreground group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+                className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-input/30 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-input/50 hover:text-foreground motion-reduce:transition-none group-data-[collapsible=icon]:w-11 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 sm:h-10 sm:group-data-[collapsible=icon]:w-10"
                 data-sound="none"
                 onClick={onOpenPalette}
                 type="button"
@@ -541,7 +541,7 @@ function AppSidebarSections({
               <button
                 aria-label="Ask the finance agent"
                 className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-lg border border-input bg-input/30 text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary group-data-[collapsible=icon]:hidden",
+                  "flex size-11 shrink-0 items-center justify-center rounded-lg border border-input bg-input/30 text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary group-data-[collapsible=icon]:hidden sm:size-10",
                   agentPanel.open && "border-primary/40 bg-primary/15 text-primary"
                 )}
                 data-sound="open"

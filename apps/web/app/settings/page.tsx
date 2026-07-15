@@ -265,7 +265,7 @@ export default async function SettingsPage() {
   const hostedAuth = isHostedAuthMode();
 
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 p-4 sm:p-6">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 p-4 sm:p-6" data-testid="settings-page">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="app-page-title">Settings</h1>

@@ -12,6 +12,7 @@ import Image, { type ImageProps } from "next/image";
 import * as React from "react";
 
 import { SPRING_CARD_HOVER, SPRING_CARD_LAYOUT } from "@/lib/motion";
+import { useHoverCapable } from "@/lib/hooks/use-hover-capable";
 import { cn } from "@/lib/utils";
 
 const componentThemeClassName = "iconiq-theme";
@@ -57,7 +58,7 @@ const cardInteractiveSurfaceClassName =
   "shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none before:transition-opacity before:duration-250 before:motion-reduce:transition-none hover:border-foreground/11 hover:bg-card hover:before:opacity-100 focus-within:border-foreground/11 focus-within:bg-card focus-within:before:opacity-100";
 
 const cardCssHoverMotionClassName =
-  "transition-[transform,background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] hover:-translate-y-[5px] hover:scale-[1.006] hover:shadow-[var(--ic-card-hover-shadow)] focus-within:-translate-y-[5px] focus-within:scale-[1.006] focus-within:shadow-[var(--ic-card-hover-shadow)] motion-reduce:transform-none motion-reduce:transition-none motion-reduce:hover:transform-none motion-reduce:hover:shadow-none motion-reduce:focus-within:transform-none motion-reduce:focus-within:shadow-none";
+  "transition-[transform,background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] [@media(hover:hover)_and_(pointer:fine)]:hover:-translate-y-[5px] [@media(hover:hover)_and_(pointer:fine)]:hover:scale-[1.006] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--ic-card-hover-shadow)] focus-within:-translate-y-[5px] focus-within:scale-[1.006] focus-within:shadow-[var(--ic-card-hover-shadow)] motion-reduce:transform-none motion-reduce:transition-none motion-reduce:focus-within:transform-none motion-reduce:focus-within:shadow-none";
 
 type MotionSafeDivProps = Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -335,7 +336,8 @@ const Card = React.forwardRef<HTMLElement, CardProps>(
     ref
   ) => {
     const reduceMotion = useReducedMotion();
-    const useSpringHover = interactive && !reduceMotion;
+    const canHover = useHoverCapable();
+    const useSpringHover = interactive && !reduceMotion && canHover;
     const useCssHoverMotion = false;
     const animateLayout = !(reduceMotion || useSpringHover);
     const surfaceClassName = getCardSurfaceClassName({

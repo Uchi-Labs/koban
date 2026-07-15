@@ -9,6 +9,7 @@
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { Check, Pencil } from "lucide-react";
 import React from "react";
+import { useHoverCapable } from "@/lib/hooks/use-hover-capable";
 import { EASE_SMOOTH_OUT } from "@/lib/motion";
 import {
   ARC_END_DEG,
@@ -42,7 +43,7 @@ const CENTER_KNOB = 36;
 const ARC_RADIUS = 116;
 const ARC_KNOB = 20;
 const PETAL_OUTER = 46;
-const PETAL_INNER = 40;
+const PETAL_INNER = 44;
 const PETAL_SPRING = { type: "spring" as const, stiffness: 460, damping: 24, mass: 0.7 };
 
 interface PetalLayout {
@@ -338,7 +339,7 @@ export function BloomColorPicker({ value, onChange, ariaLabel = "Category color"
             aria-expanded={open}
             aria-haspopup="dialog"
             aria-label={ariaLabel}
-            className="relative size-7 shrink-0 rounded-full border border-border/70 shadow-sm transition-transform outline-none hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none motion-reduce:hover:scale-100"
+            className="relative size-11 shrink-0 rounded-full border border-border/70 shadow-sm transition-transform outline-none [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none sm:size-10"
             data-bloom-swatch=""
             onClick={() => (open ? closeBloom() : openBloom())}
             style={{
@@ -350,7 +351,7 @@ export function BloomColorPicker({ value, onChange, ariaLabel = "Category color"
 
           {editing ? (
             <div className="flex items-center gap-1.5">
-              <div className="flex h-7 items-center rounded-full border border-border bg-input/40 pr-1 pl-2.5 focus-within:ring-2 focus-within:ring-ring/50">
+              <div className="flex h-11 items-center rounded-full border border-border bg-input/40 pr-1 pl-2.5 focus-within:ring-2 focus-within:ring-ring/50 sm:h-10">
                 <span className="text-xs text-muted-foreground">#</span>
                 <input
                   aria-invalid={hexDraft.length > 0 && !editingHexValid}
@@ -372,7 +373,7 @@ export function BloomColorPicker({ value, onChange, ariaLabel = "Category color"
                 />
                 <button
                   aria-label="Commit hex color"
-                  className="ml-0.5 grid size-5 place-items-center rounded-full bg-foreground text-background transition-opacity outline-none disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/60"
+                  className="ml-0.5 grid size-11 place-items-center rounded-full bg-foreground text-background transition-opacity outline-none disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none sm:size-10"
                   disabled={!editingHexValid}
                   onClick={commitHexEdit}
                   type="button"
@@ -384,7 +385,7 @@ export function BloomColorPicker({ value, onChange, ariaLabel = "Category color"
           ) : (
             <button
               aria-label={`${ariaLabel}: ${resolvedHex.toUpperCase()}. Edit hex value`}
-              className="group inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card/60 pr-2 pl-2.5 text-xs transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="group inline-flex h-11 items-center gap-1.5 rounded-full border border-border bg-card/60 pr-2 pl-2.5 text-xs transition-colors outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none sm:h-10"
               onClick={startHexEdit}
               type="button"
             >
@@ -462,6 +463,8 @@ function BloomPanel({
   updateState: (patch: Partial<BloomPickerState>) => void;
   workingHue: string;
 }) {
+  const canHover = useHoverCapable();
+
   return (
     <>
       <button
@@ -606,7 +609,7 @@ function BloomPanel({
                   tabIndex={focusIndex === petal.index ? 0 : -1}
                   transition={reduceMotion ? { duration: 0.12 } : { ...PETAL_SPRING, delay: petal.index * 0.018 }}
                   type="button"
-                  whileHover={reduceMotion ? undefined : { scale: 1.14 }}
+                  whileHover={reduceMotion || !canHover ? undefined : { scale: 1.14 }}
                 />
               );
             })}

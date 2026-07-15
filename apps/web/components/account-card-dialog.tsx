@@ -229,7 +229,7 @@ function CopyChip({ label, value }: { label: string; value: string }) {
   return (
     <button
       aria-label={label}
-      className="flex shrink-0 items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-zinc-900 transition-transform hover:scale-105 motion-reduce:transition-none"
+      className="flex shrink-0 items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-zinc-900 transition-transform [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 motion-reduce:transition-none"
       onClick={async () => {
         await navigator.clipboard.writeText(value);
         setCopied(true);

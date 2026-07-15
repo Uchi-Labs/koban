@@ -39,6 +39,7 @@ import {
 } from "@/lib/cashflow";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button-variants";
 
 export interface CashflowCategoryMeta {
   id: string;
@@ -219,6 +220,7 @@ export function CashflowView({
 
       {isEmpty ? (
         <EmptyState
+          actions={<Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/settings">Sync or import</Link>}
           description="Sync a Teller connection or import historical transactions to see your monthly income, spend, and net cash flow."
           title="No cash flow yet"
         />
@@ -353,7 +355,7 @@ function CashflowCard({
           <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{rangeLabel}</p>
         </div>
         <Link
-          className="inline-flex items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
+          className="link-underline inline-flex items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground motion-reduce:transition-none"
           href="/transactions"
         >
           View more

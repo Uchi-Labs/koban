@@ -55,7 +55,7 @@ export function CategoryChangedCardContent({
         <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Category changed</span>
         <button
           aria-label="Dismiss"
-          className="inline-flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none sm:size-10"
           onClick={() => toast.dismiss(toastId)}
           type="button"
         >
