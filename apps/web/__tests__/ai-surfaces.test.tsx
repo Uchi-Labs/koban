@@ -81,4 +81,17 @@ describe("AI surface upgrades", () => {
       "/transactions?category_id=cat_transportation"
     );
   });
+
+  it("uses the compact insight stack without losing dismiss behavior", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<InsightsFeed compact initialInsights={[insight]} />);
+
+    expect(screen.getByRole("button", { name: "1 notifications. Expand notifications." })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: `Dismiss ${insight.title}` }));
+
+    expect(fetchMock).toHaveBeenCalledWith(`/api/v1/insights/${encodeURIComponent(insight.id)}`, { method: "DELETE" });
+    expect(screen.getByText("All caught up")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Review transactions" })).toHaveAttribute("href", "/transactions");
+  });
 });

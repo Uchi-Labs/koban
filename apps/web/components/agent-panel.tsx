@@ -4,6 +4,7 @@ import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "
 import { Send, X } from "lucide-react";
 import * as React from "react";
 import { AgentAnswer } from "@/components/agent-answer";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AvatarHoverGroup, AvatarHoverItem } from "@/components/ui/motion-recipes";
 import { StatefulButton } from "@/components/ui/stateful-button";
@@ -268,9 +269,7 @@ export function AgentPanel({
                 </div>
 
                 {stream.error ? (
-                  <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {stream.error}
-                  </p>
+                  <Alert appearance="destructive" message={stream.error} variant="inline" width="100%" />
                 ) : null}
 
                 <div className={cn("min-h-0", stream.status === "idle" && "hidden")}>

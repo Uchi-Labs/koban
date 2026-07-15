@@ -199,10 +199,9 @@ function MorphPanel({
             <motion.div
               animate={{
                 height: open ? (height ?? "auto") : 0,
-                opacity: open ? 1 : 0,
               }}
               className="overflow-hidden"
-              initial={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
+              initial={{ height: open ? "auto" : 0 }}
               onAnimationComplete={() => {
                 if (!open) {
                   setExitComplete(true);
@@ -215,6 +214,7 @@ function MorphPanel({
                     ? EXPAND_SPRING
                     : COLLAPSE_SPRING
               }
+              style={{ opacity: open ? 1 : 0 }}
             >
               <div className={contentClassName} ref={measureRef}>
                 {children}

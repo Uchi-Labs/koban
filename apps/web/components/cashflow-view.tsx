@@ -11,6 +11,12 @@ import {
 } from "@/components/cashflow-chart";
 import { EmptyState } from "@/components/ui/card";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
+import {
+  PartitionBar,
+  PartitionBarSegment,
+  PartitionBarSegmentTitle,
+  PartitionBarSegmentValue
+} from "@/components/ui/partition-bar";
 import { RollingDigits } from "@/components/ui/rolling-digits";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -218,6 +224,7 @@ export function CashflowView({
         />
       ) : (
         <div className="grid gap-4">
+          <CashflowAllocation currency={currency} totals={model.totals} />
           <CashflowCard
             categories={model.chartCategories}
             currency={currency}
@@ -266,6 +273,39 @@ export function CashflowView({
         </div>
       )}
     </main>
+  );
+}
+
+function CashflowAllocation({ currency, totals }: { currency: string; totals: { income: number; net: number; spend: number } }) {
+  const hasSurplus = totals.net >= 0;
+  const first = hasSurplus
+    ? { label: "Spent", value: totals.spend, variant: "default" as const }
+    : { label: "Income", value: totals.income, variant: "default" as const };
+  const second = hasSurplus
+    ? { label: "Net retained", value: totals.net, variant: "secondary" as const }
+    : { label: "Shortfall", value: Math.abs(totals.net), variant: "destructive" as const };
+
+  return (
+    <IconiqCard className="rounded-xl border-border/60 bg-card/95 py-4 shadow-[var(--ic-card-rest-shadow)]">
+      <IconiqCardContent className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-sm font-medium text-foreground">Visible-period allocation</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {hasSurplus ? "Where income went and what remained." : "Income covered part of spending; the remainder is the shortfall."}
+          </p>
+        </div>
+        <PartitionBar aria-label="Visible-period cash flow allocation" size="sm">
+          <PartitionBarSegment alignment="left" num={first.value} variant={first.variant}>
+            <PartitionBarSegmentTitle>{first.label}</PartitionBarSegmentTitle>
+            <PartitionBarSegmentValue>{formatCurrency(first.value, currency)}</PartitionBarSegmentValue>
+          </PartitionBarSegment>
+          <PartitionBarSegment alignment="right" num={second.value} variant={second.variant}>
+            <PartitionBarSegmentTitle>{second.label}</PartitionBarSegmentTitle>
+            <PartitionBarSegmentValue>{formatCurrency(second.value, currency)}</PartitionBarSegmentValue>
+          </PartitionBarSegment>
+        </PartitionBar>
+      </IconiqCardContent>
+    </IconiqCard>
   );
 }
 

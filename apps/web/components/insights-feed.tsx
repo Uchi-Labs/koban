@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, RefreshCw, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BellOff, RefreshCw, X } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
+import { NotificationStack } from "@/components/motion/notification-stack";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/card";
 import {
   ReasoningStep,
   ReasoningStepSource,
@@ -33,6 +35,36 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
     setInsights((current) => current.filter((insight) => insight.id !== id));
     const response = await fetch(`/api/v1/insights/${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!response.ok) setInsights(previous);
+  }
+
+  if (compact && visible.length > 0) {
+    return (
+      <div data-testid="insights-feed">
+        <NotificationStack
+          className="max-w-none"
+          collapsedLabel="Insights"
+          expandedLabel={insights.length > 3 ? `View ${insights.length - 3} more` : "Open insights"}
+          items={visible.map((insight) => ({
+            description: (
+              <>
+                <span className="block">{insight.detail}</span>
+                <InsightReasoning insight={insight} />
+              </>
+            ),
+            dismissLabel: `Dismiss ${insight.title}`,
+            id: insight.id,
+            onDismiss: () => void dismiss(insight.id),
+            title: (
+              <span className="flex min-w-0 items-center gap-2">
+                <span className={cn("size-2 shrink-0 rounded-full", toneClasses[insight.tone])} />
+                <span className="truncate">{insight.title}</span>
+              </span>
+            )
+          }))}
+          onViewAll={() => window.location.assign("/insights")}
+        />
+      </div>
+    );
   }
 
   return (
@@ -71,16 +103,21 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
               </Button>
             </m.article>
           )) : (
-            <m.p
+            <m.div
               animate={{ opacity: 1 }}
-              className="py-6 text-sm text-muted-foreground"
               initial={{ opacity: 0 }}
               key="insights-empty"
               layout={reduce ? false : "position"}
               transition={{ delay: reduce ? 0.1 : 0.15, duration: 0.1, ease: EASE_OUT }}
             >
-              No new signals yet. Insights appear as your transaction history grows.
-            </m.p>
+              <EmptyState
+                actions={<Button render={<Link href="/transactions" />}>Review transactions</Button>}
+                description="Insights appear as your transaction history grows. Review recent activity while the ledger gathers more context."
+                icon={<BellOff className="size-4" />}
+                size="sm"
+                title="All caught up"
+              />
+            </m.div>
           )}
         </AnimatePresence>
         {compact && insights.length > 3 ? <Link className="mt-1 text-xs font-medium text-primary hover:underline" href="/insights">View {insights.length - 3} more insights</Link> : null}

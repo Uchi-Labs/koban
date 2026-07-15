@@ -34,6 +34,8 @@ export type Activity = {
   date: string;
   count: number;
   level: number;
+  /** Optional domain-specific label used when the graph is not showing commits. */
+  label?: string;
 };
 
 type Week = Array<Activity | undefined>;
@@ -355,10 +357,10 @@ const ContributionGraphBlockTooltip = () => {
         opacity: visible ? 1 : 0,
         transform: `translate(-50%, calc(-100% - 8px)) scale(${scale})`,
         transitionProperty: prefersReducedMotion
-          ? "opacity"
+          ? "none"
           : "left, top, opacity, transform",
         transitionDuration: prefersReducedMotion
-          ? "120ms"
+          ? "0ms"
           : "140ms, 140ms, 160ms, 200ms",
         transitionTimingFunction: prefersReducedMotion
           ? "ease"
@@ -799,13 +801,13 @@ export const ContributionGraphBlock = ({
 
   return (
     <rect
-      aria-label={`${formatCommitLabel(activity.count)} on ${activity.date}`}
+      aria-label={activity.label ?? `${formatCommitLabel(activity.count)} on ${activity.date}`}
       className={cn(
         "origin-center [transform-box:fill-box]",
         LEVEL_CLASSES,
         loading
           ? "animate-pulse"
-          : "transition-transform duration-200 ease-out hover:scale-125",
+          : "transition-transform duration-200 ease-out hover:scale-125 motion-reduce:transform-none motion-reduce:transition-none",
         showEntrance &&
           (activity.level === 0
             ? "animate-[iconiq-cg-fade_0.4s_ease-out_backwards]"
