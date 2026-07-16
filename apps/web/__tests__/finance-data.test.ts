@@ -5,7 +5,7 @@ import { getTransactionViews } from "@/lib/view-models";
 
 const account = {
   id: "acct_checking",
-  providerConnectionId: "provider_teller_test",
+  providerConnectionId: "provider_plaid_test",
   groupId: "group_cash",
   name: "Checking",
   institutionName: "Test Bank",
@@ -19,13 +19,13 @@ const account = {
 function transaction(overrides: Partial<Transaction> & Pick<Transaction, "id" | "date" | "merchantName" | "amount">) {
   return {
     accountId: account.id,
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     description: overrides.merchantName,
     currency: "USD",
     categoryId: "cat_software",
     status: "posted",
     reviewed: false,
-    tags: ["teller"],
+    tags: ["plaid"],
     ...overrides
   } satisfies Transaction;
 }
@@ -85,7 +85,7 @@ describe("finance data derivation", () => {
     expect(summary.creditBalance).toBe(250);
   });
 
-  it("infers recurring items from repeated Teller transactions", () => {
+  it("infers recurring items from repeated Plaid transactions", () => {
     const recurringItems = createRecurringItems([
       transaction({ id: "txn_jan", date: "2026-01-05", merchantName: "Figma", amount: -45 }),
       transaction({ id: "txn_feb", date: "2026-02-04", merchantName: "Figma", amount: -45 }),
@@ -166,7 +166,7 @@ describe("finance data derivation", () => {
     expect(mixedRecurring[0].currency).toBe("MIXED");
   });
 
-  it("groups transaction views relative to the latest synced Teller transaction", () => {
+  it("groups transaction views relative to the latest synced Plaid transaction", () => {
     const views = getTransactionViews(
       [
         transaction({ id: "txn_old", date: "2026-05-20", merchantName: "Older", amount: -12 }),

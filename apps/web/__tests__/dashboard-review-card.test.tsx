@@ -24,7 +24,7 @@ const account = {
   lastUpdatedAt: "2026-05-31T00:00:00.000Z",
   mask: "1234",
   name: "Sapphire",
-  providerConnectionId: "provider_teller_test",
+  providerConnectionId: "provider_plaid_test",
   type: "credit_card"
 } satisfies Account;
 
@@ -85,7 +85,7 @@ function createTransaction(id: string, merchantName: string, amount: number): Tr
     id,
     merchantName,
     postedDate: "2026-05-31",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     reviewed: false,
     status: "posted",
     tags: []

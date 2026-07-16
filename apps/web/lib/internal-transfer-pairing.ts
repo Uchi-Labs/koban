@@ -378,12 +378,12 @@ function canSuggestTransferCategory(transaction: Transaction): boolean {
   return transaction.tags.every(isProviderOwnedTag);
 }
 
-const providerTagNames = ["teller", "plaid", "simplefin", "snaptrade", "financekit"] as const;
+const providerTagNames = ["plaid", "simplefin", "snaptrade", "financekit"] as const;
 
 function isProviderOwnedTag(tag: string): boolean {
   const normalized = tag.trim().toLowerCase();
   // Provider-assigned tags are the bare provider name (Plaid/SimpleFIN/SnapTrade/
-  // FinanceKit) or a namespaced Teller type ("teller:card_payment"). A row that
+  // FinanceKit) or a namespaced provider type ("plaid:card_payment"). A row that
   // carries only these has not been user-touched, so it stays eligible for
   // automatic transfer marking.
   return providerTagNames.some((name) => normalized === name || normalized.startsWith(`${name}:`));

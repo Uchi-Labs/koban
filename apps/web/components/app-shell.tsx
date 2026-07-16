@@ -196,7 +196,7 @@ interface AppShellProps {
   demoMode?: boolean;
   lastSyncedAt?: string;
   reviewActionableCount: number;
-  source: "empty" | "teller";
+  source: "empty" | "koban";
   transactionCount: number;
 }
 
@@ -655,7 +655,7 @@ function AppSidebarSections({
         <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/50 p-3 text-xs">
           <SyncStatusIsland state={syncIslandState} />
           <p className="mt-2 text-sidebar-foreground/60">
-            {source === "teller"
+            {source === "koban"
               ? `${accountCount} accounts · ${transactionCount.toLocaleString()} transactions. ${formatSyncAge(lastSyncedAt)}`
               : "Connect an account in Settings to populate accounts and transactions."}
           </p>

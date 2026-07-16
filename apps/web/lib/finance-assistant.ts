@@ -437,8 +437,8 @@ function buildReviewAnswer({
   return baseResponse({
     answer:
       unreviewed.length > 0
-        ? `${unreviewed.length.toLocaleString()} actionable Teller transactions need review after excluding transfers and already-classified income. Start with the largest unreviewed charges and the repeated merchants in the chart; those decisions will update semantic search, rules, and future categorization.`
-        : "There are no actionable unreviewed Teller transactions right now.",
+        ? `${unreviewed.length.toLocaleString()} actionable bank transactions need review after excluding transfers and already-classified income. Start with the largest unreviewed charges and the repeated merchants in the chart; those decisions will update semantic search, rules, and future categorization.`
+        : "There are no actionable unreviewed bank transactions right now.",
     chart: {
       data: repeatedMerchants.map((row) => ({
         label: row.label,
@@ -453,7 +453,7 @@ function buildReviewAnswer({
       repeatedMerchants[0]
         ? `${repeatedMerchants[0].label} is the largest repeated unreviewed merchant at ${formatCurrency(repeatedMerchants[0].amount)}.`
         : "No repeated unreviewed merchant cluster is visible.",
-      "Review decisions are persisted as transaction overlays, not written back into Teller bank facts."
+      "Review decisions are persisted as transaction overlays, not written back into provider bank facts."
     ],
     metrics: [
       { label: "Needs review", value: unreviewed.length.toLocaleString(), detail: "Actionable rows" },
@@ -611,7 +611,7 @@ function buildSourceSyncAnswer({
     answer:
       sourceItemsCount > 0
         ? [
-            `External evidence is active: ${sourceItemsCount.toLocaleString()} source items are stored and ${sourceLinkCount.toLocaleString()} links connect source records to Teller transactions.`,
+            `External evidence is active: ${sourceItemsCount.toLocaleString()} source items are stored and ${sourceLinkCount.toLocaleString()} links connect source records to bank transactions.`,
             sourceStatus.connectedText,
             sourceStatus.blockedText,
             nextSetupAction
@@ -619,7 +619,7 @@ function buildSourceSyncAnswer({
               : undefined
           ].filter(Boolean).join(" ")
         : [
-            "The app has source adapters installed, but no Gmail, Amazon, Instacart, Airbnb, or Outlook records have been imported yet. The Teller ledger remains the only populated finance source.",
+            "The app has source adapters installed, but no Gmail, Amazon, Instacart, Airbnb, or Outlook records have been imported yet. The local ledger remains the only populated finance source.",
             nextSetupAction
               ? `Next source setup action: ${nextSetupAction.displayName} - ${nextSetupAction.nextAction}`
               : undefined

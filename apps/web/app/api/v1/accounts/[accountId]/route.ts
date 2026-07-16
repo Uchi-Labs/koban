@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ acc
   const account = accounts.find((candidate) => candidate.id === decodeURIComponent(accountId));
 
   if (!account) {
-    return NextResponse.json({ error: "Account not found in the local Teller ledger." }, { status: 404 });
+    return NextResponse.json({ error: "Account not found in the local ledger." }, { status: 404 });
   }
 
   return NextResponse.json(serializeAccount(account));
@@ -37,7 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ac
   const account = accounts.find((candidate) => candidate.id === accountId);
 
   if (!account) {
-    return NextResponse.json({ error: "Account not found in the local Teller ledger." }, { status: 404 });
+    return NextResponse.json({ error: "Account not found in the local ledger." }, { status: 404 });
   }
 
   await setAccountInclusionOverride(accountId, included);

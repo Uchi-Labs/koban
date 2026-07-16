@@ -2,7 +2,7 @@ export type SyncIslandStatus = "idle" | "syncing" | "success" | "error";
 
 export interface SyncIslandStateInput {
   status: SyncIslandStatus;
-  source: "empty" | "teller";
+  source: "empty" | "koban";
   lastSyncedAt?: string;
   accountCount: number;
   transactionCount: number;
@@ -20,7 +20,7 @@ export interface SyncIslandState {
 // Server stages a single sync-run runs through, in order. We don't get live
 // progress events, so the label advances on a timer and HOLDS on the last stage
 // until the run actually finishes — it never wraps back to the start.
-const SYNC_ISLAND_PHASES = ["Teller", "sources", "evidence", "AI enrichment", "finishing up"];
+const SYNC_ISLAND_PHASES = ["Plaid", "sources", "evidence", "AI enrichment", "finishing up"];
 export const SYNC_ISLAND_PHASE_COUNT = SYNC_ISLAND_PHASES.length;
 
 const relativeTimeFormatter = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
@@ -41,11 +41,11 @@ export function deriveSyncIslandState({
   status,
   transactionCount
 }: SyncIslandStateInput): SyncIslandState {
-  const syncedLabel = source === "teller" ? `Synced ${formatRelativeSyncTime(lastSyncedAt)}` : "No Teller data";
+  const syncedLabel = source === "koban" ? `Synced ${formatRelativeSyncTime(lastSyncedAt)}` : "No synced data";
   const detail =
-    source === "teller"
+    source === "koban"
       ? `${accountCount.toLocaleString()} accounts, ${transactionCount.toLocaleString()} transactions`
-      : "Connect Teller in Settings";
+      : "Connect a provider in Settings";
   // Clamp (not modulo) so phases advance once and hold — no looping.
   const phaseLabel = SYNC_ISLAND_PHASES[Math.min(phaseIndex, SYNC_ISLAND_PHASES.length - 1)] ?? SYNC_ISLAND_PHASES[0];
 

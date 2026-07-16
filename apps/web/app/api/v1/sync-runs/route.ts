@@ -14,13 +14,11 @@ import { getPlaidSetupStatus } from "@/lib/plaid-server";
 import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
 import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
 import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync-request";
-import { getTellerSetupStatus } from "@/lib/teller-server";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [teller, snaptrade, plaid, simplefin, sources, lastRun, recentRuns, schedule] = await Promise.all([
-    getTellerSetupStatus(),
+  const [snaptrade, plaid, simplefin, sources, lastRun, recentRuns, schedule] = await Promise.all([
     getSnapTradeSetupStatus(),
     getPlaidSetupStatus(),
     getSimpleFinSetupStatus(),
@@ -39,14 +37,7 @@ export async function GET() {
       plaid: plaid.readyForSync,
       simplefin: simplefin.readyForSync,
       sources: sourceReadiness.ready,
-      snaptrade: snaptrade.readyForSync,
-      teller: teller.readyForApi
-    },
-    teller: {
-      enrollment_count: teller.enrollmentCount,
-      ready_for_api: teller.readyForApi,
-      stored_account_count: teller.storedAccountCount,
-      stored_transaction_count: teller.storedTransactionCount
+      snaptrade: snaptrade.readyForSync
     },
     snaptrade: {
       configured: snaptrade.configured,

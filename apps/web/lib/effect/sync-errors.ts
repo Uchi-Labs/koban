@@ -1,10 +1,5 @@
 import { Data } from "effect";
 
-export class TellerSyncError extends Data.TaggedError("TellerSyncError")<{
-  cause?: unknown;
-  message: string;
-}> {}
-
 export class SnapTradeSyncError extends Data.TaggedError("SnapTradeSyncError")<{
   cause?: unknown;
   message: string;
@@ -41,7 +36,6 @@ export class EnrichmentError extends Data.TaggedError("EnrichmentError")<{
 }> {}
 
 export type SyncPipelineError =
-  | TellerSyncError
   | SnapTradeSyncError
   | SimpleFinSyncError
   | PlaidSyncError

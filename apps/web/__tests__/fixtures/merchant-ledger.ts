@@ -1,5 +1,5 @@
 import type { Account, ProviderConnection, Transaction } from "@ai-finances/schema";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 
 /**
  * A small ledger with three "Starbucks*" transactions (matching a
@@ -7,13 +7,13 @@ import type { TellerLedger } from "@/lib/finance-data";
  * "Shell Oil" transaction. Shared by the rules-preview and bulk-categorize
  * API tests so both exercise the same matching surface.
  */
-export function createMerchantLedger(): TellerLedger {
+export function createMerchantLedger(): Ledger {
   const providerConnection = {
     configured: true,
-    displayName: "Teller - Test Bank",
-    id: "provider_teller_test",
+    displayName: "Plaid - Test Bank",
+    id: "provider_plaid_test",
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
-    provider: "teller",
+    provider: "plaid",
     status: "connected"
   } satisfies ProviderConnection;
   const account = {
@@ -42,7 +42,7 @@ export function createMerchantLedger(): TellerLedger {
     providerConnectionId: providerConnection.id,
     reviewed: false,
     status: "posted",
-    tags: ["teller"]
+    tags: ["plaid"]
   } satisfies Transaction;
 
   return {
@@ -50,7 +50,7 @@ export function createMerchantLedger(): TellerLedger {
     enrollmentCount: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     providerConnections: [providerConnection],
-    source: "teller",
+    source: "koban",
     syncStartDate: "2026-01-01",
     syncSummary: { accountCount: 1, errors: [], transactionCount: 4 },
     transactions: [

@@ -10,7 +10,7 @@ const sections = [
   {
     title: "Data Collected",
     body: [
-      "When the owner explicitly connects a financial institution, Koban stores account metadata, balances, and transactions from Teller, Plaid, SnapTrade, and SimpleFIN. These connections are read-only."
+      "When the owner explicitly connects a financial institution, Koban stores account metadata, balances, and transactions from Plaid, SnapTrade, and SimpleFIN. These connections are read-only."
     ]
   },
   {
@@ -24,14 +24,14 @@ const sections = [
   {
     title: "Consent",
     body: [
-      "Connecting an institution is an explicit owner action through that provider's consent flow, such as Plaid Link, Fidelity Access, SimpleFIN Bridge, SnapTrade, or Teller Connect."
+      "Connecting an institution is an explicit owner action through that provider's consent flow, such as Plaid Link, Fidelity Access, SimpleFIN Bridge, or SnapTrade."
     ]
   },
   {
     title: "Retention And Deletion",
     body: [
       "Koban retains synced data while a connection is active. The owner can delete local app data at any time from Settings using the local-data reset flow.",
-      "The owner can also revoke provider access at the provider or institution, including Plaid Portal, SimpleFIN Bridge, the SnapTrade dashboard, and Teller."
+      "The owner can also revoke provider access at the provider or institution, including Plaid Portal, SimpleFIN Bridge, and the SnapTrade dashboard."
     ]
   },
   {

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-test("dashboard renders Teller-backed cards", async ({ page }) => {
+test("dashboard renders Plaid-backed cards", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("dashboard-page")).toBeVisible();
@@ -118,12 +118,12 @@ test("transactions filter and inspector work", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /Review/ })).toHaveAttribute("aria-selected", "true");
 });
 
-test("settings shows Teller setup without crashing", async ({ page }) => {
+test("settings shows provider setup without crashing", async ({ page }) => {
   await page.goto("/settings");
 
   // Connections tab is the default hero surface.
   await expect(page.getByRole("tab", { name: "Connections" })).toBeVisible();
-  await expect(page.getByTestId("teller-setup-panel")).toBeVisible();
+  await expect(page.getByTestId("connections-settings-panel")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bank accounts" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Connect bank account|Add another bank account/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Context sources" })).toBeVisible();
@@ -214,7 +214,7 @@ test("settings shows Teller setup without crashing", async ({ page }) => {
       external_source_count?: number;
       ready_count?: number;
     };
-    teller?: {
+    plaid?: {
       stored_account_count?: number;
       stored_transaction_count?: number;
     };
@@ -234,23 +234,6 @@ test("settings shows Teller setup without crashing", async ({ page }) => {
     (syncStatus.sources?.external_source_count ?? 0) > 0 && syncStatus.sources?.blocked_count === 0
   );
 
-  const tellerStatusResponse = await page.request.get("/api/teller/status");
-  expect(tellerStatusResponse.ok()).toBe(true);
-  const tellerStatus = (await tellerStatusResponse.json()) as {
-    lastLedgerSyncedAt?: string;
-    storedAccountCount?: number;
-    storedTransactionCount?: number;
-  };
-  expect(tellerStatus).toMatchObject({
-    lastLedgerSyncedAt: "2026-06-30T12:00:00.000Z",
-    storedAccountCount: 2,
-    storedTransactionCount: 40
-  });
-  expect(syncStatus.teller).toMatchObject({
-    stored_account_count: tellerStatus.storedAccountCount,
-    stored_transaction_count: tellerStatus.storedTransactionCount
-  });
-
   const scheduleResponse = await page.request.get("/api/v1/sync-schedule");
   expect(scheduleResponse.ok()).toBe(true);
   const schedulePayload = (await scheduleResponse.json()) as { object?: string };
@@ -267,7 +250,7 @@ test("settings shows Teller setup without crashing", async ({ page }) => {
   });
 });
 
-test("core v1 finance API exposes Teller-backed resources", async ({ page }) => {
+test("core v1 finance API exposes Plaid-backed resources", async ({ page }) => {
   const accountsResponse = await page.request.get("/api/v1/accounts?limit=2");
   expect(accountsResponse.ok()).toBe(true);
   const accountsPayload = (await accountsResponse.json()) as {
@@ -324,7 +307,7 @@ test("core v1 finance API exposes Teller-backed resources", async ({ page }) => 
   expect(dashboardResponse.ok()).toBe(true);
   const dashboardPayload = (await dashboardResponse.json()) as { net_worth?: number; object?: string; source?: string };
   expect(dashboardPayload.object).toBe("dashboard_summary");
-  expect(dashboardPayload.source).toBe("teller");
+  expect(dashboardPayload.source).toBe("koban");
   expect(typeof dashboardPayload.net_worth).toBe("number");
 
   const invalidSourceLimitResponse = await page.request.get("/api/v1/source-items?limit=abc");

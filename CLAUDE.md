@@ -17,7 +17,7 @@ All four checks must pass before any change is considered done.
 
 ## Hard rules
 
-- **Never** commit or print secrets. `.env` (git-ignored) holds Teller credentials/certs and AI keys — reference variable names only.
+- **Never** commit or print secrets. `.env` (git-ignored) holds Plaid/provider credentials and AI keys — reference variable names only.
 - **One server at a time** on the default PGlite store (`data/local/pglite/` is single-writer; two processes corrupt state). Set `DATABASE_URL` for Postgres instead when concurrency matters.
 - No fake financial data, stub rows, or fixture fallbacks in runtime paths (test seeds live under `apps/web/tests/e2e/`). Source/provider readiness must be honest — blocked is blocked, never faked green.
 - User overlays (categories, tags, notes, review state) must survive provider resync.

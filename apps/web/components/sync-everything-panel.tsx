@@ -38,7 +38,6 @@ interface SyncEverythingStatus {
     simplefin: boolean;
     sources: boolean;
     snaptrade: boolean;
-    teller: boolean;
   };
   plaid: {
     configured: boolean;
@@ -74,12 +73,6 @@ interface SyncEverythingStatus {
     registered: boolean;
     stored_account_count: number;
     stored_position_count: number;
-  };
-  teller: {
-    enrollment_count: number;
-    ready_for_api: boolean;
-    stored_account_count: number;
-    stored_transaction_count: number;
   };
   last_run?: AppSyncRunPayload | null;
   recent_runs?: AppSyncRunPayload[];
@@ -131,7 +124,7 @@ export function SyncEverythingPanel({
     setBusy(true);
     setError("");
     setRun(null);
-    const loadingDescription = "Running Teller, Plaid, SimpleFIN, SnapTrade, evidence sources, semantic updates, and AI enrichment.";
+    const loadingDescription = "Running Plaid, SimpleFIN, SnapTrade, evidence sources, semantic updates, and AI enrichment.";
     const toastId = showToast({
       description: (
         <span className="t-shimmer" data-text={loadingDescription}>
@@ -291,11 +284,11 @@ export function SyncEverythingPanel({
         <div className="flex flex-col gap-1">
           <h1 className="text-base font-medium">Sync everything</h1>
           <p className="text-sm text-muted-foreground">
-            Runs Teller, SnapTrade, installed evidence sources, semantic updates, and AI enrichment in one local pass.
+            Runs Plaid, SimpleFIN, SnapTrade, installed evidence sources, semantic updates, and AI enrichment in one local pass.
           </p>
         </div>
         <StatefulButton
-          disabled={busy || scheduleBusy || (!status.ready.teller && !status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin)}
+          disabled={busy || scheduleBusy || (!status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin)}
           data-sound="sync"
           loadingText="Syncing"
           onClick={syncEverything}
@@ -308,12 +301,7 @@ export function SyncEverythingPanel({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-6" aria-label="Whole app sync readiness">
-          <SyncStatusTile
-            detail={`${status.teller.stored_account_count.toLocaleString()} accounts, ${status.teller.stored_transaction_count.toLocaleString()} transactions`}
-            label="Teller"
-            ready={status.ready.teller}
-          />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-5" aria-label="Whole app sync readiness">
           <SyncStatusTile detail={snapTradeReadinessDetail(status.snaptrade)} label="SnapTrade" ready={status.ready.snaptrade} />
           <SyncStatusTile detail={plaidReadinessDetail(status.plaid)} label="Plaid" ready={status.ready.plaid} />
           <SyncStatusTile detail={simpleFinReadinessDetail(status.simplefin)} label="SimpleFIN" ready={status.ready.simplefin} />
@@ -344,8 +332,8 @@ export function SyncEverythingPanel({
         <RecentSyncRuns runs={recentRuns} />
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {scheduleError ? <p className="text-sm text-destructive">{scheduleError}</p> : null}
-        {!status.ready.teller && !status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin ? (
-          <p className="text-sm text-destructive">Teller, Plaid, SimpleFIN, or SnapTrade must be configured before whole-app sync can run.</p>
+        {!status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin ? (
+          <p className="text-sm text-destructive">Plaid, SimpleFIN, or SnapTrade must be configured before whole-app sync can run.</p>
         ) : null}
       </CardContent>
     </Card>
@@ -451,7 +439,7 @@ function RecentSyncRuns({ runs }: { runs: AppSyncRunPayload[] }) {
                 <span className="text-xs text-muted-foreground">{new Date(run.finished_at).toLocaleString()}</span>
               </div>
               <span className="text-right text-xs text-muted-foreground">
-                Teller {run.teller.status} · Plaid {run.plaid.status} · SimpleFIN {run.simplefin.status} · SnapTrade {run.snaptrade.status} · Evidence {run.sources.status} · AI {run.enrichment.status}
+                Plaid {run.plaid.status} · SimpleFIN {run.simplefin.status} · SnapTrade {run.snaptrade.status} · Evidence {run.sources.status} · AI {run.enrichment.status}
               </span>
             </article>
           ))}
@@ -580,14 +568,6 @@ function SyncRunSummary({ run }: { run: AppSyncRunPayload }) {
         <span className="text-xs text-muted-foreground">{new Date(run.finished_at).toLocaleString()}</span>
       </div>
       <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-        <li>
-          Teller: {run.teller?.status ?? "error"}
-          {run.teller?.data
-            ? ` (${(run.teller.data.accountCount ?? 0).toLocaleString()} accounts, ${(run.teller.data.transactionCount ?? 0).toLocaleString()} transactions)`
-            : run.teller?.error
-              ? ` (${run.teller.error})`
-              : ""}
-        </li>
         <li>
           Plaid: {run.plaid?.status ?? "error"}
           {run.plaid?.data
@@ -741,7 +721,7 @@ function aiSyncDetail(data: NonNullable<AppSyncRunPayload["enrichment"]["data"]>
 }
 
 function syncToastDescription(run: AppSyncRunPayload): string {
-  return `Teller ${run.teller.status}, Plaid ${run.plaid.status}, SimpleFIN ${run.simplefin.status}, SnapTrade ${run.snaptrade.status}, evidence ${run.sources.status}, AI ${run.enrichment.status}.`;
+  return `Plaid ${run.plaid.status}, SimpleFIN ${run.simplefin.status}, SnapTrade ${run.snaptrade.status}, evidence ${run.sources.status}, AI ${run.enrichment.status}.`;
 }
 
 function providerFallbackWarning(provider: Record<string, unknown> | undefined): string | undefined {

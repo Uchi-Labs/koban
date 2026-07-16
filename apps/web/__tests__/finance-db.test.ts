@@ -46,7 +46,7 @@ import {
   recordSourceSyncRun,
   refreshSourceEvidenceMatches,
   renameTag,
-  replaceTellerLedgerInDb,
+  replaceLedgerInDb,
   resetLocalAppData,
   runInternalTransferPairMatching,
   semanticSearchFinanceResources,
@@ -69,14 +69,14 @@ import {
   getEffectiveLlmEnrichmentStatus,
   recordLlmProviderHealth
 } from "@/lib/enrichment-runs";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 import { setEmbeddingFetchForTests } from "@/lib/embeddings";
 import {
-  exportTellerLedgerBackup,
+  exportLedgerBackup,
   getFinanceData,
-  getTellerLedgerBackupPath,
-  importTellerLedgerBackup,
-  writeTellerLedgerBackup
+  getLedgerBackupPath,
+  importLedgerBackup,
+  writeLedgerBackup
 } from "@/lib/finance-data";
 import { importSourceAdapterPayload } from "@/lib/source-adapters";
 
@@ -89,7 +89,7 @@ afterEach(async () => {
     testDbPath = null;
   }
   delete process.env.AI_FINANCES_PGLITE_DIR;
-  delete process.env.AI_FINANCES_TELLER_BACKUP_PATH;
+  delete process.env.AI_FINANCES_LEDGER_BACKUP_PATH;
   delete process.env.AI_FINANCES_LLM_BASE_URL;
   delete process.env.AI_FINANCES_LLM_MODEL;
   delete process.env.AI_FINANCES_LLM_PROVIDER;
@@ -187,15 +187,15 @@ describe("finance db", () => {
     mkdirForTestDb();
     writeFileSync(path.join(testDbPath!, "postmaster.pid"), "-42\n/pglite/data\n1780246785\n5432\n\n\n");
 
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const snapshot = await readFinanceDbSnapshot();
     expect(snapshot?.transactions).toHaveLength(1);
   }, 15_000);
 
-  it("stores Teller snapshots and preserves user transaction overlays across resync", async () => {
+  it("stores Plaid snapshots and preserves user transaction overlays across resync", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const updated = await updateDbTransaction("txn_1", {
       categoryId: "cat_travel",
@@ -211,7 +211,7 @@ describe("finance db", () => {
       tags: ["trip", "dinner"]
     });
 
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -18.5, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -18.5, providerCategoryId: "cat_food" }));
 
     const searchResults = await semanticSearchTransactions("Denver dinner trip", 5);
     const snapshot = await readFinanceDbSnapshot();
@@ -243,7 +243,7 @@ describe("finance db", () => {
 
   it("clears transaction goal assignments when deleting a financial goal", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const goal = await createFinancialGoal({ name: "Emergency fund", targetAmountMinor: 500_00 });
     await setTransactionFinancialGoal("txn_1", goal.id);
@@ -263,7 +263,7 @@ describe("finance db", () => {
   it("clears paired transaction links when a ledger replace prunes the counterpart", async () => {
     useTempDb();
     const ledger = createTransferPairLedgerForPruneTest();
-    await replaceTellerLedgerInDb(ledger);
+    await replaceLedgerInDb(ledger);
 
     const pairSummary = await runInternalTransferPairMatching();
     const pairedSnapshot = await readFinanceDbSnapshot();
@@ -277,7 +277,7 @@ describe("finance db", () => {
       pairedTransactionId: "txn_checking_payment"
     });
 
-    await replaceTellerLedgerInDb({
+    await replaceLedgerInDb({
       ...ledger,
       transactions: ledger.transactions.filter((transaction) => transaction.id !== "txn_card_payment"),
       syncSummary: {
@@ -335,7 +335,7 @@ describe("finance db", () => {
 
   it("renames a user tag case-insensitively and rewrites transaction tags", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     await updateDbTransaction("txn_1", { tags: ["Boston Trip", "food"] });
     await upsertTagStyle("Boston Trip", "#8B5CF6");
 
@@ -356,7 +356,7 @@ describe("finance db", () => {
 
   it("merges a renamed tag into an existing target and dedupes transaction tags", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     await updateDbTransaction("txn_1", { tags: ["Trip", "vacation", "TRIP"] });
     await upsertTagStyle("Trip", "#111111");
     await upsertTagStyle("Vacation", "#222222");
@@ -376,11 +376,11 @@ describe("finance db", () => {
 
   it("blocks renaming source tags with a provider-resync explanation", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
-    await expect(renameTag("TELLER", "Bank Sync")).rejects.toThrow(/source tag.*provider resync/i);
+    await expect(renameTag("PLAID", "Bank Sync")).rejects.toThrow(/source tag.*provider resync/i);
     expect((await readFinanceDbSnapshot())?.transactions.find((transaction) => transaction.id === "txn_1")?.tags).toEqual([
-      "teller"
+      "plaid"
     ]);
   });
 
@@ -399,9 +399,9 @@ describe("finance db", () => {
     useTempDb();
 
     const bareAdapterNames = await Promise.all(
-      ["simplefin", "plaid", "teller", "snaptrade", "financekit"].map((name) => upsertTagStyle(name))
+      ["simplefin", "plaid", "plaid", "snaptrade", "financekit"].map((name) => upsertTagStyle(name))
     );
-    const namespaced = await upsertTagStyle("teller:card_payment");
+    const namespaced = await upsertTagStyle("plaid:card_payment");
     const copilotTags = await Promise.all(
       ["copilot:cat:Restaurants", "copilot:tag:Sapiex", "copilot:amazon"].map((name) => upsertTagStyle(name))
     );
@@ -410,7 +410,7 @@ describe("finance db", () => {
     for (const style of bareAdapterNames) {
       expect(style).toMatchObject({ kind: "source" });
     }
-    expect(namespaced).toMatchObject({ kind: "source", name: "teller:card_payment" });
+    expect(namespaced).toMatchObject({ kind: "source", name: "plaid:card_payment" });
     for (const style of copilotTags) {
       expect(style).toMatchObject({ kind: "source" });
     }
@@ -421,12 +421,12 @@ describe("finance db", () => {
 
   it("auto-registers sync-written provider tags as kind 'source' without an explicit tag-color call", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const styles = await listTagStyles();
-    const tellerStyle = styles.find((style) => style.name === "teller");
+    const plaidStyle = styles.find((style) => style.name === "plaid");
 
-    expect(tellerStyle).toMatchObject({ kind: "source", name: "teller" });
+    expect(plaidStyle).toMatchObject({ kind: "source", name: "plaid" });
   });
 
   it("applies Copilot history through the DB queue and preserves overlays on rerun", async () => {
@@ -512,24 +512,24 @@ describe("finance db", () => {
 
   it("auto-registers user-edited transaction tags as kind 'user'", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     await updateDbTransaction("txn_1", { tags: ["Boston Trip"] });
 
     const styles = await listTagStyles();
     const tripStyle = styles.find((style) => style.name === "Boston Trip");
-    // The overwritten "teller" tag no longer sits on the transaction, but its
+    // The overwritten "plaid" tag no longer sits on the transaction, but its
     // registry row (registered as 'source' the moment the sync wrote it) is
     // untouched — registry rows are never deleted when a tag falls off a row.
-    const tellerStyle = styles.find((style) => style.name === "teller");
+    const plaidStyle = styles.find((style) => style.name === "plaid");
 
     expect(tripStyle).toMatchObject({ kind: "user", name: "Boston Trip" });
-    expect(tellerStyle).toMatchObject({ kind: "source", name: "teller" });
+    expect(plaidStyle).toMatchObject({ kind: "source", name: "plaid" });
   });
 
   it("registers rule-applied tags as kind 'user' (rules express user intent)", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
 
     await createTransactionRule({
       categoryId: "cat_food",
@@ -571,7 +571,7 @@ describe("finance db", () => {
 
   it("deletes custom categories only after atomically reassigning their transactions", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     const custom = await createCategory({ name: "Old custom category" });
     await updateDbTransaction("txn_1", { categoryId: custom.id });
 
@@ -669,7 +669,7 @@ describe("finance db", () => {
       );
     });
 
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const voyageResults = await semanticSearchTransactions("Denver dinner trip", 5);
     const voyageSummary = await getSemanticDocumentSummary();
@@ -700,17 +700,17 @@ describe("finance db", () => {
     expect(voyageCalls).toHaveLength(0);
   }, 15_000);
 
-  it("rewrites only changed transaction semantic documents during teller resync", async () => {
+  it("rewrites only changed transaction semantic documents during plaid resync", async () => {
     useTempDb();
     const ledger = createRepeatedMerchantLedger();
 
-    await replaceTellerLedgerInDb(ledger);
+    await replaceLedgerInDb(ledger);
     const firstDocuments = await listTransactionSemanticDocumentsForTests();
 
     expect(firstDocuments).toHaveLength(3);
 
     await waitForClockTick();
-    await replaceTellerLedgerInDb(ledger);
+    await replaceLedgerInDb(ledger);
     const secondDocuments = await listTransactionSemanticDocumentsForTests();
 
     expect(documentsByResourceId(secondDocuments)).toEqual(documentsByResourceId(firstDocuments));
@@ -726,10 +726,10 @@ describe("finance db", () => {
             }
           : transaction
       )
-    } satisfies TellerLedger;
+    } satisfies Ledger;
 
     await waitForClockTick();
-    await replaceTellerLedgerInDb(changedLedger);
+    await replaceLedgerInDb(changedLedger);
     const changedDocuments = documentsByResourceId(await listTransactionSemanticDocumentsForTests());
     const firstDocumentsById = documentsByResourceId(firstDocuments);
 
@@ -745,14 +745,14 @@ describe("finance db", () => {
     });
   }, 15_000);
 
-  it("prunes transaction semantic documents for removed and empty teller ledgers", async () => {
+  it("prunes transaction semantic documents for removed and empty plaid ledgers", async () => {
     useTempDb();
     const ledger = createRepeatedMerchantLedger();
 
-    await replaceTellerLedgerInDb(ledger);
+    await replaceLedgerInDb(ledger);
     expect(await listTransactionSemanticDocumentsForTests()).toHaveLength(3);
 
-    await replaceTellerLedgerInDb({
+    await replaceLedgerInDb({
       ...ledger,
       transactions: [ledger.transactions[0]],
       syncSummary: {
@@ -764,7 +764,7 @@ describe("finance db", () => {
       "txn_1"
     ]);
 
-    await replaceTellerLedgerInDb({
+    await replaceLedgerInDb({
       ...ledger,
       transactions: [],
       syncSummary: {
@@ -777,14 +777,14 @@ describe("finance db", () => {
 
   it("lets provider-inferred transfer categories repair untouched Other overlays on resync", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "AMERICAN EXPRESS ACH PMT A8676 WEB ID: 9493560001",
       merchantName: "AMERICAN EXPRESS",
       providerCategoryId: "cat_other",
       transactionAmount: -3781.31
     }));
 
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "AMERICAN EXPRESS ACH PMT A8676 WEB ID: 9493560001",
       merchantName: "AMERICAN EXPRESS",
       providerCategoryId: "cat_transfer",
@@ -800,14 +800,14 @@ describe("finance db", () => {
 
   it("lets grocery merchant repair untouched provider category noise on resync", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "IC* INSTACART 888-246-7822",
       merchantName: "INSTACART",
       providerCategoryId: "cat_software",
       transactionAmount: -59.49
     }));
 
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "IC* INSTACART 888-246-7822",
       merchantName: "INSTACART",
       providerCategoryId: "cat_food",
@@ -823,14 +823,14 @@ describe("finance db", () => {
 
   it("lets transfer patterns repair untouched non-transfer provider category noise on resync", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "REAL TIME PAYMENT CREDIT RECD FROM ABA/CONTR BNK FROM: XOOM, A PAYPAL SERVICE",
       merchantName: "XOOM",
       providerCategoryId: "cat_software",
       transactionAmount: 0.01
     }));
 
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "REAL TIME PAYMENT CREDIT RECD FROM ABA/CONTR BNK FROM: XOOM, A PAYPAL SERVICE",
       merchantName: "XOOM",
       providerCategoryId: "cat_transfer",
@@ -844,7 +844,7 @@ describe("finance db", () => {
     });
   }, 15_000);
 
-  it("normalizes Teller amount signs when replacing the stored ledger", async () => {
+  it("normalizes Plaid amount signs when replacing the stored ledger", async () => {
     useTempDb();
     const ledger = createLedger({ transactionAmount: 42.12, providerCategoryId: "cat_other" });
     const creditCardLedger = {
@@ -858,7 +858,7 @@ describe("finance db", () => {
       ]
     };
 
-    await replaceTellerLedgerInDb(creditCardLedger);
+    await replaceLedgerInDb(creditCardLedger);
 
     const snapshot = await readFinanceDbSnapshot();
     const semanticSummary = await getSemanticDocumentSummary();
@@ -876,13 +876,13 @@ describe("finance db", () => {
 
   it("reads finance data without enqueueing write-side upkeep", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
 
     const writeQueueBeforeRead = getFinanceDbWriteQueueForTests();
     const data = await getFinanceData();
 
     expect(data).toMatchObject({
-      source: "teller",
+      source: "koban",
       transactions: [{ id: "txn_1" }]
     });
     expect(getFinanceDbWriteQueueForTests()).toBe(writeQueueBeforeRead);
@@ -897,7 +897,7 @@ describe("finance db", () => {
       storedTransactionCount: 0
     });
 
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_food" }));
 
     await expect(getFinanceDbSummary()).resolves.toEqual({
       lastSyncedAt: "2026-05-31T00:00:00.000Z",
@@ -1064,13 +1064,7 @@ describe("finance db", () => {
         }
       },
       startedAt: "2026-05-31T02:00:00.000Z",
-      status: "partial",
-      tellerStatus: "succeeded",
-      tellerSummary: {
-        accountCount: 4,
-        enrollmentCount: 1,
-        transactionCount: 1372
-      }
+      status: "partial"
     });
     const latest = await getLatestAppSyncRun();
     const recentRuns = await listAppSyncRuns();
@@ -1086,10 +1080,7 @@ describe("finance db", () => {
       },
       id: run.id,
       sourcesStatus: "partial",
-      status: "partial",
-      tellerSummary: {
-        transactionCount: 1372
-      }
+      status: "partial"
     });
     expect(recentRuns[0]).toMatchObject({
       id: run.id,
@@ -1163,9 +1154,7 @@ describe("finance db", () => {
       sourcesStatus: "succeeded",
       sourcesSummary: {},
       startedAt: "2026-05-31T03:09:00.000Z",
-      status: "partial",
-      tellerStatus: "succeeded",
-      tellerSummary: {}
+      status: "partial"
     });
     await closeFinanceDbForTests();
 
@@ -1206,12 +1195,7 @@ describe("finance db", () => {
         }
       },
       startedAt: "2026-05-31T02:29:00.000Z",
-      status: "succeeded",
-      tellerStatus: "succeeded",
-      tellerSummary: {
-        accountCount: 4,
-        transactionCount: 1372
-      }
+      status: "succeeded"
     });
     await expect(
       claimAppSyncSchedule(appSyncScheduleId, "schedule_runner", "2026-05-31T02:05:00.000Z")
@@ -1244,9 +1228,9 @@ describe("finance db", () => {
     expect(advancedSchedule.claimedBy).toBeUndefined();
   });
 
-  it("suggests synced receipt evidence for matching Teller transactions", async () => {
+  it("suggests synced receipt evidence for matching Plaid transactions", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_food" }));
     await ensureExternalSourceCatalog([
       {
         command: "outlook-email-pp-cli",
@@ -1335,7 +1319,7 @@ describe("finance db", () => {
 
   it("imports JSONL source records through adapters and suggests matching evidence", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_food" }));
 
     const run = await importSourceAdapterPayload("source_outlook_email", {
       content: JSON.stringify({
@@ -1375,9 +1359,9 @@ describe("finance db", () => {
     });
   }, 15_000);
 
-  it("imports Amazon order records and matches Amazon Teller charges", async () => {
+  it("imports Amazon order records and matches Amazon Plaid charges", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({
+    await replaceLedgerInDb(createLedger({
       description: "AMZN MKTP US",
       merchantName: "AMAZON",
       providerCategoryId: "cat_shopping",
@@ -1413,9 +1397,9 @@ describe("finance db", () => {
     });
   }, 15_000);
 
-  it("manually links source evidence to a Teller transaction", async () => {
+  it("manually links source evidence to a Plaid transaction", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -31.2, providerCategoryId: "cat_other" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -31.2, providerCategoryId: "cat_other" }));
     await ensureExternalSourceCatalog([
       {
         command: "outlook-email-pp-cli",
@@ -1471,9 +1455,9 @@ describe("finance db", () => {
     });
   }, 15_000);
 
-  it("creates transaction rules and applies category and tag actions to Teller transactions", async () => {
+  it("creates transaction rules and applies category and tag actions to Plaid transactions", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -24.2, providerCategoryId: "cat_other" }));
 
     const created = await createTransactionRule({
       categoryId: "cat_food",
@@ -1501,7 +1485,7 @@ describe("finance db", () => {
     expect(transaction).toMatchObject({
       categoryId: "cat_food",
       reviewed: true,
-      tags: ["teller", "food", "rule:food"]
+      tags: ["plaid", "food", "rule:food"]
     });
     expect(reapplied).toMatchObject({
       rulesApplied: 1,
@@ -1525,7 +1509,7 @@ describe("finance db", () => {
       transactionAmount: -42.18
     });
     const baseTransaction = ledger.transactions[0];
-    await replaceTellerLedgerInDb({
+    await replaceLedgerInDb({
       ...ledger,
       transactions: [
         baseTransaction,
@@ -1562,11 +1546,11 @@ describe("finance db", () => {
     });
     expect(matchedTransaction).toMatchObject({
       categoryId: "cat_software",
-      tags: ["teller", "regex-hit"]
+      tags: ["plaid", "regex-hit"]
     });
     expect(unmatchedTransaction).toMatchObject({
       categoryId: "cat_other",
-      tags: ["teller"]
+      tags: ["plaid"]
     });
   }, 15_000);
 
@@ -1650,7 +1634,7 @@ describe("finance db", () => {
 
   it("links typed transaction context notes as evidence and search context", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_other" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_other" }));
 
     const note = await createTransactionContextNote({
       body: "This was the conference parking reimbursement in Denver.",
@@ -1678,7 +1662,7 @@ describe("finance db", () => {
 
   it("links voice note transcripts as evidence and source-item search context", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -18.75, providerCategoryId: "cat_other" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -18.75, providerCategoryId: "cat_other" }));
 
     const voiceNote = await createTransactionVoiceNote({
       transcript: "This was coffee with the product advisor before the investor meeting.",
@@ -1721,10 +1705,10 @@ describe("finance db", () => {
     });
   }, 15_000);
 
-  it("keeps Teller JSON as explicit backup only, not an automatic runtime source", async () => {
+  it("keeps Plaid JSON as explicit backup only, not an automatic runtime source", async () => {
     useTempDb();
     const backupLedger = createLedger({ merchantName: "Backup Only", providerCategoryId: "cat_other", transactionAmount: -10 });
-    writeTellerLedgerBackup(backupLedger);
+    writeLedgerBackup(backupLedger);
 
     const emptyData = await getFinanceData();
 
@@ -1734,29 +1718,29 @@ describe("finance db", () => {
       transactions: []
     });
 
-    const imported = await importTellerLedgerBackup(backupLedger);
+    const imported = await importLedgerBackup(backupLedger);
     const dataAfterImport = await getFinanceData();
-    const exported = await exportTellerLedgerBackup();
+    const exported = await exportLedgerBackup();
 
     expect(imported).toMatchObject({
       accounts: [{ id: "acct_1" }],
       transactions: [{ merchantName: "Backup Only" }]
     });
     expect(dataAfterImport).toMatchObject({
-      source: "teller",
+      source: "koban",
       transactions: [{ merchantName: "Backup Only" }]
     });
     expect(exported).toMatchObject({
       transactions: [{ merchantName: "Backup Only" }]
     });
-    expect(existsSync(getTellerLedgerBackupPath())).toBe(true);
+    expect(existsSync(getLedgerBackupPath())).toBe(true);
   }, 15_000);
 
   it("clears local runtime data without deleting explicit backup files", async () => {
     useTempDb();
     const ledger = createLedger({ transactionAmount: -64.2, providerCategoryId: "cat_food" });
-    writeTellerLedgerBackup(ledger);
-    await replaceTellerLedgerInDb(ledger);
+    writeLedgerBackup(ledger);
+    await replaceLedgerInDb(ledger);
     await importSourceAdapterPayload("source_outlook_email", {
       content: JSON.stringify({
         amount: "$64.20",
@@ -1812,12 +1796,12 @@ describe("finance db", () => {
       transactionDocumentCount: 0,
       transactionEmbeddingCount: 0
     });
-    expect(existsSync(getTellerLedgerBackupPath())).toBe(true);
+    expect(existsSync(getLedgerBackupPath())).toBe(true);
   }, 15_000);
 
   it("generates reviewable enrichment suggestions and applies or dismisses them", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createRepeatedMerchantLedger());
+    await replaceLedgerInDb(createRepeatedMerchantLedger());
 
     const run = await generateEnrichmentSuggestions(20);
     const suggestions = await listEnrichmentSuggestions();
@@ -1872,7 +1856,7 @@ describe("finance db", () => {
 
   it("does not create enrichment suggestions for already-classified income and transfers", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createNonActionableLedger());
+    await replaceLedgerInDb(createNonActionableLedger());
 
     const run = await generateEnrichmentSuggestions(20);
     const suggestions = await listEnrichmentSuggestions();
@@ -1883,7 +1867,7 @@ describe("finance db", () => {
 
   it("suggests Instacart card charges as food instead of software", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(
+    await replaceLedgerInDb(
       createLedger({
         description: "IC* INSTACART 888-246-7822",
         merchantName: "INSTACART",
@@ -1911,7 +1895,7 @@ describe("finance db", () => {
 
   it("deduplicates local suggestions when hosted LLM suggestions cover the same review target", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createRepeatedMerchantLedger());
+    await replaceLedgerInDb(createRepeatedMerchantLedger());
 
     await generateEnrichmentSuggestions(20);
     expect(
@@ -1984,7 +1968,7 @@ describe("finance db", () => {
 function useTempDb() {
   testDbPath = path.join(mkdtempSync(path.join(tmpdir(), "ai-finances-pglite-")), "db");
   process.env.AI_FINANCES_PGLITE_DIR = testDbPath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = path.join(path.dirname(testDbPath), "teller-ledger-backup.json");
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = path.join(path.dirname(testDbPath), "ledger-backup.json");
 }
 
 function mkdirForTestDb() {
@@ -2020,11 +2004,11 @@ function createLedger({
   merchantName?: string;
   providerCategoryId: string;
   transactionAmount: number;
-}): TellerLedger {
+}): Ledger {
   const providerConnection = {
-    id: "provider_teller_test",
-    provider: "teller",
-    displayName: "Teller - Test Bank",
+    id: "provider_plaid_test",
+    provider: "plaid",
+    displayName: "Plaid - Test Bank",
     status: "connected",
     configured: true,
     lastSyncedAt: "2026-05-31T00:00:00.000Z"
@@ -2055,11 +2039,11 @@ function createLedger({
     categoryId: providerCategoryId,
     status: "posted",
     reviewed: false,
-    tags: ["teller"]
+    tags: ["plaid"]
   } satisfies Transaction;
 
   return {
-    source: "teller",
+    source: "koban",
     version: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     syncStartDate: "2026-01-01",
@@ -2075,7 +2059,7 @@ function createLedger({
   };
 }
 
-function createRepeatedMerchantLedger(): TellerLedger {
+function createRepeatedMerchantLedger(): Ledger {
   const ledger = createLedger({
     description: "OPENAI SUBSCRIPTION",
     merchantName: "OPENAI OPENAI",
@@ -2111,7 +2095,7 @@ function createRepeatedMerchantLedger(): TellerLedger {
   };
 }
 
-function createNonActionableLedger(): TellerLedger {
+function createNonActionableLedger(): Ledger {
   const ledger = createLedger({
     description: "BNYMELLON PAYROLL",
     merchantName: "BNYMELLON",
@@ -2168,13 +2152,13 @@ function createNonActionableLedger(): TellerLedger {
   };
 }
 
-function createTransferPairLedgerForPruneTest(): TellerLedger {
+function createTransferPairLedgerForPruneTest(): Ledger {
   const providerConnection = {
     configured: true,
-    displayName: "Teller - Test Bank",
-    id: "provider_teller_test",
+    displayName: "Plaid - Test Bank",
+    id: "provider_plaid_test",
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
-    provider: "teller",
+    provider: "plaid",
     status: "connected"
   } satisfies ProviderConnection;
   const checking = createTestAccount({
@@ -2230,7 +2214,7 @@ function createTransferPairLedgerForPruneTest(): TellerLedger {
     enrollmentCount: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     providerConnections: [providerConnection],
-    source: "teller",
+    source: "koban",
     syncStartDate: "2026-01-01",
     syncSummary: {
       accountCount: 2,
@@ -2254,7 +2238,7 @@ function createTestAccount(input: Partial<Account>): Account {
     lastUpdatedAt: "2026-05-31T00:00:00.000Z",
     mask: "1234",
     name: "Account",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     type: "checking",
     ...input
   };
@@ -2271,10 +2255,10 @@ function createTestTransaction(input: Partial<Transaction>): Transaction {
     id: "txn",
     merchantName: "Merchant",
     postedDate: "2026-05-30",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     reviewed: false,
     status: "posted",
-    tags: ["teller"],
+    tags: ["plaid"],
     ...input
   };
 }

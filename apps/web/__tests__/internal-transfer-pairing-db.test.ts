@@ -9,11 +9,11 @@ import {
   closeFinanceDbForTests,
   listEnrichmentSuggestions,
   readFinanceDbSnapshot,
-  replaceTellerLedgerInDb,
+  replaceLedgerInDb,
   runInternalTransferPairMatching
 } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 
 let testDbPath: string | null = null;
 
@@ -26,13 +26,13 @@ afterEach(async () => {
   }
 
   delete process.env.AI_FINANCES_PGLITE_DIR;
-  delete process.env.AI_FINANCES_TELLER_BACKUP_PATH;
+  delete process.env.AI_FINANCES_LEDGER_BACKUP_PATH;
 });
 
 describe("internal transfer pair matching database integration", () => {
   it("records auto-applied pair suggestions and removes matched card credits from income", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createTransferPairLedger());
+    await replaceLedgerInDb(createTransferPairLedger());
 
     const summary = await runInternalTransferPairMatching();
     const snapshot = await readFinanceDbSnapshot();
@@ -72,7 +72,7 @@ describe("internal transfer pair matching database integration", () => {
 
   it("hard-links paired counterparts, marks one-sided transfers, and respects user overrides", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createMixedTransferLedger());
+    await replaceLedgerInDb(createMixedTransferLedger());
 
     const summary = await runInternalTransferPairMatching();
     const snapshot = await readFinanceDbSnapshot();
@@ -117,13 +117,13 @@ describe("internal transfer pair matching database integration", () => {
   }, 15_000);
 });
 
-function createMixedTransferLedger(): TellerLedger {
+function createMixedTransferLedger(): Ledger {
   const providerConnection = {
     configured: true,
-    displayName: "Teller - Test Bank",
-    id: "provider_teller_test",
+    displayName: "Plaid - Test Bank",
+    id: "provider_plaid_test",
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
-    provider: "teller",
+    provider: "plaid",
     status: "connected"
   } satisfies ProviderConnection;
   const checking = account({
@@ -148,7 +148,7 @@ function createMixedTransferLedger(): TellerLedger {
     type: "credit_card"
   });
 
-  // Credit-card amounts are seeded pre-normalization; the Teller normalizer
+  // Credit-card amounts are seeded pre-normalization; the Plaid normalizer
   // negates credit-card signs, so a seeded -X becomes +X (a payment credit).
   const transactions: Transaction[] = [
     // Pair: bank debit ↔ card credit, equal amount, card-payment text on the card.
@@ -234,7 +234,7 @@ function createMixedTransferLedger(): TellerLedger {
     enrollmentCount: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     providerConnections: [providerConnection],
-    source: "teller",
+    source: "koban",
     syncStartDate: "2026-01-01",
     syncSummary: {
       accountCount: 3,
@@ -249,16 +249,16 @@ function createMixedTransferLedger(): TellerLedger {
 function useTempDb() {
   testDbPath = path.join(mkdtempSync(path.join(tmpdir(), "ai-finances-transfer-pairing-")), "db");
   process.env.AI_FINANCES_PGLITE_DIR = testDbPath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = path.join(path.dirname(testDbPath), "teller-ledger-backup.json");
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = path.join(path.dirname(testDbPath), "ledger-backup.json");
 }
 
-function createTransferPairLedger(): TellerLedger {
+function createTransferPairLedger(): Ledger {
   const providerConnection = {
     configured: true,
-    displayName: "Teller - Test Bank",
-    id: "provider_teller_test",
+    displayName: "Plaid - Test Bank",
+    id: "provider_plaid_test",
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
-    provider: "teller",
+    provider: "plaid",
     status: "connected"
   } satisfies ProviderConnection;
   const checking = account({
@@ -281,7 +281,7 @@ function createTransferPairLedger(): TellerLedger {
     enrollmentCount: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     providerConnections: [providerConnection],
-    source: "teller",
+    source: "koban",
     syncStartDate: "2026-01-01",
     syncSummary: {
       accountCount: 2,
@@ -337,7 +337,7 @@ function account(input: Partial<Account>): Account {
     lastUpdatedAt: "2026-05-31T00:00:00.000Z",
     mask: "1234",
     name: "Account",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     type: "checking",
     ...input
   };
@@ -354,10 +354,10 @@ function transaction(input: Partial<Transaction>): Transaction {
     id: "txn",
     merchantName: "Merchant",
     postedDate: "2026-05-30",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     reviewed: false,
     status: "posted",
-    tags: ["teller"],
+    tags: ["plaid"],
     ...input
   };
 }

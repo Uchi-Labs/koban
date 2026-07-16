@@ -2,7 +2,7 @@
 
 A local-first personal finance app. Your banks sync in, every transaction gets categorized and enriched with real-world context (receipts, orders, emails), and an AI agent answers questions from your own ledger — all on your machine by default.
 
-- **Bank sync** via [Teller](https://teller.io) — multiple institutions, balances, transactions, honest sync status.
+- **Bank sync** via [Plaid](https://plaid.com) — multiple institutions, balances, transactions, honest sync status. SnapTrade (investments) and SimpleFIN also supported.
 - **Local database** — embedded Postgres ([PGlite](https://pglite.dev) + pgvector) with zero setup; flip one env var for real Postgres.
 - **Semantic search** over transactions and evidence (⌘K from anywhere) — local embeddings by default, [Voyage](https://voyageai.com) when you bring a key.
 - **Rules** — `contains` / `equals` / `regex` matching with bounded validation and batch apply.
@@ -15,11 +15,11 @@ A local-first personal finance app. Your banks sync in, every transaction gets c
 
 ```bash
 pnpm install
-cp .env.example .env          # add your Teller application credentials
+cp .env.example .env          # add your Plaid client id/secret
 pnpm --dir apps/web dev --hostname 127.0.0.1 --port 3007
 ```
 
-Open `http://127.0.0.1:3007` → Settings → Connections → **Connect bank account**. The first sync runs automatically after Teller Connect completes.
+Open `http://127.0.0.1:3007` → Settings → Connections → **Connect bank account**. The first sync runs automatically after Plaid Link completes.
 
 Everything else is optional and off until configured:
 
@@ -47,18 +47,18 @@ Build outputs are isolated per mode (`.next` dev / `.next-build` prod / `.next-e
 
 ```
 apps/web/               Next.js app — UI, /api/v1 resource API, sync pipeline
-  lib/                  server logic: Teller, DB boundary, sources, rules, AI
+  lib/                  server logic: providers (Plaid/SnapTrade/SimpleFIN), DB boundary, sources, rules, AI
   components/           finance UI on shadcn (Base UI) with the Ink & Mint theme
 packages/schema/        shared domain types
 packages/sync-protocol/ provider adapter contracts
 docs/architecture/      API & data-model design
 ```
 
-Amount convention: spending is negative, income/credits positive; credit-card signs are normalized from Teller's liability convention. Transfers are excluded from spending metrics. The `/api/v1` surface follows Stripe-style resource conventions — list envelopes, snake_case objects, deliberate 400s — so agents and automations can build on it directly. Deeper design notes: [docs/architecture/finance-api-db-design.md](docs/architecture/finance-api-db-design.md).
+Amount convention: spending is negative, income/credits positive; credit-card signs are normalized from each provider's liability convention. Transfers are excluded from spending metrics. The `/api/v1` surface follows Stripe-style resource conventions — list envelopes, snake_case objects, deliberate 400s — so agents and automations can build on it directly. Deeper design notes: [docs/architecture/finance-api-db-design.md](docs/architecture/finance-api-db-design.md).
 
 ## Deploying
 
-`Dockerfile` builds a standalone image; `docker-compose.yml` provides Postgres with pgvector (port 5433, `postgres-data` volume). For hosted environments set `DATABASE_URL`, `AI_FINANCES_AUTH_TOKEN`, and base64 Teller certificate vars (`TELLER_CERTIFICATE_B64`, `TELLER_PRIVATE_KEY_B64`).
+`Dockerfile` builds a standalone image; `docker-compose.yml` provides Postgres with pgvector (port 5433, `postgres-data` volume). For hosted environments set `DATABASE_URL`, `AI_FINANCES_AUTH_TOKEN`, and your Plaid credentials (`PLAID_CLIENT_ID`, `PLAID_SECRET`).
 
 ## License
 

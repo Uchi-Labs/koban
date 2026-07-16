@@ -14,7 +14,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type React from "react";
 import { AccountBalanceHero } from "@/components/account-balance-hero";
-import { AccountCardDialog } from "@/components/account-card-dialog";
 import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { GainLossPill } from "@/components/gain-loss-pill";
@@ -53,7 +52,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
   }
 
   const { account, recurringItems, transactions } = selection;
-  const snapshots = financeData.tellerLedger?.balanceSnapshots ?? [];
+  const snapshots = financeData.ledger?.balanceSnapshots ?? [];
   const history = accountHistory(account.id, snapshots);
   const transactionViews = getTransactionViews(transactions, {
     accounts: financeData.accounts,
@@ -63,7 +62,6 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
   const recurringViews = getUpcomingRecurringViews(recurringItems, financeData.categories);
   const investmentData = account.type === "investment" ? await getInvestmentsData() : null;
   const holdings = investmentData?.holdings.filter((holding) => holding.accountId === account.id) ?? [];
-  const supportsCardDetails = account.id.startsWith("teller_") && ["cash", "checking", "savings"].includes(account.type);
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="account-detail-page">
@@ -81,14 +79,6 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
       <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-5 p-4 sm:p-6">
         <AccountBalanceHero
           account={account}
-          detailsControl={supportsCardDetails ? (
-            <AccountCardDialog
-              accountId={account.id}
-              institutionName={account.institutionName}
-              mask={account.mask}
-              name={account.name}
-            />
-          ) : undefined}
           history={history}
         />
 

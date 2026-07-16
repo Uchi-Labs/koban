@@ -14,9 +14,9 @@ import {
   listInvestmentPositions,
   readFinanceDbSnapshot,
   replaceSnapTradeInvestmentSnapshot,
-  replaceTellerLedgerInDb
+  replaceLedgerInDb
 } from "@/lib/db/finance-db";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 import {
   accountIdForSnapTrade,
   encodeStoredSnapTradeUser,
@@ -108,9 +108,9 @@ describe("SnapTrade normalization", () => {
 });
 
 describe("SnapTrade DB replacement", () => {
-  it("adds investment accounts without wiping Teller accounts on future Teller resyncs", async () => {
+  it("adds investment accounts without wiping Plaid accounts on future Plaid resyncs", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createTellerLedger(100));
+    await replaceLedgerInDb(createLedger(100));
 
     const providerConnectionId = providerConnectionIdForSnapTrade("auth-fidelity-1");
     const account = mapSnapTradeAccountToDomain({
@@ -154,16 +154,16 @@ describe("SnapTrade DB replacement", () => {
       successfulProviderConnectionIds: [providerConnectionId]
     });
 
-    await replaceTellerLedgerInDb(createTellerLedger(200));
+    await replaceLedgerInDb(createLedger(200));
 
     const snapshot = await readFinanceDbSnapshot();
     const positions = await listInvestmentPositions();
 
     expect(snapshot?.accounts.map((candidate) => candidate.id).sort()).toEqual([
-      account!.id,
-      "teller_acct_test"
+      "plaid_acct_test",
+      account!.id
     ]);
-    expect(snapshot?.accounts.find((candidate) => candidate.id === "teller_acct_test")).toMatchObject({
+    expect(snapshot?.accounts.find((candidate) => candidate.id === "plaid_acct_test")).toMatchObject({
       currentBalance: 200
     });
     expect(snapshot?.accounts.find((candidate) => candidate.id === account!.id)).toMatchObject({
@@ -227,14 +227,14 @@ function createSnapTradePosition(): AccountPosition {
   };
 }
 
-function createTellerLedger(balance: number): TellerLedger {
+function createLedger(balance: number): Ledger {
   const providerConnections: ProviderConnection[] = [
     {
       configured: true,
-      displayName: "Teller - Test Bank",
-      id: "provider_teller_test",
+      displayName: "Plaid - Test Bank",
+      id: "provider_plaid_test",
       lastSyncedAt: "2026-07-06T12:00:00.000Z",
-      provider: "teller",
+      provider: "plaid",
       status: "connected"
     }
   ];
@@ -243,19 +243,19 @@ function createTellerLedger(balance: number): TellerLedger {
       currency: "USD",
       currentBalance: balance,
       groupId: "group_cash",
-      id: "teller_acct_test",
+      id: "plaid_acct_test",
       includedInNetWorth: true,
       institutionName: "Test Bank",
       lastUpdatedAt: "2026-07-06T12:00:00.000Z",
       mask: "1111",
       name: "Checking",
-      providerConnectionId: "provider_teller_test",
+      providerConnectionId: "provider_plaid_test",
       type: "checking"
     }
   ];
   const transactions: Transaction[] = [
     {
-      accountId: "teller_acct_test",
+      accountId: "plaid_acct_test",
       amount: -12.34,
       categoryId: "cat_food",
       currency: "USD",
@@ -264,7 +264,7 @@ function createTellerLedger(balance: number): TellerLedger {
       id: "txn_test",
       merchantName: "Coffee",
       postedDate: "2026-07-05",
-      providerConnectionId: "provider_teller_test",
+      providerConnectionId: "provider_plaid_test",
       reviewed: false,
       status: "posted",
       tags: []
@@ -279,7 +279,7 @@ function createTellerLedger(balance: number): TellerLedger {
       amountSignConvention: "internal_v1"
     },
     providerConnections,
-    source: "teller",
+    source: "koban",
     syncStartDate: "2026-07-01",
     syncSummary: {
       accountCount: accounts.length,

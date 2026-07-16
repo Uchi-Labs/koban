@@ -532,7 +532,7 @@ async function persistPlaidSnapshot({
       currency: account.currency,
       id: `${account.id}_20260706120000000Z`,
       ledgerBalance: account.currentBalance,
-      source: "plaid"
+      source: "koban"
     })),
     errors: [],
     finishedAt: "2026-07-06T12:00:00.000Z",

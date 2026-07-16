@@ -9,7 +9,7 @@ function charge(merchantName: string, date: string, amount: number): Transaction
   return {
     id: `txn_${sequence}`,
     accountId: "acct_checking",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     description: merchantName,
     merchantName,
     date,
@@ -18,7 +18,7 @@ function charge(merchantName: string, date: string, amount: number): Transaction
     categoryId: "cat_software",
     status: "posted",
     reviewed: false,
-    tags: ["teller"]
+    tags: ["plaid"]
   } satisfies Transaction;
 }
 

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     title: "Koban"
   },
   title: "Koban",
-  description: "Teller-backed personal finance app",
+  description: "Private personal finance app",
   icons: {
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     icon: [

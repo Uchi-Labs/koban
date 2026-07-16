@@ -27,7 +27,7 @@ export default async function SearchPage({
         <section>
           <h1 className="app-page-title">Semantic finance search</h1>
           <p className="app-page-description mt-1.5">
-            Local pgvector search over synced Teller transactions, linked evidence, and user context.
+            Local pgvector search over synced transactions, linked evidence, and user context.
           </p>
         </section>
 

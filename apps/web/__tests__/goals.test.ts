@@ -15,11 +15,11 @@ import {
   deleteFinancialGoal,
   listFinancialGoals,
   readFinanceDbSnapshot,
-  replaceTellerLedgerInDb,
+  replaceLedgerInDb,
   setTransactionFinancialGoal,
   updateFinancialGoal
 } from "@/lib/db/finance-db";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 
 let testDbPath: string | null = null;
 
@@ -30,13 +30,13 @@ afterEach(async () => {
     testDbPath = null;
   }
   delete process.env.AI_FINANCES_PGLITE_DIR;
-  delete process.env.AI_FINANCES_TELLER_BACKUP_PATH;
+  delete process.env.AI_FINANCES_LEDGER_BACKUP_PATH;
 });
 
 describe("financial goals db layer", () => {
   it("creates goals and computes sign-normalized saved totals plus transaction counts", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const goal = await createFinancialGoal({ name: "Emergency fund", emoji: "🛟", targetAmountMinor: 500_00 });
     const assigned = await setTransactionFinancialGoal("txn_1", goal.id);
@@ -61,7 +61,7 @@ describe("financial goals db layer", () => {
 
   it("nets an income/withdrawal against outflow contributions", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createTwoTransactionLedger(-100, 40));
+    await replaceLedgerInDb(createTwoTransactionLedger(-100, 40));
 
     const goal = await createFinancialGoal({ name: "Vacation" });
     await setTransactionFinancialGoal("txn_out", goal.id);
@@ -75,7 +75,7 @@ describe("financial goals db layer", () => {
 
   it("renames, retargets, and archives goals", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     const goal = await createFinancialGoal({ name: "Car" });
 
     const updated = await updateFinancialGoal(goal.id, {
@@ -96,7 +96,7 @@ describe("financial goals db layer", () => {
 
   it("deletes a goal by unassigning its transactions instead of deleting them", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     const goal = await createFinancialGoal({ name: "Doomed" });
     await setTransactionFinancialGoal("txn_1", goal.id);
 
@@ -113,12 +113,12 @@ describe("financial goals db layer", () => {
 
   it("preserves a goal assignment across a provider resync", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     const goal = await createFinancialGoal({ name: "Rainy day" });
     await setTransactionFinancialGoal("txn_1", goal.id);
 
     // Provider re-upserts the same transaction with fresh data (no goal knowledge).
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -18.5, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -18.5, providerCategoryId: "cat_food" }));
 
     const snapshot = await readFinanceDbSnapshot();
     const transaction = snapshot?.transactions.find((candidate) => candidate.id === "txn_1");
@@ -132,7 +132,7 @@ describe("financial goals db layer", () => {
 describe("financial goals API", () => {
   it("lists, creates, and shapes goals in the Stripe-style envelope", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const createResponse = await postGoalRoute(
       jsonRequest("http://localhost/api/v1/goals", { name: "House", emoji: "🏠", target_amount_cents: 10_000_00 })
@@ -165,7 +165,7 @@ describe("financial goals API", () => {
 
   it("rejects a blank goal name with 400", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const response = await postGoalRoute(jsonRequest("http://localhost/api/v1/goals", { name: "   " }));
     const body = (await response.json()) as { error?: string };
@@ -176,7 +176,7 @@ describe("financial goals API", () => {
 
   it("patches and deletes goals through the id route", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     const goal = await createFinancialGoal({ name: "Bike" });
 
     const patchResponse = await patchGoalRoute(
@@ -198,7 +198,7 @@ describe("financial goals API", () => {
 
   it("returns 404 when patching an unknown goal", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const response = await patchGoalRoute(
       jsonRequest("http://localhost/api/v1/goals/goal_missing", { name: "Nope" }),
@@ -210,7 +210,7 @@ describe("financial goals API", () => {
 
   it("assigns and unassigns a transaction goal through the transaction PATCH route", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
     const goal = await createFinancialGoal({ name: "Wedding" });
 
     const assignResponse = await patchTransactionRoute(
@@ -234,7 +234,7 @@ describe("financial goals API", () => {
 
   it("rejects assigning a transaction to an unknown goal with 400", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const response = await patchTransactionRoute(
       jsonRequest("http://localhost/api/v1/transactions/txn_1", { financial_goal_id: "goal_missing" }) as NextRequest,
@@ -258,7 +258,7 @@ function jsonRequest(url: string, body: Record<string, unknown>): Request {
 function useTempDb() {
   testDbPath = path.join(mkdtempSync(path.join(tmpdir(), "ai-finances-goals-")), "db");
   process.env.AI_FINANCES_PGLITE_DIR = testDbPath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = path.join(path.dirname(testDbPath), "teller-ledger-backup.json");
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = path.join(path.dirname(testDbPath), "ledger-backup.json");
 }
 
 function createLedger({
@@ -271,11 +271,11 @@ function createLedger({
   merchantName?: string;
   providerCategoryId: string;
   transactionAmount: number;
-}): TellerLedger {
+}): Ledger {
   const providerConnection = {
-    id: "provider_teller_test",
-    provider: "teller",
-    displayName: "Teller - Test Bank",
+    id: "provider_plaid_test",
+    provider: "plaid",
+    displayName: "Plaid - Test Bank",
     status: "connected",
     configured: true,
     lastSyncedAt: "2026-05-31T00:00:00.000Z"
@@ -306,11 +306,11 @@ function createLedger({
     categoryId: providerCategoryId,
     status: "posted",
     reviewed: false,
-    tags: ["teller"]
+    tags: ["plaid"]
   } satisfies Transaction;
 
   return {
-    source: "teller",
+    source: "koban",
     version: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     syncStartDate: "2026-01-01",
@@ -322,7 +322,7 @@ function createLedger({
   };
 }
 
-function createTwoTransactionLedger(outflowAmount: number, inflowAmount: number): TellerLedger {
+function createTwoTransactionLedger(outflowAmount: number, inflowAmount: number): Ledger {
   const ledger = createLedger({ transactionAmount: outflowAmount, providerCategoryId: "cat_transfer" });
   const base = ledger.transactions[0];
 

@@ -4,7 +4,6 @@ import { betterAuthBasePath, getBetterAuth, isHostedAuthMode } from "@/lib/auth"
 import { withLockedSyncStateValue } from "@/lib/db/finance-db";
 import { isDemoModeEnabled } from "@/lib/demo-mode";
 import { getFinanceData } from "@/lib/finance-data";
-import { getTellerAccountDetails, TellerSetupError } from "@/lib/teller-server";
 
 export const runtime = "nodejs";
 
@@ -20,9 +19,9 @@ interface TotpProtectionState {
   lastAcceptedCodeHash?: string;
 }
 
-// Reveal of full account/routing numbers. Numbers are fetched live from Teller
-// and never persisted or logged; every call requires a fresh TOTP proof so a
-// hijacked session alone can't exfiltrate them.
+// Account/routing-number reveal is unavailable until a supported provider offers
+// a live, non-persisted details API. Authentication and TOTP checks remain in
+// place so this endpoint cannot become an account-existence oracle.
 export async function POST(request: Request, { params }: { params: Promise<{ accountId: string }> }) {
   const { accountId: rawAccountId } = await params;
   const accountId = decodeURIComponent(rawAccountId);
@@ -106,27 +105,13 @@ async function verifyAndRevealAccountDetails({
     return NextResponse.json({ error: "not_found", message: "Account not found." }, { status: 404 });
   }
 
-  if (!account.id.startsWith("teller_")) {
-    return NextResponse.json(
-      {
-        error: "unsupported_provider",
-        message: "Account and routing numbers are currently available for Teller-linked bank accounts only."
-      },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const details = await getTellerAccountDetails(account.id, account.providerConnectionId);
-    return NextResponse.json({
-      account_number: details.accountNumber ?? null,
-      routing_numbers: details.routingNumbers
-    });
-  } catch (error) {
-    const status = error instanceof TellerSetupError ? 502 : 500;
-    const message = error instanceof Error ? error.message : "Teller details request failed.";
-    return NextResponse.json({ error: "provider_error", message }, { status });
-  }
+  return NextResponse.json(
+    {
+      error: "unsupported_provider",
+      message: "Account and routing numbers are not available for this provider."
+    },
+    { status: 400 }
+  );
 }
 
 async function verifyTotpWithProtection({

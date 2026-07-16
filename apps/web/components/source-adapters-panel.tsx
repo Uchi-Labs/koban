@@ -694,7 +694,7 @@ function SourceAdaptersLayout({ model }: { model: SourceAdaptersModel }) {
           <h2 className="text-base font-medium">Context sources</h2>
           <p className="text-sm text-muted-foreground">
             Source adapters enrich transactions with receipt, order, grocery, email, and travel context without
-            replacing the Teller ledger.
+            replacing the local ledger.
           </p>
         </div>
       </CardHeader>
@@ -906,7 +906,7 @@ function SuggestedEvidenceMatches({ model }: { model: SourceAdaptersModel }) {
         <div className="flex flex-col gap-0.5">
           <h2 className="text-sm font-medium">Suggested evidence matches</h2>
           <p className="text-xs text-muted-foreground">
-            Review source records automatically matched to Teller transactions before they become accepted context.
+            Review source records automatically matched to bank transactions before they become accepted context.
           </p>
         </div>
         <Button
@@ -950,7 +950,7 @@ function EvidenceMatchRow({ evidence, model }: { evidence: EvidenceReviewView; m
         </span>
         <p className="text-xs text-muted-foreground">
           {formatSourceAmount(evidence.sourceItem)} source record matched to{" "}
-          {formatTransactionAmount(evidence.transaction)} Teller transaction on{" "}
+          {formatTransactionAmount(evidence.transaction)} bank transaction on{" "}
           {formatSourceDate(evidence.transaction.date)}.
         </p>
       </div>

@@ -445,7 +445,7 @@ describe("llm enrichment", () => {
             id: "txn_food",
             merchantName: "EAST END FOOD",
             reviewed: false,
-            tags: ["teller:card_payment"]
+            tags: ["plaid:card_payment"]
           },
           {
             ...context.transactions[0],
@@ -454,7 +454,7 @@ describe("llm enrichment", () => {
             id: "txn_transfer",
             merchantName: "AMERICAN EXPRESS",
             reviewed: false,
-            tags: ["teller:ach"]
+            tags: ["plaid:ach"]
           },
           {
             ...context.transactions[0],
@@ -463,7 +463,7 @@ describe("llm enrichment", () => {
             id: "txn_payroll",
             merchantName: "BNYMELLON",
             reviewed: false,
-            tags: ["teller:ach"]
+            tags: ["plaid:ach"]
           },
           {
             ...context.transactions[0],
@@ -770,7 +770,7 @@ function createLlmClient(overrides: Partial<LlmGenerationClient>): LlmGeneration
 }
 
 function createContext(): LlmEnrichmentContext {
-  const providerConnectionId = "provider_teller_test";
+  const providerConnectionId = "provider_plaid_test";
   const transaction: Transaction = {
     accountId: "account_checking",
     amount: -20,

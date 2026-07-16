@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createMerchantLedger } from "@/__tests__/fixtures/merchant-ledger";
 import { POST as createRule } from "@/app/api/v1/rules/route";
 import { GET as previewRule } from "@/app/api/v1/rules/preview/route";
-import { closeFinanceDbForTests, replaceTellerLedgerInDb } from "@/lib/db/finance-db";
+import { closeFinanceDbForTests, replaceLedgerInDb } from "@/lib/db/finance-db";
 
 let testDbPath: string | null = null;
 
@@ -20,7 +20,7 @@ afterEach(async () => {
   }
   delete process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV;
   delete process.env.AI_FINANCES_PGLITE_DIR;
-  delete process.env.AI_FINANCES_TELLER_BACKUP_PATH;
+  delete process.env.AI_FINANCES_LEDGER_BACKUP_PATH;
 });
 
 describe("rules preview API", () => {
@@ -47,7 +47,7 @@ describe("rules preview API", () => {
 
   it("matches the exact set the rules engine would touch (parity)", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createMerchantLedger());
+    await replaceLedgerInDb(createMerchantLedger());
 
     const response = await previewRule(
       new NextRequest(
@@ -91,5 +91,5 @@ function useTempDb() {
   testDbPath = path.join(mkdtempSync(path.join(tmpdir(), "ai-finances-pglite-")), "db");
   process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
   process.env.AI_FINANCES_PGLITE_DIR = testDbPath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = path.join(path.dirname(testDbPath), "teller-ledger-backup.json");
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = path.join(path.dirname(testDbPath), "ledger-backup.json");
 }

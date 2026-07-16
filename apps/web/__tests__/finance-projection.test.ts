@@ -53,7 +53,7 @@ function spendingTransaction(id: string, date: string, amount: number): Transact
     id,
     merchantName: "Merchant",
     postedDate: date,
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     reviewed: false,
     status: "posted",
     tags: []

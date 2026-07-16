@@ -166,8 +166,6 @@ export async function ingestFinanceKitPayload(
     sourcesSummary: { skipped: true },
     startedAt,
     status: "succeeded",
-    tellerStatus: "succeeded",
-    tellerSummary: { skipped: true }
   });
 
   invalidateShellDataCache();

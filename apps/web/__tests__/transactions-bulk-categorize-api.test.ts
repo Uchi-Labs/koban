@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { POST as bulkCategorize } from "@/app/api/v1/transactions/bulk-categorize/route";
-import { closeFinanceDbForTests, readFinanceDbSnapshot, replaceTellerLedgerInDb } from "@/lib/db/finance-db";
+import { closeFinanceDbForTests, readFinanceDbSnapshot, replaceLedgerInDb } from "@/lib/db/finance-db";
 import { createMerchantLedger } from "@/__tests__/fixtures/merchant-ledger";
 
 let testDbPath: string | null = null;
@@ -18,7 +18,7 @@ afterEach(async () => {
   }
   delete process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV;
   delete process.env.AI_FINANCES_PGLITE_DIR;
-  delete process.env.AI_FINANCES_TELLER_BACKUP_PATH;
+  delete process.env.AI_FINANCES_LEDGER_BACKUP_PATH;
 });
 
 describe("transactions bulk-categorize API", () => {
@@ -38,7 +38,7 @@ describe("transactions bulk-categorize API", () => {
 
   it("rejects a missing or unknown category with a 400", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createMerchantLedger());
+    await replaceLedgerInDb(createMerchantLedger());
 
     expect(
       (await bulkCategorize(jsonRequest({ field: "merchant_or_description", match: "Starbucks", operator: "contains" }))).status
@@ -59,7 +59,7 @@ describe("transactions bulk-categorize API", () => {
 
   it("recategorizes every matching transaction and leaves non-matches untouched", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createMerchantLedger());
+    await replaceLedgerInDb(createMerchantLedger());
 
     const response = await bulkCategorize(
       jsonRequest({
@@ -100,5 +100,5 @@ function useTempDb() {
   testDbPath = path.join(mkdtempSync(path.join(tmpdir(), "ai-finances-pglite-")), "db");
   process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
   process.env.AI_FINANCES_PGLITE_DIR = testDbPath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = path.join(path.dirname(testDbPath), "teller-ledger-backup.json");
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = path.join(path.dirname(testDbPath), "ledger-backup.json");
 }

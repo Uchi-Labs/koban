@@ -41,11 +41,11 @@ describe("Wave B swipe threshold mapping", () => {
 });
 
 describe("Wave B sync island state", () => {
-  it("maps idle Teller data to a compact synced pill", () => {
+  it("maps idle Plaid data to a compact synced pill", () => {
     const state = deriveSyncIslandState({
       accountCount: 2,
       lastSyncedAt: "2026-07-06T06:09:00.000Z",
-      source: "teller",
+      source: "koban",
       status: "idle",
       transactionCount: 1200
     });
@@ -60,7 +60,7 @@ describe("Wave B sync island state", () => {
     const state = deriveSyncIslandState({
       accountCount: 2,
       phaseIndex: 2,
-      source: "teller",
+      source: "koban",
       status: "syncing",
       transactionCount: 1200
     });
@@ -74,7 +74,7 @@ describe("Wave B sync island state", () => {
     const first = deriveSyncIslandState({
       accountCount: 2,
       phaseIndex: 0,
-      source: "teller",
+      source: "koban",
       status: "syncing",
       transactionCount: 1200
     });
@@ -82,12 +82,12 @@ describe("Wave B sync island state", () => {
     const overflow = deriveSyncIslandState({
       accountCount: 2,
       phaseIndex: 999,
-      source: "teller",
+      source: "koban",
       status: "syncing",
       transactionCount: 1200
     });
 
-    expect(first.phaseLabel).toBe("Teller");
+    expect(first.phaseLabel).toBe("Plaid");
     expect(overflow.phaseLabel).toBe("finishing up");
     expect(overflow.phaseLabel).not.toBe(first.phaseLabel);
   });

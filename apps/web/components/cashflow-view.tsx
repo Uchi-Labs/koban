@@ -221,7 +221,7 @@ export function CashflowView({
       {isEmpty ? (
         <EmptyState
           actions={<Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/settings">Sync or import</Link>}
-          description="Sync a Teller connection or import historical transactions to see your monthly income, spend, and net cash flow."
+          description="Sync a bank connection or import historical transactions to see your monthly income, spend, and net cash flow."
           title="No cash flow yet"
         />
       ) : (

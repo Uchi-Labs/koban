@@ -2,7 +2,7 @@
 
 **Owner:** Vishhvak Srinivasan (sole operator and security contact)
 **Effective:** 2026-07-06 · **Review cadence:** every 6 months, jointly with the Information Security Policy
-**Scope:** all consumer financial data handled by the Koban personal-finance application: data retrieved from connected providers (Plaid, Teller, SnapTrade, SimpleFIN), operator-authored annotations, authentication data, and operational copies (backups, local development stores).
+**Scope:** all consumer financial data handled by the Koban personal-finance application: data retrieved from connected providers (Plaid, SnapTrade, SimpleFIN), operator-authored annotations, authentication data, and operational copies (backups, local development stores).
 
 Koban is a single-operator application: the only data subject is the operator. Retention decisions therefore serve the operator's own ledger-history needs, and disposal is always available to the data subject on demand because the data subject *is* the operator.
 
@@ -12,7 +12,7 @@ Koban is a single-operator application: the only data subject is the operator. R
 |---|---|---|
 | Financial data | Account metadata, balances, transactions (read-only copies from connected institutions) | PostgreSQL (production: Railway; development: operator machine) |
 | Annotations | Categories, tags, notes, review states authored by the operator | Same database, attached to transactions |
-| Provider credentials | Access tokens for Plaid items, Teller enrollments, SnapTrade user, SimpleFIN access URL | Railway service variables / git-ignored `.env`; provider tokens additionally in the database `sync_state` table where the application persists them |
+| Provider credentials | Access tokens for Plaid items, SnapTrade user, SimpleFIN access URL | Railway service variables / git-ignored `.env`; provider tokens additionally in the database `sync_state` table where the application persists them |
 | Auth data | Better Auth account record, session records, second-factor material (passkey public keys, TOTP secret) | Same database |
 | Derived data | Search embeddings and semantic documents generated from transactions | Same database |
 
@@ -30,7 +30,7 @@ No card numbers or institution login credentials are ever stored: providers expo
 Disposal paths, all available to the operator at any time:
 
 1. **Full application data deletion:** the in-app local-data reset (Settings) deletes stored accounts, transactions, annotations, embeddings, and provider sync state from the database in one operation.
-2. **Per-provider disposal:** disconnecting an item/enrollment at the provider (Plaid Portal at my.plaid.com, Teller, SnapTrade dashboard, SimpleFIN Bridge) terminates data flow; the operator then deletes the associated local records via reset or targeted deletion.
+2. **Per-provider disposal:** disconnecting an item/enrollment at the provider (Plaid Portal at my.plaid.com, SnapTrade dashboard, SimpleFIN Bridge) terminates data flow; the operator then deletes the associated local records via reset or targeted deletion.
 3. **Credential disposal:** tokens are revoked at the provider and removed from Railway variables / `.env`.
 4. **Infrastructure disposal:** deleting the Railway project destroys the production database and its volume on the platform (Railway is SOC 2 Type II certified; platform-side media disposal is covered by its certification). Local development stores are deleted with the repository/data directory on a FileVault-encrypted disk, and disk disposal follows standard encrypted-media practice (destroy the key by erasing the disk).
 

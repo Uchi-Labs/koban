@@ -27,3 +27,6 @@ apps/web/tests/e2e/.e2e-data/
 .claude/
 .gstack/
 .lavish/
+
+# Orca worktree scratch
+.orca/

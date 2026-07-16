@@ -1,24 +1,24 @@
 import { NextResponse } from "next/server";
 import { readJsonObject } from "@/lib/api-request";
 import {
-  exportTellerLedgerBackup,
-  importTellerLedgerBackup,
-  importTellerLedgerBackupFile,
-  type TellerLedger
+  exportLedgerBackup,
+  importLedgerBackup,
+  importLedgerBackupFile,
+  type Ledger
 } from "@/lib/finance-data";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const ledger = await exportTellerLedgerBackup();
+  const ledger = await exportLedgerBackup();
 
   if (!ledger) {
-    return NextResponse.json({ error: "No Teller ledger is available in the local database." }, { status: 404 });
+    return NextResponse.json({ error: "No ledger is available in the local database." }, { status: 404 });
   }
 
   return new NextResponse(`${JSON.stringify(ledger, null, 2)}\n`, {
     headers: {
-      "Content-Disposition": `attachment; filename="ai-finances-teller-ledger-${ledger.lastSyncedAt.slice(0, 10)}.json"`,
+      "Content-Disposition": `attachment; filename="ai-finances-ledger-${ledger.lastSyncedAt.slice(0, 10)}.json"`,
       "Content-Type": "application/json; charset=utf-8"
     }
   });
@@ -33,25 +33,18 @@ export async function POST(request: Request) {
     }
 
     const body = parsed.body as { content?: unknown; ledger?: unknown; use_local_backup?: unknown };
-    let ledger: TellerLedger | null = null;
-
-    if (body.use_local_backup === true) {
-      ledger = await importTellerLedgerBackupFile();
-    } else {
-      const candidate =
-        typeof body.content === "string"
-          ? JSON.parse(body.content) as unknown
-          : body.ledger;
-
-      ledger = await importTellerLedgerBackup(candidate as TellerLedger);
-    }
+    const ledger = body.use_local_backup === true
+      ? await importLedgerBackupFile()
+      : await importLedgerBackup(
+          (typeof body.content === "string" ? JSON.parse(body.content) as unknown : body.ledger) as Ledger
+        );
 
     if (!ledger) {
-      return NextResponse.json({ error: "Import content is not a valid Teller ledger backup." }, { status: 400 });
+      return NextResponse.json({ error: "Import content is not a valid ledger backup." }, { status: 400 });
     }
 
     return NextResponse.json({
-      object: "teller_ledger_backup_import",
+      object: "ledger_backup_import",
       account_count: ledger.accounts.length,
       transaction_count: ledger.transactions.length,
       last_synced_at: ledger.lastSyncedAt

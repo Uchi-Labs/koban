@@ -95,7 +95,7 @@ export function isLikelyTransferLikeTransaction({
     return true;
   }
 
-  if (tags?.some((tag) => normalizeForClassification(tag) === "teller transfer")) {
+  if (tags?.some((tag) => normalizeForClassification(tag) === "plaid transfer")) {
     return true;
   }
 

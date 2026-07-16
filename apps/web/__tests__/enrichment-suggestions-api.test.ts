@@ -10,10 +10,10 @@ import {
   closeFinanceDbForTests,
   listEnrichmentSuggestions,
   readFinanceDbSnapshot,
-  replaceTellerLedgerInDb
+  replaceLedgerInDb
 } from "@/lib/db/finance-db";
 import { generateEnrichmentSuggestions } from "@/lib/enrichment-runs";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 
 let testDbPath: string | null = null;
 
@@ -31,13 +31,13 @@ afterEach(async () => {
   delete process.env.AI_FINANCES_LLM_SIMPLE_MODEL;
   delete process.env.OPENAI_API_KEY;
   delete process.env.AI_FINANCES_PGLITE_DIR;
-  delete process.env.AI_FINANCES_TELLER_BACKUP_PATH;
+  delete process.env.AI_FINANCES_LEDGER_BACKUP_PATH;
 });
 
 describe("enrichment suggestions batch API", () => {
   it("batch accepts suggestions and mutates target transactions", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createRepeatedMerchantLedger());
+    await replaceLedgerInDb(createRepeatedMerchantLedger());
     await generateEnrichmentSuggestions(20);
     const suggestions = await listEnrichmentSuggestions();
     const categorySuggestion = suggestions.find(
@@ -79,7 +79,7 @@ describe("enrichment suggestions batch API", () => {
 
   it("returns partial results for mixed valid and invalid ids", async () => {
     useTempDb();
-    await replaceTellerLedgerInDb(createRepeatedMerchantLedger());
+    await replaceLedgerInDb(createRepeatedMerchantLedger());
     await generateEnrichmentSuggestions(20);
     const suggestions = await listEnrichmentSuggestions();
     const tagSuggestion = suggestions.find((suggestion) => suggestion.action === "add_tags");
@@ -131,7 +131,7 @@ function useTempDb() {
   testDbPath = path.join(mkdtempSync(path.join(tmpdir(), "ai-finances-pglite-")), "db");
   process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
   process.env.AI_FINANCES_PGLITE_DIR = testDbPath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = path.join(path.dirname(testDbPath), "teller-ledger-backup.json");
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = path.join(path.dirname(testDbPath), "ledger-backup.json");
   delete process.env.AI_FINANCES_LLM_PROVIDER;
   delete process.env.OPENAI_API_KEY;
 }
@@ -146,11 +146,11 @@ function jsonRequest(body: Record<string, unknown>): Request {
   });
 }
 
-function createRepeatedMerchantLedger(): TellerLedger {
+function createRepeatedMerchantLedger(): Ledger {
   const providerConnection = {
-    id: "provider_teller_test",
-    provider: "teller",
-    displayName: "Teller - Test Bank",
+    id: "provider_plaid_test",
+    provider: "plaid",
+    displayName: "Plaid - Test Bank",
     status: "connected",
     configured: true,
     lastSyncedAt: "2026-05-31T00:00:00.000Z"
@@ -181,11 +181,11 @@ function createRepeatedMerchantLedger(): TellerLedger {
     categoryId: "cat_other",
     status: "posted",
     reviewed: false,
-    tags: ["teller"]
+    tags: ["plaid"]
   } satisfies Transaction;
 
   return {
-    source: "teller",
+    source: "koban",
     version: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     syncStartDate: "2026-01-01",
