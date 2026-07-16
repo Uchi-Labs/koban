@@ -99,10 +99,10 @@ export default async function RecurringsPage() {
       <div className="mx-auto flex w-full max-w-[70rem] flex-1 flex-col gap-6 p-6">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
           <section className="text-center">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated Teller merchants</p>
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated merchants</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Recurring candidates</h1>
             <p className="mx-auto mt-1.5 max-w-xl text-sm text-muted-foreground">
-              Inferred from posted Teller transaction cadence — projected charge dates are review targets, not confirmed subscriptions.
+              Inferred from posted transaction cadence — projected charge dates are review targets, not confirmed subscriptions.
             </p>
           </section>
 
@@ -159,7 +159,7 @@ export default async function RecurringsPage() {
               </Link>
             ))}
             {candidateRows.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">No recurring candidates found in synced Teller transactions yet.</p>
+              <p className="px-1 text-sm text-muted-foreground">No recurring candidates found in synced transactions yet.</p>
             ) : null}
           </CardContent>
         </Card>

@@ -904,7 +904,7 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
         <div className="flex flex-col gap-1">
           <h1 className="text-base font-medium">Transaction rules</h1>
           <p className="text-sm text-muted-foreground">
-            Rules run locally against Teller transactions on creation, manual apply, and future Teller syncs.
+            Rules run locally against bank transactions on creation, manual apply, and future provider syncs.
           </p>
         </div>
         <Button onClick={model.applyRules} size="sm" type="button" variant="secondary">

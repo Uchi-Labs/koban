@@ -10,7 +10,6 @@ import {
   Plus,
   RefreshCw,
   Smartphone,
-  Trash2,
   WalletCards
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -20,7 +19,6 @@ import { BouncyAccordion } from "@/components/motion/bouncy-accordion";
 import { PlaidConnectSetup } from "@/components/plaid-connect-setup";
 import { SimpleFinConnectSetup } from "@/components/simplefin-connect-setup";
 import { SnapTradeConnectSetup } from "@/components/snaptrade-connect-setup";
-import { TellerConnectSetup } from "@/components/teller-connect-setup";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -28,7 +26,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
@@ -40,10 +37,9 @@ import type { FinanceKitSetupStatus } from "@/lib/financekit-server";
 import type { PlaidSetupStatus } from "@/lib/plaid-server";
 import type { SimpleFinSetupStatus } from "@/lib/simplefin-server";
 import type { SnapTradeSetupStatus } from "@/lib/snaptrade-server";
-import type { TellerSetupStatus } from "@/lib/teller-server";
 import { cn } from "@/lib/utils";
 
-type ConnectionProvider = "copilot" | "financekit" | "plaid" | "simplefin" | "snaptrade" | "teller";
+type ConnectionProvider = "copilot" | "financekit" | "plaid" | "simplefin" | "snaptrade";
 
 interface UnifiedConnectionRow {
   accountCount: number;
@@ -52,7 +48,6 @@ interface UnifiedConnectionRow {
   lastSyncedAt?: string;
   name: string;
   provider: ConnectionProvider;
-  removable: boolean;
   status: ProviderStatus;
   syncable: boolean;
 }
@@ -60,7 +55,6 @@ interface UnifiedConnectionRow {
 interface LaunchRequests {
   plaid: number;
   snaptrade: number;
-  teller: number;
 }
 
 const providerLabels: Record<ConnectionProvider, string> = {
@@ -68,8 +62,7 @@ const providerLabels: Record<ConnectionProvider, string> = {
   financekit: "FinanceKit",
   plaid: "Plaid",
   simplefin: "SimpleFIN",
-  snaptrade: "SnapTrade",
-  teller: "Teller"
+  snaptrade: "SnapTrade"
 };
 
 const providerIcons = {
@@ -77,15 +70,13 @@ const providerIcons = {
   financekit: Smartphone,
   plaid: WalletCards,
   simplefin: WalletCards,
-  snaptrade: LineChart,
-  teller: Landmark
+  snaptrade: LineChart
 } satisfies Record<ConnectionProvider, typeof Landmark>;
 
 const syncEndpoints: Partial<Record<ConnectionProvider, string>> = {
   plaid: "/api/v1/plaid/sync",
   simplefin: "/api/v1/simplefin/sync",
-  snaptrade: "/api/v1/snaptrade/sync",
-  teller: "/api/teller/sync"
+  snaptrade: "/api/v1/snaptrade/sync"
 };
 
 export function ConnectionsSettings({
@@ -94,8 +85,7 @@ export function ConnectionsSettings({
   plaidStatus,
   providerConnections,
   simpleFinStatus,
-  snapTradeStatus,
-  tellerStatus
+  snapTradeStatus
 }: {
   accountCountByConnection: Record<string, number>;
   financeKitStatus: FinanceKitSetupStatus;
@@ -103,13 +93,11 @@ export function ConnectionsSettings({
   providerConnections: ProviderConnection[];
   simpleFinStatus: SimpleFinSetupStatus;
   snapTradeStatus: SnapTradeSetupStatus;
-  tellerStatus: TellerSetupStatus;
 }) {
   const router = useRouter();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [detailsValue, setDetailsValue] = useState<string | null>(null);
-  const [launchRequests, setLaunchRequests] = useState<LaunchRequests>({ plaid: 0, snaptrade: 0, teller: 0 });
-  const [pendingRemoval, setPendingRemoval] = useState<UnifiedConnectionRow | null>(null);
+  const [launchRequests, setLaunchRequests] = useState<LaunchRequests>({ plaid: 0, snaptrade: 0 });
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ error?: boolean; text: string } | null>(null);
   const rows = useMemo(
@@ -120,8 +108,7 @@ export function ConnectionsSettings({
         plaidStatus,
         providerConnections,
         simpleFinStatus,
-        snapTradeStatus,
-        tellerStatus
+        snapTradeStatus
       }),
     [
       accountCountByConnection,
@@ -129,12 +116,11 @@ export function ConnectionsSettings({
       plaidStatus,
       providerConnections,
       simpleFinStatus,
-      snapTradeStatus,
-      tellerStatus
+      snapTradeStatus
     ]
   );
 
-  function launchProvider(provider: "financekit" | "plaid" | "snaptrade" | "teller") {
+  function launchProvider(provider: "financekit" | "plaid" | "snaptrade") {
     setAddDialogOpen(false);
     setDetailsValue(provider);
 
@@ -157,12 +143,8 @@ export function ConnectionsSettings({
 
     try {
       const response = await fetch(endpoint, {
-        ...(row.provider === "teller"
-          ? {}
-          : {
-              body: JSON.stringify({}),
-              headers: { "Content-Type": "application/json" }
-            }),
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
         method: "POST"
       });
       const body = (await response.json()) as { error?: string };
@@ -185,52 +167,7 @@ export function ConnectionsSettings({
     }
   }
 
-  async function removeTellerConnection() {
-    if (!pendingRemoval || pendingRemoval.provider !== "teller" || busyAction) {
-      return;
-    }
-
-    const row = pendingRemoval;
-    setBusyAction(`remove:${row.id}`);
-    setFeedback(null);
-
-    try {
-      const response = await fetch(`/api/teller/connections/${encodeURIComponent(row.id)}`, { method: "DELETE" });
-      const body = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(body.error ?? "Unable to remove the Teller connection.");
-      }
-
-      playSuccess();
-      setPendingRemoval(null);
-      setFeedback({ text: `${row.name} was removed from this app.` });
-      router.refresh();
-    } catch (error) {
-      playError();
-      setFeedback({
-        error: true,
-        text: error instanceof Error ? error.message : "Unable to remove the Teller connection."
-      });
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
   const detailItems = [
-    {
-      description: (
-        <TellerConnectSetup
-          detailsOnly
-          initialStatus={tellerStatus}
-          launchRequest={launchRequests.teller}
-          panelTestId="teller-provider-details"
-        />
-      ),
-      icon: <Landmark className="size-4" aria-hidden />,
-      id: "teller",
-      title: <ProviderDetailTitle count={tellerStatus.enrollmentCount} label="Teller" />
-    },
     {
       description: (
         <PlaidConnectSetup
@@ -274,7 +211,7 @@ export function ConnectionsSettings({
   ];
 
   return (
-    <section className="flex flex-col gap-4" data-testid="teller-setup-panel">
+    <section className="flex flex-col gap-4" data-testid="connections-settings-panel">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4 border-b border-border pb-4">
           <div className="min-w-0">
@@ -312,7 +249,6 @@ export function ConnectionsSettings({
               <ConnectionRow
                 busyAction={busyAction}
                 key={`${row.provider}:${row.id}`}
-                onRemove={() => setPendingRemoval(row)}
                 onSync={() => void syncProvider(row)}
                 row={row}
               />
@@ -352,17 +288,6 @@ export function ConnectionsSettings({
         open={addDialogOpen}
         plaidStatus={plaidStatus}
         snapTradeStatus={snapTradeStatus}
-        tellerStatus={tellerStatus}
-      />
-      <RemoveConnectionDialog
-        busy={busyAction === `remove:${pendingRemoval?.id ?? ""}`}
-        onConfirm={() => void removeTellerConnection()}
-        onOpenChange={(open) => {
-          if (!open && !busyAction) {
-            setPendingRemoval(null);
-          }
-        }}
-        row={pendingRemoval}
       />
     </section>
   );
@@ -370,12 +295,10 @@ export function ConnectionsSettings({
 
 function ConnectionRow({
   busyAction,
-  onRemove,
   onSync,
   row
 }: {
   busyAction: string | null;
-  onRemove: () => void;
   onSync: () => void;
   row: UnifiedConnectionRow;
 }) {
@@ -394,9 +317,7 @@ function ConnectionRow({
       <div className="justify-self-end md:col-start-6 md:row-start-1">
         <RowActions
           busy={Boolean(busyAction)}
-          onRemove={onRemove}
           onSync={onSync}
-          removable={row.removable}
           syncable={row.syncable}
           syncing={syncing}
         />
@@ -415,20 +336,16 @@ function ConnectionRow({
 
 function RowActions({
   busy,
-  onRemove,
   onSync,
-  removable,
   syncable,
   syncing
 }: {
   busy: boolean;
-  onRemove: () => void;
   onSync: () => void;
-  removable: boolean;
   syncable: boolean;
   syncing: boolean;
 }) {
-  if (!removable && !syncable) {
+  if (!syncable) {
     return <span className="text-xs text-muted-foreground">—</span>;
   }
 
@@ -437,19 +354,6 @@ function RowActions({
       {syncable ? (
         <Button aria-label="Sync connection" disabled={busy} onClick={onSync} size="icon-sm" type="button" variant="ghost">
           {syncing ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
-        </Button>
-      ) : null}
-      {removable ? (
-        <Button
-          aria-label="Remove connection"
-          className="text-muted-foreground hover:text-destructive"
-          disabled={busy}
-          onClick={onRemove}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <Trash2 className="size-4" aria-hidden />
         </Button>
       ) : null}
     </div>
@@ -525,31 +429,16 @@ function AddConnectionDialog({
   onOpenChange,
   open,
   plaidStatus,
-  snapTradeStatus,
-  tellerStatus
+  snapTradeStatus
 }: {
   financeKitStatus: FinanceKitSetupStatus;
-  onLaunch: (provider: "financekit" | "plaid" | "snaptrade" | "teller") => void;
+  onLaunch: (provider: "financekit" | "plaid" | "snaptrade") => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   plaidStatus: PlaidSetupStatus;
   snapTradeStatus: SnapTradeSetupStatus;
-  tellerStatus: TellerSetupStatus;
 }) {
   const options = [
-    // Teller withdrew its API product (Jul 2026); only offer it while enrollments
-    // still exist (so they can be managed), never for new connections.
-    ...(tellerStatus.enrollmentCount > 0
-      ? [
-          {
-            description: "Legacy Teller enrollments (provider discontinued)",
-            enabled: tellerStatus.readyForConnect,
-            icon: Landmark,
-            id: "teller" as const,
-            label: "Teller Connect"
-          }
-        ]
-      : []),
     {
       description: plaidStatus.readyForLink ? "Bank transaction accounts" : "Plaid credentials missing",
       enabled: plaidStatus.readyForLink,
@@ -612,46 +501,13 @@ function AddConnectionDialog({
   );
 }
 
-function RemoveConnectionDialog({
-  busy,
-  onConfirm,
-  onOpenChange,
-  row
-}: {
-  busy: boolean;
-  onConfirm: () => void;
-  onOpenChange: (open: boolean) => void;
-  row: UnifiedConnectionRow | null;
-}) {
-  return (
-    <Dialog onOpenChange={onOpenChange} open={row !== null}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Remove {row?.name ?? "this connection"}?</DialogTitle>
-          <DialogDescription>
-            This removes the Teller enrollment and its {row?.accountCount.toLocaleString() ?? 0} local accounts. Your bank account is not affected.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button disabled={busy} onClick={() => onOpenChange(false)} type="button" variant="ghost">Cancel</Button>
-          <Button disabled={busy} onClick={onConfirm} type="button" variant="destructive">
-            {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
-            {busy ? "Removing…" : "Remove connection"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function buildConnectionRows({
   accountCountByConnection,
   financeKitStatus,
   plaidStatus,
   providerConnections,
   simpleFinStatus,
-  snapTradeStatus,
-  tellerStatus
+  snapTradeStatus
 }: {
   accountCountByConnection: Record<string, number>;
   financeKitStatus: FinanceKitSetupStatus;
@@ -659,30 +515,9 @@ function buildConnectionRows({
   providerConnections: ProviderConnection[];
   simpleFinStatus: SimpleFinSetupStatus;
   snapTradeStatus: SnapTradeSetupStatus;
-  tellerStatus: TellerSetupStatus;
 }): UnifiedConnectionRow[] {
   const rows: UnifiedConnectionRow[] = [];
   const storedConnectionById = new Map(providerConnections.map((connection) => [connection.id, connection]));
-
-  rows.push(
-    ...tellerStatus.connections.map((connection) => {
-      const storedConnection = storedConnectionById.get(`provider_teller_${connection.id}`);
-
-      return {
-        accountCount: connection.accountCount,
-        errorMessage: storedConnection?.errorMessage,
-        id: connection.id,
-        lastSyncedAt: storedConnection?.lastSyncedAt ?? tellerStatus.lastLedgerSyncedAt,
-        name: connection.institutionName ?? `Teller connection …${connection.enrollmentIdSuffix}`,
-        provider: "teller" as const,
-        removable: true,
-        status: storedConnection?.status ?? ("connected" as const),
-        syncable: tellerStatus.readyForApi
-      };
-    })
-  );
-  // No empty-state row for Teller: the provider shut down, so a "not set up"
-  // prompt would invite connecting to a dead service.
 
   rows.push(
     ...plaidStatus.items.map((item) => ({
@@ -692,7 +527,6 @@ function buildConnectionRows({
       lastSyncedAt: item.lastSyncedAt,
       name: item.institutionName,
       provider: "plaid" as const,
-      removable: false,
       status: item.status,
       syncable: plaidStatus.readyForSync
     }))
@@ -710,7 +544,6 @@ function buildConnectionRows({
       // SnapTrade names authorizations "Connection-N"; the brokerage is the identity.
       name: connection.brokerageName ?? connection.name,
       provider: "snaptrade" as const,
-      removable: false,
       status: connection.status,
       syncable: snapTradeStatus.readyForSync
     }))
@@ -728,7 +561,6 @@ function buildConnectionRows({
       lastSyncedAt: connection.lastSyncedAt ?? financeKitStatus.lastIngestedAt,
       name: cleanProviderName(connection.displayName, "FinanceKit"),
       provider: "financekit" as const,
-      removable: false,
       status: connection.status,
       syncable: false
     }))
@@ -746,7 +578,6 @@ function buildConnectionRows({
         lastSyncedAt: connection.lastSyncedAt,
         name: connection.name,
         provider: "simplefin" as const,
-        removable: false,
         status: connection.status,
         syncable: simpleFinStatus.readyForSync
       }))
@@ -765,7 +596,6 @@ function buildConnectionRows({
       lastSyncedAt: connection.lastSyncedAt,
       name: cleanProviderName(connection.displayName, "Copilot"),
       provider: "copilot" as const,
-      removable: false,
       status: connection.status,
       syncable: false
     }))
@@ -780,7 +610,6 @@ function emptyProviderRow(provider: ConnectionProvider, name: string): UnifiedCo
     id: `empty-${provider}`,
     name,
     provider,
-    removable: false,
     status: "not_configured",
     syncable: false
   };

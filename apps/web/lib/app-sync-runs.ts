@@ -6,14 +6,6 @@ export interface AppSyncStepPayload<TSummary extends Record<string, unknown> = R
   status: AppSyncRunStatus;
 }
 
-export interface TellerSyncSummaryPayload extends Record<string, unknown> {
-  accountCount?: number;
-  enrollmentCount?: number;
-  errors?: string[];
-  lastSyncedAt?: string;
-  transactionCount?: number;
-}
-
 export interface SnapTradeSyncSummaryPayload extends Record<string, unknown> {
   accountCount?: number;
   configured?: boolean;
@@ -122,7 +114,6 @@ export interface AppSyncRunPayload {
   snaptrade: AppSyncStepPayload<SnapTradeSyncSummaryPayload>;
   started_at: string;
   status: AppSyncRunStatus;
-  teller: AppSyncStepPayload<TellerSyncSummaryPayload>;
 }
 
 export interface SyncSchedulePayload {
@@ -153,8 +144,7 @@ export function appSyncRunRecordToPayload(record: AppSyncRunRecord): AppSyncRunP
     simplefin: stepPayload(record.simplefinStatus ?? "succeeded", record.simplefinSummary ?? { configured: false, skipped: true }),
     snaptrade: stepPayload(record.snaptradeStatus ?? "succeeded", record.snaptradeSummary ?? { configured: false, skipped: true }),
     started_at: record.startedAt,
-    status: record.status,
-    teller: stepPayload(record.tellerStatus, record.tellerSummary)
+    status: record.status
   };
 }
 

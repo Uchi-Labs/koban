@@ -3,7 +3,7 @@ import { AiProviderPanel } from "@/components/sync-everything-panel";
 import { ConnectionsSettings } from "@/components/connections-settings";
 import { DemoModePanel } from "@/components/demo-mode-panel";
 import Link from "next/link";
-import { LocalDataPanel } from "@/components/teller-connect-setup";
+import { LocalDataPanel } from "@/components/local-data-panel";
 import { SecuritySettingsPanel } from "@/components/security-settings-panel";
 import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
 import { SoundSettingsPanel } from "@/components/sound-settings-panel";
@@ -31,13 +31,11 @@ import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/so
 import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
 import { getFinanceKitSetupStatus } from "@/lib/financekit-server";
 import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
-import { getTellerSetupStatus } from "@/lib/teller-server";
 
 export default async function SettingsPage() {
   const demoModeEnabled = await isDemoModeEnabled();
   const [
     financeData,
-    tellerStatus,
     snapTradeStatus,
     plaidStatus,
     simpleFinStatus,
@@ -51,7 +49,6 @@ export default async function SettingsPage() {
     evidenceLinks
   ] = await Promise.all([
     getFinanceData(),
-    getTellerSetupStatus(),
     getSnapTradeSetupStatus(),
     getPlaidSetupStatus(),
     getSimpleFinSetupStatus(),
@@ -83,8 +80,7 @@ export default async function SettingsPage() {
       plaid: plaidStatus.readyForSync,
       simplefin: simpleFinStatus.readyForSync,
       sources: sourceReadiness.ready,
-      snaptrade: snapTradeStatus.readyForSync,
-      teller: tellerStatus.readyForApi
+      snaptrade: snapTradeStatus.readyForSync
     },
     sources: {
       blocked_count: sourceReadiness.blockedCount,
@@ -92,12 +88,6 @@ export default async function SettingsPage() {
       installed_count: sourceReadiness.installedCount,
       ready_count: sourceReadiness.readyCount,
       source_item_count: sourceDiagnostics.summary.sourceItemCount
-    },
-    teller: {
-      enrollment_count: tellerStatus.enrollmentCount,
-      ready_for_api: tellerStatus.readyForApi,
-      stored_account_count: tellerStatus.storedAccountCount,
-      stored_transaction_count: tellerStatus.storedTransactionCount
     },
     snaptrade: {
       configured: snapTradeStatus.configured,
@@ -248,7 +238,6 @@ export default async function SettingsPage() {
     externalSourceCount: sourceDiagnostics.summary.externalSourceCount,
     sourceItemCount: sourceDiagnostics.summary.sourceItemCount
   });
-  const tellerStatusPayload = toSerializable(tellerStatus);
   const snapTradeStatusPayload = toSerializable(snapTradeStatus);
   const plaidStatusPayload = toSerializable(plaidStatus);
   const simpleFinStatusPayload = toSerializable(simpleFinStatus);
@@ -297,7 +286,6 @@ export default async function SettingsPage() {
             providerConnections={providerConnectionsPayload}
             simpleFinStatus={simpleFinStatusPayload}
             snapTradeStatus={snapTradeStatusPayload}
-            tellerStatus={tellerStatusPayload}
           />
           <SourceAdaptersPanel
             initialAdapters={sourceAdapterPayload}
@@ -320,7 +308,7 @@ export default async function SettingsPage() {
         <TabsContent value="data" className="flex flex-col gap-5">
           <DemoModePanel initialEnabled={demoModeEnabled} />
           <SoundSettingsPanel />
-          <LocalDataPanel initialStatus={tellerStatusPayload} />
+          <LocalDataPanel initialTransactionCount={financeData.transactions.length} />
         </TabsContent>
       </Tabs>
 

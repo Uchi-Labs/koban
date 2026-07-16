@@ -2,7 +2,7 @@
 
 **Owner:** Vishhvak Srinivasan (sole operator and security contact)
 **Effective:** 2026-07-06 · **Review cadence:** every 6 months or after any material architecture change
-**Scope:** the Koban personal-finance application (this repository), its production deployment on Railway (`finances.vishhvak.com`), the production PostgreSQL database, connected data-provider accounts (Plaid, Teller, SnapTrade, SimpleFIN), and the operator workstation used for development.
+**Scope:** the Koban personal-finance application (this repository), its production deployment on Railway (`finances.vishhvak.com`), the production PostgreSQL database, connected data-provider accounts (Plaid, SnapTrade, SimpleFIN), and the operator workstation used for development.
 
 Koban is a single-operator application: the only end user is the operator. There are no employees, contractors, or third-party users. Controls below are sized to that reality and stated as practiced facts, not aspirations.
 
@@ -14,7 +14,7 @@ Koban is a single-operator application: the only end user is the operator. There
 ## 2. Access control
 
 - **Production assets** (Railway project, production database, DNS, GitHub repository, provider dashboards) are accessible only to the operator's individual accounts. No shared accounts exist.
-- All administrative accounts (GitHub, Railway, Plaid, Teller, SnapTrade, SimpleFIN, domain registrar) require multi-factor authentication.
+- All administrative accounts (GitHub, Railway, Plaid, SnapTrade, SimpleFIN, domain registrar) require multi-factor authentication.
 - **Application access (hosted mode):** the application enforces authentication via Better Auth when `DATABASE_URL` is set. Registration is closed after the first (owner) account. Passkey (WebAuthn, phishing-resistant) and TOTP second factors are supported and enrolled; password-only sign-in does not grant a session when a second factor is enrolled.
 - API access requires a Better Auth session, a Better Auth API key, or the instance bearer token; unauthenticated requests to `/api/*` are rejected in hosted mode.
 - Access review: because exactly one identity exists per system, access review consists of verifying (at each policy review) that no additional accounts, keys, or OAuth grants have been added; stale provider tokens and API keys are revoked when found.
@@ -23,7 +23,7 @@ Koban is a single-operator application: the only end user is the operator. There
 
 - Secrets (provider tokens, API keys, database credentials) live in the git-ignored `.env` locally and in Railway service variables in production. They are never committed to version control; `.env.example` carries variable names only.
 - Long-lived provider secrets that are ever exposed outside these stores (e.g., pasted into a chat or terminal shared with a third-party tool) are treated as compromised and rotated.
-- Provider connections are read-only by construction (Plaid Link read scopes, Teller, SnapTrade read connections, SimpleFIN read-only protocol); no money-movement capability is provisioned.
+- Provider connections are read-only by construction (Plaid Link read scopes, SnapTrade read connections, SimpleFIN read-only protocol); no money-movement capability is provisioned.
 
 ## 4. Encryption
 
@@ -42,7 +42,7 @@ Koban is a single-operator application: the only end user is the operator. There
 
 - Data stored: financial account metadata, balances, and transactions retrieved read-only from institutions the operator explicitly connected, plus operator-authored annotations (categories, tags, notes).
 - Data is retained while the relevant provider connection remains active, to preserve ledger history.
-- Deletion: the operator can delete all application data at any time via the built-in local-data reset (Settings), and can revoke provider access at each provider (Plaid Portal, Teller, SnapTrade dashboard, SimpleFIN Bridge). Railway volumes/databases are deleted when the hosting project is deleted.
+- Deletion: the operator can delete all application data at any time via the built-in local-data reset (Settings), and can revoke provider access at each provider (Plaid Portal, SnapTrade dashboard, SimpleFIN Bridge). Railway volumes/databases are deleted when the hosting project is deleted.
 - No consumer data is sold or shared. Data leaves the system only toward the connected providers themselves or, if the operator explicitly enables AI enrichment, the operator-configured LLM endpoint (disabled by default).
 - The privacy policy shown in-app (`/privacy`) reflects this section and is kept in sync with it.
 

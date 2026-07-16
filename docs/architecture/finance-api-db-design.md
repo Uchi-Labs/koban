@@ -2,6 +2,12 @@
 
 Created: 2026-05-24
 
+> **Historical note (2026-07-16):** Teller was the original prototype provider and its
+> API was withdrawn; it has been removed from the app. Plaid is now the primary bank
+> provider (with SnapTrade and SimpleFIN), and the internal ledger abstraction is
+> provider-neutral (`Ledger`, `replaceLedgerInDb`, `ledger-normalization.ts`). The
+> Teller-specific sync rules below are retained only as design context.
+
 This note proposes the canonical database and API shape for AI Finances. It uses Copilot Money as a local storage reference, the current Teller-backed prototype as implementation context, PGlite as the local Postgres-compatible runtime, and Kanoon/Stripe-style API design as the taste bar.
 
 ## Design Goal

@@ -5,21 +5,21 @@ import {
   closeFinanceDbForTests,
   readFinanceDbSnapshot,
   replaceSnapTradeInvestmentSnapshot,
-  replaceTellerLedgerInDb
+  replaceLedgerInDb
 } from "@/lib/db/finance-db";
-import type { TellerLedger } from "@/lib/finance-data";
-import { tellerInternalAmountSignConvention } from "@/lib/teller-normalization";
+import type { Ledger } from "@/lib/finance-data";
+import { internalAmountSignConvention } from "@/lib/ledger-normalization";
 
 const e2eDbRelativePath = path.join("tests", "e2e", ".e2e-data", "pglite");
 const e2eDataRoot = path.join(process.cwd(), "tests", "e2e", ".e2e-data");
 const e2eDbPath = path.join(e2eDataRoot, "pglite");
-const e2eTellerBackupPath = path.join(e2eDataRoot, "teller-ledger-backup.json");
+const e2eLedgerBackupPath = path.join(e2eDataRoot, "ledger-backup.json");
 const syncedAt = "2026-06-30T12:00:00.000Z";
 
 const providerConnection: ProviderConnection = {
-  id: "provider_e2e_teller",
-  provider: "teller",
-  displayName: "Synthetic E2E Teller Connection",
+  id: "provider_e2e_plaid",
+  provider: "plaid",
+  displayName: "Synthetic E2E Plaid Connection",
   status: "connected",
   configured: true,
   lastSyncedAt: syncedAt,
@@ -98,13 +98,13 @@ export default async function globalSetup(): Promise<void> {
 export async function seedE2eDatabase(): Promise<void> {
   process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
   process.env.AI_FINANCES_PGLITE_DIR = e2eDbRelativePath;
-  process.env.AI_FINANCES_TELLER_BACKUP_PATH = e2eTellerBackupPath;
+  process.env.AI_FINANCES_LEDGER_BACKUP_PATH = e2eLedgerBackupPath;
 
   rmSync(e2eDataRoot, { force: true, recursive: true });
   mkdirSync(e2eDbPath, { recursive: true });
 
   try {
-    await replaceTellerLedgerInDb(createSyntheticE2eLedger());
+    await replaceLedgerInDb(createSyntheticE2eLedger());
     await replaceSnapTradeInvestmentSnapshot({
       accounts: [investmentAccount],
       balanceSnapshots: [
@@ -145,9 +145,9 @@ export async function seedE2eDatabase(): Promise<void> {
   }
 }
 
-function createSyntheticE2eLedger(): TellerLedger {
+function createSyntheticE2eLedger(): Ledger {
   return {
-    source: "teller",
+    source: "koban",
     version: 1,
     lastSyncedAt: syncedAt,
     syncStartDate: "2026-04-01",
@@ -176,7 +176,7 @@ function createSyntheticE2eLedger(): TellerLedger {
       }
     ],
     normalization: {
-      amountSignConvention: tellerInternalAmountSignConvention
+      amountSignConvention: internalAmountSignConvention
     },
     syncSummary: {
       accountCount: accounts.length,

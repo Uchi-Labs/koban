@@ -80,7 +80,7 @@ export default async function DashboardPage() {
           text="Dashboard"
           yOffset={6}
         />
-        {source === "teller" ? (
+        {source === "koban" ? (
           <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
             Synced accounts
           </Badge>

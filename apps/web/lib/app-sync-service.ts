@@ -16,7 +16,6 @@ import {
   SimpleFinSyncError,
   SnapTradeSyncError,
   SourceRefreshError,
-  TellerSyncError,
   syncErrorMessage,
   type SyncPipelineError
 } from "@/lib/effect/sync-errors";
@@ -42,8 +41,6 @@ import {
   syncPlaidDataEffect,
   type PlaidSyncResult
 } from "@/lib/plaid-server";
-import { getStoredTellerEnrollments, syncTellerDataEffect, type TellerSyncResult } from "@/lib/teller-server";
-import { readWorkspaceEnv } from "@/lib/workspace-env";
 import { Effect, Schedule } from "effect";
 import type { Duration } from "effect";
 
@@ -90,8 +87,6 @@ export async function runSnapTradeSync(signal?: AbortSignal): Promise<{
     sourcesSummary: { skipped: true },
     startedAt,
     status: snaptradeStatus,
-    tellerStatus: "succeeded",
-    tellerSummary: { skipped: true }
   });
 
   invalidateShellDataCache();
@@ -121,8 +116,6 @@ export async function runPlaidSync(): Promise<{
     sourcesSummary: { skipped: true },
     startedAt,
     status: plaidStatus,
-    tellerStatus: "succeeded",
-    tellerSummary: { skipped: true }
   });
 
   invalidateShellDataCache();
@@ -152,8 +145,6 @@ export async function runSimpleFinSync(): Promise<{
     sourcesSummary: { skipped: true },
     startedAt,
     status: simplefinStatus,
-    tellerStatus: "succeeded",
-    tellerSummary: { skipped: true }
   });
 
   invalidateShellDataCache();
@@ -164,17 +155,6 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
   return Effect.gen(function* () {
     const startedAt = new Date().toISOString();
     const enrichmentLimit = normalizeEnrichmentLimit(options.enrichmentLimit);
-    // Teller withdrew its API product (Jul 2026). Skip the step entirely when no
-    // enrollments remain instead of failing every scheduled run against a dead provider.
-    const tellerConfigured = getStoredTellerEnrollments(readWorkspaceEnv()).length > 0;
-    const tellerResult = tellerConfigured
-      ? normalizeTellerStep(
-          yield* runSyncStepEffect(syncTellerDataEffect(), {
-            timeout: "2 minutes",
-            timeoutError: () => new TellerSyncError({ message: "Teller sync timed out." })
-          })
-        )
-      : { data: undefined, status: "succeeded" as const };
     const snapTradeResult = normalizeSnapTradeStep(
       isSnapTradeConfigured()
         ? yield* runSyncStepEffect(syncSnapTradeDataEffect(), {
@@ -271,7 +251,6 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
           };
     const finishedAt = new Date().toISOString();
     const statuses = [
-      tellerResult.status,
       snapTradeResult.status,
       plaidResult.status,
       simpleFinResult.status,
@@ -286,7 +265,6 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
           enrichmentStatus: enrichmentResult.status,
           enrichmentSummary: summarizeEnrichmentStep(enrichmentResult, semanticResult),
           errorMessage: syncRunErrorMessage([
-            tellerResult,
             snapTradeResult,
             plaidResult,
             simpleFinResult,
@@ -305,9 +283,7 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
           snaptradeStatus: snapTradeResult.status,
           snaptradeSummary: summarizeSnapTradeStep(snapTradeResult),
           startedAt,
-          status: syncRunStatus(statuses),
-          tellerStatus: tellerResult.status,
-          tellerSummary: summarizeTellerStep(tellerResult)
+          status: syncRunStatus(statuses)
         }).then((run) => {
           invalidateShellDataCache();
           return run;
@@ -372,19 +348,6 @@ function syncRunStatus(statuses: SyncStepStatus[]): AppSyncRunStatus {
 function syncRunErrorMessage(steps: Array<StepResult<unknown>>): string | undefined {
   const messages = steps.flatMap((step) => (step.error ? [step.error] : []));
   return messages.length > 0 ? messages.join(" | ") : undefined;
-}
-
-function normalizeTellerStep(step: StepResult<TellerSyncResult>): StepResult<TellerSyncResult> {
-  if (step.status !== "succeeded" || !step.data) {
-    return step;
-  }
-
-  return step.data.ok === false || step.data.errors.length > 0
-    ? {
-        ...step,
-        status: "partial"
-      }
-    : step;
 }
 
 function normalizeSnapTradeStep(step: StepResult<SnapTradeSyncResult>): StepResult<SnapTradeSyncResult> {
@@ -458,21 +421,6 @@ function plaidSyncStepStatus(result: PlaidSyncResult): SyncStepStatus {
   }
 
   return result.accountCount > 0 || result.transactionCount > 0 || result.itemCount > 0 ? "partial" : "error";
-}
-
-function summarizeTellerStep(step: StepResult<TellerSyncResult>): Record<string, unknown> {
-  if (!step.data) {
-    // Succeeded with no data = deliberately skipped (no enrollments / dead provider).
-    return step.status === "succeeded" ? { skipped: true } : { error: step.error ?? "Teller sync failed." };
-  }
-
-  return {
-    accountCount: step.data.accountCount,
-    enrollmentCount: step.data.enrollmentCount,
-    errors: step.data.errors,
-    lastSyncedAt: step.data.lastSyncedAt,
-    transactionCount: step.data.transactionCount
-  };
 }
 
 function summarizeSnapTradeStep(step: StepResult<SnapTradeSyncResult>): Record<string, unknown> {

@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   closeFinanceDbForTests,
   readFinanceDbSnapshot,
-  replaceTellerLedgerInDb,
+  replaceLedgerInDb,
   resetLocalAppData,
   semanticSearchTransactions,
   updateDbTransaction
 } from "@/lib/db/finance-db";
-import type { TellerLedger } from "@/lib/finance-data";
+import type { Ledger } from "@/lib/finance-data";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithPostgres = testDatabaseUrl ? describe : describe.skip;
@@ -30,7 +30,7 @@ describeWithPostgres("postgres finance db driver", () => {
   });
 
   it("bootstraps schema, writes and reads rows, and preserves transaction overlays", async () => {
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -12.34, providerCategoryId: "cat_food" }));
 
     const updated = await updateDbTransaction("txn_pg_1", {
       categoryId: "cat_travel",
@@ -46,7 +46,7 @@ describeWithPostgres("postgres finance db driver", () => {
       tags: ["trip", "dinner"]
     });
 
-    await replaceTellerLedgerInDb(createLedger({ transactionAmount: -18.5, providerCategoryId: "cat_food" }));
+    await replaceLedgerInDb(createLedger({ transactionAmount: -18.5, providerCategoryId: "cat_food" }));
 
     const snapshot = await readFinanceDbSnapshot();
     const searchResults = await semanticSearchTransactions("Denver dinner trip", 5);
@@ -74,11 +74,11 @@ function createLedger({
 }: {
   providerCategoryId: string;
   transactionAmount: number;
-}): TellerLedger {
+}): Ledger {
   const providerConnection = {
-    id: "provider_teller_pg_test",
-    provider: "teller",
-    displayName: "Teller - Postgres Test Bank",
+    id: "provider_plaid_pg_test",
+    provider: "plaid",
+    displayName: "Plaid - Postgres Test Bank",
     status: "connected",
     configured: true,
     lastSyncedAt: "2026-05-31T00:00:00.000Z"
@@ -109,11 +109,11 @@ function createLedger({
     categoryId: providerCategoryId,
     status: "posted",
     reviewed: false,
-    tags: ["teller"]
+    tags: ["plaid"]
   } satisfies Transaction;
 
   return {
-    source: "teller",
+    source: "koban",
     version: 1,
     lastSyncedAt: "2026-05-31T00:00:00.000Z",
     syncStartDate: "2026-01-01",

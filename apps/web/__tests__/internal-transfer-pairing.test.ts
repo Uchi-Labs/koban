@@ -369,7 +369,7 @@ function account(input: Partial<Account>): Account {
     lastUpdatedAt: "2026-05-31T00:00:00.000Z",
     mask: "1234",
     name: "Account",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     type: "checking",
     ...input
   };
@@ -386,10 +386,10 @@ function transaction(input: Partial<Transaction>): Transaction {
     id: "txn",
     merchantName: "Test Merchant",
     postedDate: "2026-05-30",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     reviewed: false,
     status: "posted",
-    tags: ["teller"],
+    tags: ["plaid"],
     ...input
   };
 }

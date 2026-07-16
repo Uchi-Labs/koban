@@ -52,8 +52,8 @@ import {
   internalTransferHeuristicSource,
   internalTransferPairMatcherSource
 } from "@/lib/internal-transfer-pairing";
-import { invalidateShellDataCache, type AccountBalanceSnapshot, type TellerLedger } from "@/lib/finance-data";
-import { normalizeTellerLedgerAmounts, tellerInternalAmountSignConvention } from "@/lib/teller-normalization";
+import { invalidateShellDataCache, type AccountBalanceSnapshot, type Ledger } from "@/lib/finance-data";
+import { normalizeLedgerAmounts, internalAmountSignConvention } from "@/lib/ledger-normalization";
 import {
   isLikelyCatastrophicRegex,
   validateTransactionRuleCreateBody,
@@ -358,14 +358,12 @@ interface AppSyncRunRow {
   status: AppSyncRunStatus;
   started_at: string;
   finished_at: string;
-  teller_status: AppSyncRunStatus;
   financekit_status?: AppSyncRunStatus;
   plaid_status?: AppSyncRunStatus;
   snaptrade_status?: AppSyncRunStatus;
   simplefin_status?: AppSyncRunStatus;
   sources_status: AppSyncRunStatus;
   enrichment_status: AppSyncRunStatus;
-  teller_summary: unknown;
   financekit_summary?: unknown;
   plaid_summary?: unknown;
   snaptrade_summary?: unknown;
@@ -480,8 +478,6 @@ export interface AppSyncRunInput {
   snaptradeSummary?: Record<string, unknown>;
   startedAt: string;
   status: AppSyncRunStatus;
-  tellerStatus: AppSyncRunStatus;
-  tellerSummary: Record<string, unknown>;
 }
 
 export interface AppSyncRunRecord extends AppSyncRunInput {
@@ -830,8 +826,8 @@ export function consumeFinanceDbRecoveryEvent(): { originalPath: string; recover
   return event;
 }
 
-export async function replaceTellerLedgerInDb(ledger: TellerLedger): Promise<void> {
-  return enqueueDbWrite(() => replaceTellerLedgerInDbNow(ledger));
+export async function replaceLedgerInDb(ledger: Ledger): Promise<void> {
+  return enqueueDbWrite(() => replaceLedgerInDbNow(ledger));
 }
 
 export interface SnapTradeInvestmentSnapshotInput {
@@ -1547,16 +1543,22 @@ export async function renameTag(oldName: string, newName: string): Promise<TagSt
   });
 }
 
-async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
-  const normalizedLedger = normalizeTellerLedgerAmounts(ledger).ledger;
+async function replaceLedgerInDbNow(ledger: Ledger): Promise<void> {
+  const normalizedLedger = normalizeLedgerAmounts(ledger).ledger;
   const db = await getFinanceDb();
   const existingOverlays = await readTransactionOverlays(db);
 
   await db.exec("BEGIN");
   try {
-    await db.query("DELETE FROM provider_connections WHERE provider = 'teller'");
-    await db.query("DELETE FROM sync_run_items WHERE sync_run_id IN (SELECT id FROM sync_runs WHERE provider = 'teller')");
-    await db.query("DELETE FROM sync_runs WHERE provider = 'teller'");
+    // Full-ledger replace: clear only the providers represented by the incoming
+    // snapshot. Provider-specific lanes not owned by this ledger remain intact.
+    const replacedProviders = [...new Set(normalizedLedger.providerConnections.map((connection) => connection.provider))];
+    if (replacedProviders.length > 0) {
+      const placeholders = replacedProviders.map((_, index) => `$${index + 1}`).join(", ");
+      await db.query(`DELETE FROM provider_connections WHERE provider IN (${placeholders})`, replacedProviders);
+    }
+    await db.query("DELETE FROM sync_run_items WHERE sync_run_id IN (SELECT id FROM sync_runs WHERE provider = 'koban')");
+    await db.query("DELETE FROM sync_runs WHERE provider = 'koban'");
 
     await db.query(
       `INSERT INTO sync_runs (
@@ -1581,7 +1583,7 @@ async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
         error_message = EXCLUDED.error_message`,
       [
         `sync_${normalizedLedger.lastSyncedAt.replace(/[^0-9a-z]/gi, "")}`,
-        "teller",
+        "koban",
         normalizedLedger.syncSummary.errors.length > 0 ? "error" : "succeeded",
         normalizedLedger.lastSyncedAt,
         normalizedLedger.lastSyncedAt,
@@ -1628,8 +1630,6 @@ async function replaceTellerLedgerInDbNow(ledger: TellerLedger): Promise<void> {
         ]
       );
     }
-
-    await db.query("DELETE FROM transactions WHERE provider_connection_id NOT IN (SELECT id FROM provider_connections)");
 
     for (const transaction of normalizedLedger.transactions) {
       const overlay = existingOverlays.get(transaction.id);
@@ -1951,7 +1951,7 @@ async function replacePlaidLedgerSnapshotNow(input: PlaidLedgerSnapshotInput): P
     await clearDanglingTransactionPairs(db);
     await applyTransactionRulesNow(db);
     await replaceTransactionSemanticDocuments(db, {
-      source: "teller",
+      source: "koban",
       version: 1,
       lastSyncedAt: input.finishedAt,
       syncStartDate: input.startedAt.slice(0, 10),
@@ -2104,7 +2104,7 @@ async function replaceSimpleFinLedgerSnapshotNow(
     await clearDanglingTransactionPairs(db);
     await applyTransactionRulesNow(db);
     await replaceTransactionSemanticDocuments(db, {
-      source: "teller",
+      source: "koban",
       version: 1,
       lastSyncedAt: input.finishedAt,
       syncStartDate: new Date(input.requestStartUnix * 1000).toISOString().slice(0, 10),
@@ -2249,7 +2249,7 @@ async function ingestFinanceKitLedgerSnapshotNow(
     await clearDanglingTransactionPairs(db);
     await applyTransactionRulesNow(db);
     await replaceTransactionSemanticDocuments(db, {
-      source: "teller",
+      source: "koban",
       version: 1,
       lastSyncedAt: input.finishedAt,
       syncStartDate: input.startedAt.slice(0, 10),
@@ -2289,7 +2289,7 @@ async function ingestFinanceKitLedgerSnapshotNow(
   };
 }
 
-export async function readFinanceDbSnapshot(): Promise<TellerLedger | null> {
+export async function readFinanceDbSnapshot(): Promise<Ledger | null> {
   if (!financeDbExists()) {
     return null;
   }
@@ -2311,7 +2311,7 @@ export async function readFinanceDbSnapshot(): Promise<TellerLedger | null> {
   const lastSyncedAt = state.get("last_synced_at") ?? new Date(0).toISOString();
 
   return {
-    source: "teller",
+    source: "koban",
     version: 1,
     lastSyncedAt,
     syncStartDate: state.get("sync_start_date") ?? "",
@@ -2321,8 +2321,8 @@ export async function readFinanceDbSnapshot(): Promise<TellerLedger | null> {
     transactions: transactions.rows.map(transactionFromRow),
     providerConnections: providerConnections.rows.map(providerConnectionFromRow),
     normalization:
-      state.get("amount_sign_convention") === tellerInternalAmountSignConvention
-        ? { amountSignConvention: tellerInternalAmountSignConvention }
+      state.get("amount_sign_convention") === internalAmountSignConvention
+        ? { amountSignConvention: internalAmountSignConvention }
         : undefined,
     syncSummary: {
       accountCount: Number.parseInt(state.get("account_count") ?? String(accounts.rows.length), 10),
@@ -2387,8 +2387,8 @@ export async function updateDbTransaction(
   return updatedTransaction;
 }
 
-export async function ensureTransactionSemanticDocuments(ledger: TellerLedger): Promise<void> {
-  const normalizedLedger = normalizeTellerLedgerAmounts(ledger).ledger;
+export async function ensureTransactionSemanticDocuments(ledger: Ledger): Promise<void> {
+  const normalizedLedger = normalizeLedgerAmounts(ledger).ledger;
   await enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const summary = await getSemanticDocumentSummary();
@@ -2749,14 +2749,12 @@ export async function recordAppSyncRun(input: AppSyncRunInput): Promise<AppSyncR
         status,
         started_at,
         finished_at,
-        teller_status,
         financekit_status,
         plaid_status,
         snaptrade_status,
         simplefin_status,
         sources_status,
         enrichment_status,
-        teller_summary,
         financekit_summary,
         plaid_summary,
         snaptrade_summary,
@@ -2764,18 +2762,16 @@ export async function recordAppSyncRun(input: AppSyncRunInput): Promise<AppSyncR
         sources_summary,
         enrichment_summary,
         error_message
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17::jsonb, $18::jsonb, $19)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17)
       ON CONFLICT (id) DO UPDATE SET
         status = EXCLUDED.status,
         finished_at = EXCLUDED.finished_at,
-        teller_status = EXCLUDED.teller_status,
         financekit_status = EXCLUDED.financekit_status,
         plaid_status = EXCLUDED.plaid_status,
         snaptrade_status = EXCLUDED.snaptrade_status,
         simplefin_status = EXCLUDED.simplefin_status,
         sources_status = EXCLUDED.sources_status,
         enrichment_status = EXCLUDED.enrichment_status,
-        teller_summary = EXCLUDED.teller_summary,
         financekit_summary = EXCLUDED.financekit_summary,
         plaid_summary = EXCLUDED.plaid_summary,
         snaptrade_summary = EXCLUDED.snaptrade_summary,
@@ -2788,14 +2784,12 @@ export async function recordAppSyncRun(input: AppSyncRunInput): Promise<AppSyncR
         input.status,
         input.startedAt,
         input.finishedAt,
-        input.tellerStatus,
         input.financekitStatus ?? "succeeded",
         input.plaidStatus ?? "succeeded",
         input.snaptradeStatus ?? "succeeded",
         input.simplefinStatus ?? "succeeded",
         input.sourcesStatus,
         input.enrichmentStatus,
-        JSON.stringify(input.tellerSummary),
         JSON.stringify(input.financekitSummary ?? { configured: false, skipped: true }),
         JSON.stringify(input.plaidSummary ?? { configured: false, skipped: true }),
         JSON.stringify(input.snaptradeSummary ?? { configured: false, skipped: true }),
@@ -3785,7 +3779,7 @@ export interface ProviderConnectionDeletion {
 /* Removing a bank connection drops its provider_connections row; accounts,
    balance snapshots, transactions, and their evidence/suggestion links all
    cascade (ON DELETE CASCADE). The caller is responsible for removing the
-   matching Teller enrollment from the credential bundle. */
+   matching provider credentials from the credential bundle. */
 export async function deleteProviderConnection(providerConnectionId: string): Promise<ProviderConnectionDeletion> {
   if (!financeDbExists()) {
     return { accountCount: 0, removed: false, transactionCount: 0 };
@@ -5088,14 +5082,12 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       status TEXT NOT NULL,
       started_at TEXT NOT NULL,
       finished_at TEXT NOT NULL,
-      teller_status TEXT NOT NULL,
       financekit_status TEXT NOT NULL DEFAULT 'succeeded',
       plaid_status TEXT NOT NULL DEFAULT 'succeeded',
       snaptrade_status TEXT NOT NULL DEFAULT 'succeeded',
       simplefin_status TEXT NOT NULL DEFAULT 'succeeded',
       sources_status TEXT NOT NULL,
       enrichment_status TEXT NOT NULL,
-      teller_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       financekit_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       plaid_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       snaptrade_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -5210,6 +5202,10 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       ADD COLUMN IF NOT EXISTS simplefin_status TEXT NOT NULL DEFAULT 'succeeded';
     ALTER TABLE app_sync_runs
       ADD COLUMN IF NOT EXISTS simplefin_summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE app_sync_runs
+      DROP COLUMN IF EXISTS teller_status;
+    ALTER TABLE app_sync_runs
+      DROP COLUMN IF EXISTS teller_summary;
     ALTER TABLE transactions
       ADD COLUMN IF NOT EXISTS financial_goal_id TEXT;
     CREATE INDEX IF NOT EXISTS transactions_financial_goal_idx ON transactions(financial_goal_id);
@@ -5314,7 +5310,7 @@ async function sanitizeStoredSourceItemCurrencies(db: FinanceDb): Promise<void> 
 
 /**
  * Exact adapter names sync writers use as a bare tag (`simplefin`, `plaid`,
- * `financekit`, `snaptrade`) or as a namespace prefix (`teller:card_payment`).
+ * `financekit`, `snaptrade`) or as a namespace prefix (`snaptrade:dividend`).
  * Any tag name containing `:` is also treated as a machine/namespaced tag —
  * real user-typed tags don't use that syntax. Everything else is a `user`
  * tag: something a person typed (manual tag, rule action, tag popover
@@ -5323,7 +5319,7 @@ async function sanitizeStoredSourceItemCurrencies(db: FinanceDb): Promise<void> 
  * auto-registration on transaction upsert, and explicit tag-color upserts)
  * rather than trusting each call site to say which "kind" it meant.
  */
-const SOURCE_ADAPTER_TAG_NAMES = new Set(["simplefin", "plaid", "teller", "snaptrade", "financekit"]);
+const SOURCE_ADAPTER_TAG_NAMES = new Set(["simplefin", "plaid", "snaptrade", "financekit"]);
 
 function classifyTagKind(name: string): "source" | "user" {
   const normalized = name.trim().toLowerCase();
@@ -6277,7 +6273,7 @@ function buildLocalEnrichmentSuggestionInputs({
         createSuggestionInput({
           action: "add_tags",
           confidence: 0.72,
-          reason: `${transaction.merchantName} appears ${merchantGroup.length.toLocaleString()} times in the local Teller ledger.`,
+          reason: `${transaction.merchantName} appears ${merchantGroup.length.toLocaleString()} times in the local ledger.`,
           tags: ["recurring"],
           transactionId: transaction.id
         })
@@ -6318,7 +6314,7 @@ function buildLocalEnrichmentSuggestionInputs({
         action: "create_rule",
         categoryId: commonCategory,
         confidence: Math.min(0.9, 0.62 + merchantGroup.length * 0.03),
-        reason: `${sample.merchantName} has ${merchantGroup.length.toLocaleString()} matching Teller transactions and no local rule yet.`,
+        reason: `${sample.merchantName} has ${merchantGroup.length.toLocaleString()} matching transactions and no local rule yet.`,
         ruleMatchField: "merchant_name",
         ruleMatchOperator: "contains",
         ruleName: `${sample.merchantName} cleanup`,
@@ -6641,7 +6637,7 @@ function sameConfiguredLlmProvider(left: FinanceDbLlmProviderStatus, right: Fina
     (left.baseUrl ?? "") === (right.baseUrl ?? "");
 }
 
-async function replaceTransactionSemanticDocuments(db: FinanceDb, ledger: TellerLedger): Promise<void> {
+async function replaceTransactionSemanticDocuments(db: FinanceDb, ledger: Ledger): Promise<void> {
   const currentAccounts = await db.query<AccountRow>("SELECT * FROM accounts");
   const accountById = new Map([
     ...ledger.accounts.map((account) => [account.id, account] as const),
@@ -7115,7 +7111,7 @@ function investmentPositionFromRow(row: InvestmentPositionRow): InvestmentPositi
   };
 }
 
-function createLedgerBalanceSnapshots(ledger: TellerLedger): AccountBalanceSnapshot[] {
+function createLedgerBalanceSnapshots(ledger: Ledger): AccountBalanceSnapshot[] {
   const providedSnapshots = ledger.balanceSnapshots ?? [];
   const accountIdsWithSnapshots = new Set(providedSnapshots.map((snapshot) => snapshot.accountId));
   const missingSnapshots = ledger.accounts
@@ -7128,7 +7124,7 @@ function createLedgerBalanceSnapshots(ledger: TellerLedger): AccountBalanceSnaps
       ledgerBalance: account.currentBalance,
       availableBalance: account.availableBalance,
       currency: account.currency,
-      source: "teller"
+      source: "koban"
     }));
 
   return [...providedSnapshots, ...missingSnapshots];
@@ -7268,9 +7264,7 @@ function appSyncRunFromRow(row: AppSyncRunRow): AppSyncRunRecord {
     snaptradeStatus: row.snaptrade_status ?? "succeeded",
     snaptradeSummary: parseJsonRecord(row.snaptrade_summary ?? { configured: false, skipped: true }),
     startedAt: row.started_at,
-    status: row.status,
-    tellerStatus: row.teller_status,
-    tellerSummary: parseJsonRecord(row.teller_summary)
+    status: row.status
   };
 }
 
@@ -7335,7 +7329,7 @@ function mergeTransactionOverlay(transaction: Transaction, overlay: TransactionO
     transaction.categoryId !== "cat_other" &&
     !overlay.reviewed &&
     !overlay.notes &&
-    overlayTags.every((tag) => tag.startsWith("teller:") || tag === "teller") &&
+    overlayTags.every((tag) => classifyTagKind(tag) === "source") &&
     (overlay.category_id === "cat_other" ||
       (transaction.categoryId === "cat_transfer" &&
         overlay.category_id !== "cat_transfer" &&

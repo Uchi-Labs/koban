@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tra
   });
 
   if (!transaction) {
-    return NextResponse.json({ error: "Transaction not found in the local Teller ledger." }, { status: 404 });
+    return NextResponse.json({ error: "Transaction not found in the local ledger." }, { status: 404 });
   }
 
   const contextNote = await createTransactionContextNote({

@@ -1,10 +1,10 @@
 import type { Account, Transaction } from "@ai-finances/schema";
 import { describe, expect, it } from "vitest";
-import { normalizeProviderCurrencyCode, normalizeTellerLedgerAmounts } from "@/lib/teller-normalization";
+import { normalizeProviderCurrencyCode, normalizeLedgerAmounts } from "@/lib/ledger-normalization";
 
 const checkingAccount = {
   id: "acct_checking",
-  providerConnectionId: "provider_teller_test",
+  providerConnectionId: "provider_plaid_test",
   groupId: "group_cash",
   name: "Checking",
   institutionName: "Test Bank",
@@ -25,7 +25,7 @@ const creditCardAccount = {
 
 function transaction(overrides: Pick<Transaction, "accountId" | "amount" | "id">) {
   return {
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-30",
     postedDate: "2026-05-30",
     merchantName: "Merchant",
@@ -34,12 +34,12 @@ function transaction(overrides: Pick<Transaction, "accountId" | "amount" | "id">
     categoryId: "cat_other",
     status: "posted",
     reviewed: false,
-    tags: ["teller"],
+    tags: ["plaid"],
     ...overrides
   } satisfies Transaction;
 }
 
-describe("Teller amount normalization", () => {
+describe("Plaid amount normalization", () => {
   it("preserves valid provider currency codes and falls back only for invalid values", () => {
     expect(normalizeProviderCurrencyCode("usd")).toBe("USD");
     expect(normalizeProviderCurrencyCode("cad")).toBe("CAD");
@@ -49,7 +49,7 @@ describe("Teller amount normalization", () => {
   });
 
   it("keeps deposit account signs and inverts credit card liability signs", () => {
-    const result = normalizeTellerLedgerAmounts({
+    const result = normalizeLedgerAmounts({
       accounts: [checkingAccount, creditCardAccount],
       transactions: [
         transaction({ id: "txn_checking_spend", accountId: "acct_checking", amount: -12.34 }),
@@ -65,11 +65,11 @@ describe("Teller amount normalization", () => {
   });
 
   it("does not normalize an already-marked ledger twice", () => {
-    const first = normalizeTellerLedgerAmounts({
+    const first = normalizeLedgerAmounts({
       accounts: [creditCardAccount],
       transactions: [transaction({ id: "txn_card_purchase", accountId: "acct_card", amount: 45.67 })]
     });
-    const second = normalizeTellerLedgerAmounts(first.ledger);
+    const second = normalizeLedgerAmounts(first.ledger);
 
     expect(second.changed).toBe(false);
     expect(second.ledger.transactions[0].amount).toBe(-45.67);

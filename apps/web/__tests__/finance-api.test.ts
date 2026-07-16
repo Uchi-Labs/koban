@@ -36,7 +36,7 @@ describe("finance API helpers", () => {
     const accounts = [
       {
         id: "acct_1",
-        providerConnectionId: "provider_teller_test",
+        providerConnectionId: "provider_plaid_test",
         groupId: "group_cash",
         name: "Checking",
         institutionName: "Test Bank",
@@ -67,7 +67,7 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
   return {
     id: "txn_test",
     accountId: "acct_1",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-31",
     postedDate: "2026-05-31",
     merchantName: "Merchant",

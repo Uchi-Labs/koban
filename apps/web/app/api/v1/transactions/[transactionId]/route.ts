@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tra
   const transaction = transactions.find((candidate) => candidate.id === decodeURIComponent(transactionId));
 
   if (!transaction) {
-    return NextResponse.json({ error: "Transaction not found in the local Teller ledger." }, { status: 404 });
+    return NextResponse.json({ error: "Transaction not found in the local ledger." }, { status: 404 });
   }
 
   return NextResponse.json(serializeTransaction(transaction, { accounts, categories }));
@@ -96,7 +96,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   if (!transaction) {
-    return NextResponse.json({ error: "Transaction not found in the local Teller ledger." }, { status: 404 });
+    return NextResponse.json({ error: "Transaction not found in the local ledger." }, { status: 404 });
   }
 
   const { accounts, categories } = await getFinanceData();

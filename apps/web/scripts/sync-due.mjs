@@ -176,11 +176,11 @@ function formatSyncScheduleResult(payload) {
 
   const run = payload.run;
   const status = run?.status ?? "unknown";
-  const teller = run?.teller?.status ?? "unknown";
+  const plaid = run?.plaid?.status ?? "unknown";
   const sources = run?.sources?.status ?? "unknown";
   const enrichment = run?.enrichment?.status ?? "unknown";
 
-  return `Scheduled sync ran: ${status}. Teller ${teller}; sources ${sources}; AI ${enrichment}.`;
+  return `Scheduled sync ran: ${status}. Plaid ${plaid}; sources ${sources}; AI ${enrichment}.`;
 }
 
 function printHelp() {

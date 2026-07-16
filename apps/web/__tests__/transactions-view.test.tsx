@@ -9,7 +9,7 @@ import { getTransactionViews } from "@/lib/view-models";
 const accounts = [
   {
     id: "acct_amex",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     groupId: "group_credit",
     name: "Amex Gold",
     institutionName: "American Express",
@@ -22,7 +22,7 @@ const accounts = [
   },
   {
     id: "acct_chase",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     groupId: "group_credit",
     name: "Chase Sapphire",
     institutionName: "Chase",
@@ -47,7 +47,7 @@ const transactions = [
   {
     id: "txn_uber",
     accountId: "acct_chase",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-22",
     postedDate: "2026-05-22",
     merchantName: "Uber",
@@ -62,7 +62,7 @@ const transactions = [
   {
     id: "txn_figma",
     accountId: "acct_amex",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-21",
     postedDate: "2026-05-21",
     merchantName: "Figma",
@@ -77,7 +77,7 @@ const transactions = [
   {
     id: "txn_github",
     accountId: "acct_amex",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-20",
     postedDate: "2026-05-20",
     merchantName: "GitHub",
@@ -92,7 +92,7 @@ const transactions = [
   {
     id: "txn_airbnb",
     accountId: "acct_chase",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-19",
     postedDate: "2026-05-19",
     merchantName: "Airbnb",
@@ -107,7 +107,7 @@ const transactions = [
   {
     id: "txn_payroll",
     accountId: "acct_chase",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-18",
     postedDate: "2026-05-18",
     merchantName: "Payroll",
@@ -122,7 +122,7 @@ const transactions = [
   {
     id: "txn_transfer",
     accountId: "acct_chase",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-17",
     postedDate: "2026-05-17",
     merchantName: "AMERICAN EXPRESS",
@@ -132,12 +132,12 @@ const transactions = [
     categoryId: "cat_transfer",
     status: "posted",
     reviewed: false,
-    tags: ["teller:ach"]
+    tags: ["plaid:ach"]
   },
   {
     id: "txn_reviewed",
     accountId: "acct_amex",
-    providerConnectionId: "provider_teller_test",
+    providerConnectionId: "provider_plaid_test",
     date: "2026-05-16",
     postedDate: "2026-05-16",
     merchantName: "Reviewed Cafe",
@@ -567,7 +567,7 @@ describe("TransactionsView", () => {
     );
   });
 
-  it("downloads the currently filtered Teller transactions as CSV", async () => {
+  it("downloads the currently filtered Plaid transactions as CSV", async () => {
     renderTransactions();
 
     await userEvent.type(screen.getByLabelText("Search transactions"), "Uber");

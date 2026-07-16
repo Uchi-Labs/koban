@@ -474,7 +474,7 @@ function PaletteCommandList({
         <CommandItem data-sound="none" onSelect={onSync} value="action-sync">
           <RefreshCw className="text-muted-foreground" />
           Sync everything
-          <CommandShortcut>Teller + sources + AI</CommandShortcut>
+          <CommandShortcut>Providers + sources + AI</CommandShortcut>
         </CommandItem>
       </CommandGroup>
     </CommandList>

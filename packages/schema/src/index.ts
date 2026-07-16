@@ -1,6 +1,6 @@
 export type CurrencyCode = string;
 
-export type ProviderId = "teller" | "snaptrade" | "simplefin" | "plaid" | "financekit" | "copilot" | "manual";
+export type ProviderId = "snaptrade" | "simplefin" | "plaid" | "financekit" | "copilot" | "manual";
 
 export type ProviderStatus =
   | "not_configured"
@@ -89,7 +89,7 @@ export interface Category {
 /**
  * `user` — a tag a person created or applied (manual tag, rule action, tag
  * popover "Create ..."). `source` — a machine tag a sync adapter attaches to
- * a transaction (`simplefin`, `plaid`, `teller:card_payment`, ...). Source
+ * a transaction (`simplefin`, `plaid`, `snaptrade`, ...). Source
  * tags stay on the transaction and remain searchable/filterable; UI surfaces
  * that list "tags to apply" (row chips, add-tags popover) show `user` tags
  * only, while the transaction inspector still exposes `source` tags, muted

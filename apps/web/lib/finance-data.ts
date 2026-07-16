@@ -25,18 +25,18 @@ import {
   listCategories,
   readFinanceDbSnapshot,
   readShellSnapshot,
-  replaceTellerLedgerInDb,
+  replaceLedgerInDb,
   updateDbTransaction
 } from "@/lib/db/finance-db";
 import {
-  tellerInternalAmountSignConvention,
-  type TellerLedgerAmountNormalization
-} from "@/lib/teller-normalization";
+  internalAmountSignConvention,
+  type LedgerAmountNormalization
+} from "@/lib/ledger-normalization";
 import { isIncomeTransaction, isReviewActionableTransaction, isSpendingTransaction } from "@/lib/transaction-classification";
 import { findWorkspaceRoot, readWorkspaceEnv } from "@/lib/workspace-env";
 
 export interface FinanceData {
-  source: "empty" | "teller";
+  source: "empty" | "koban";
   accounts: Account[];
   accountGroups: AccountGroup[];
   categories: Category[];
@@ -44,11 +44,11 @@ export interface FinanceData {
   providerConnections: ProviderConnection[];
   recurringItems: RecurringItem[];
   transactions: Transaction[];
-  tellerLedger?: TellerLedger;
+  ledger?: Ledger;
 }
 
-export interface TellerLedger {
-  source: "teller";
+export interface Ledger {
+  source: "koban";
   version: 1;
   lastSyncedAt: string;
   syncStartDate: string;
@@ -57,7 +57,7 @@ export interface TellerLedger {
   balanceSnapshots?: AccountBalanceSnapshot[];
   transactions: Transaction[];
   providerConnections: ProviderConnection[];
-  normalization?: TellerLedgerAmountNormalization;
+  normalization?: LedgerAmountNormalization;
   syncSummary: {
     accountCount: number;
     transactionCount: number;
@@ -82,7 +82,7 @@ export interface ShellData {
   demoMode: boolean;
   lastSyncedAt?: string;
   reviewActionableCount: number;
-  source: "empty" | "teller";
+  source: "empty" | "koban";
   transactionCount: number;
 }
 
@@ -97,7 +97,7 @@ let shellDataCache: { expiresAt: number; value: ShellData } | null = null;
 let ledgerReadCache: {
   categories: Awaited<ReturnType<typeof listCategories>>;
   expiresAt: number;
-  ledger: TellerLedger;
+  ledger: Ledger;
 } | null = null;
 
 const shellDataCacheTtlMs = 30_000;
@@ -140,7 +140,7 @@ export async function getShellData(): Promise<ShellData> {
     demoMode: false,
     lastSyncedAt: snapshot.lastSyncedAt,
     reviewActionableCount: snapshot.reviewActionableCount,
-    source: "teller" as const,
+    source: "koban" as const,
     transactionCount: snapshot.transactionCount
   };
   shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
@@ -175,7 +175,7 @@ export async function getFinanceData(): Promise<FinanceData> {
   }
 
   if (consumeFinanceDbRecoveryEvent()) {
-    const restored = await importTellerLedgerBackupFile();
+    const restored = await importLedgerBackupFile();
 
     if (restored && restored.accounts.length > 0) {
       return createFinanceDataFromLedger(await withInclusionOverrides(restored), categories);
@@ -202,17 +202,17 @@ export async function getFinanceData(): Promise<FinanceData> {
   };
 }
 
-export function getTellerLedgerBackupPath(): string {
+export function getLedgerBackupPath(): string {
   const env = readWorkspaceEnv();
-  if (env.AI_FINANCES_TELLER_BACKUP_PATH) {
-    return env.AI_FINANCES_TELLER_BACKUP_PATH;
+  if (env.AI_FINANCES_LEDGER_BACKUP_PATH) {
+    return env.AI_FINANCES_LEDGER_BACKUP_PATH;
   }
 
-  return path.join(findWorkspaceRoot(), "data", "local", "teller-ledger.json");
+  return path.join(findWorkspaceRoot(), "data", "local", "ledger.json");
 }
 
-function readTellerLedgerBackup(): TellerLedger | null {
-  const ledgerPath = getTellerLedgerBackupPath();
+function readLedgerBackup(): Ledger | null {
+  const ledgerPath = getLedgerBackupPath();
 
   if (!existsSync(ledgerPath)) {
     return null;
@@ -221,7 +221,7 @@ function readTellerLedgerBackup(): TellerLedger | null {
   try {
     const parsed = JSON.parse(readFileSync(ledgerPath, "utf8")) as unknown;
 
-    if (!isTellerLedger(parsed)) {
+    if (!isLedger(parsed)) {
       return null;
     }
 
@@ -231,35 +231,35 @@ function readTellerLedgerBackup(): TellerLedger | null {
   }
 }
 
-export function writeTellerLedgerBackup(ledger: TellerLedger): void {
-  const ledgerPath = getTellerLedgerBackupPath();
+export function writeLedgerBackup(ledger: Ledger): void {
+  const ledgerPath = getLedgerBackupPath();
   mkdirSync(path.dirname(ledgerPath), { recursive: true });
   writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 });
 }
 
-export async function exportTellerLedgerBackup(): Promise<TellerLedger | null> {
+export async function exportLedgerBackup(): Promise<Ledger | null> {
   const ledger = await readFinanceDbSnapshot();
 
   if (!ledger || ledger.accounts.length === 0) {
     return null;
   }
 
-  writeTellerLedgerBackup(ledger);
+  writeLedgerBackup(ledger);
   return ledger;
 }
 
-export async function importTellerLedgerBackup(ledger: TellerLedger): Promise<TellerLedger | null> {
-  if (!isTellerLedger(ledger)) {
+export async function importLedgerBackup(ledger: Ledger): Promise<Ledger | null> {
+  if (!isLedger(ledger)) {
     return null;
   }
 
-  await replaceTellerLedgerInDb(ledger);
+  await replaceLedgerInDb(ledger);
   return (await readFinanceDbSnapshot()) ?? ledger;
 }
 
-export async function importTellerLedgerBackupFile(): Promise<TellerLedger | null> {
-  const ledger = readTellerLedgerBackup();
-  return ledger ? importTellerLedgerBackup(ledger) : null;
+export async function importLedgerBackupFile(): Promise<Ledger | null> {
+  const ledger = readLedgerBackup();
+  return ledger ? importLedgerBackup(ledger) : null;
 }
 
 export async function updateStoredTransactionInDb(
@@ -269,7 +269,7 @@ export async function updateStoredTransactionInDb(
   return updateDbTransaction(transactionId, update);
 }
 
-async function withInclusionOverrides(ledger: TellerLedger): Promise<TellerLedger> {
+async function withInclusionOverrides(ledger: Ledger): Promise<Ledger> {
   const overrides = await getAccountInclusionOverrides();
   const withOverrides =
     Object.keys(overrides).length === 0
@@ -291,34 +291,34 @@ async function withInclusionOverrides(ledger: TellerLedger): Promise<TellerLedge
   };
 }
 
-function createFinanceDataFromLedger(tellerLedger: TellerLedger, categories: Category[]): FinanceData {
-  const accountGroups = createAccountGroups(tellerLedger.accounts);
-  const metricTransactions = filterTransactionsForIncludedAccounts(tellerLedger.accounts, tellerLedger.transactions);
+function createFinanceDataFromLedger(ledger: Ledger, categories: Category[]): FinanceData {
+  const accountGroups = createAccountGroups(ledger.accounts);
+  const metricTransactions = filterTransactionsForIncludedAccounts(ledger.accounts, ledger.transactions);
   const recurringItems = createRecurringItems(metricTransactions);
   const dashboardSummary = createDashboardSummary({
-    accounts: tellerLedger.accounts,
+    accounts: ledger.accounts,
     accountGroups,
     categories,
     transactions: metricTransactions,
     recurringItems,
-    providerConnections: tellerLedger.providerConnections,
-    asOf: tellerLedger.lastSyncedAt
+    providerConnections: ledger.providerConnections,
+    asOf: ledger.lastSyncedAt
   });
 
   return {
-    source: "teller",
-    accounts: tellerLedger.accounts,
+    source: "koban",
+    accounts: ledger.accounts,
     accountGroups,
     categories,
     dashboardSummary,
-    providerConnections: tellerLedger.providerConnections,
+    providerConnections: ledger.providerConnections,
     recurringItems,
-    transactions: tellerLedger.transactions,
-    tellerLedger
+    transactions: ledger.transactions,
+    ledger
   };
 }
 
-async function getFinanceDbLedger(): Promise<TellerLedger | null> {
+async function getFinanceDbLedger(): Promise<Ledger | null> {
   if (!financeDbExists()) {
     return null;
   }
@@ -326,14 +326,14 @@ async function getFinanceDbLedger(): Promise<TellerLedger | null> {
   return readFinanceDbSnapshot();
 }
 
-function scheduleReadPathNormalizationMigration(ledger: TellerLedger): void {
-  if (ledger.normalization?.amountSignConvention === tellerInternalAmountSignConvention) {
+function scheduleReadPathNormalizationMigration(ledger: Ledger): void {
+  if (ledger.normalization?.amountSignConvention === internalAmountSignConvention) {
     return;
   }
 
   if (!loggedReadPathNormalizationMigration) {
     loggedReadPathNormalizationMigration = true;
-    console.warn("Finance DB snapshot uses an old Teller amount convention; scheduling background normalization.");
+    console.warn("Finance DB snapshot uses an old amount convention; scheduling background normalization.");
   }
 
   if (readPathNormalizationMigrationScheduled) {
@@ -341,12 +341,12 @@ function scheduleReadPathNormalizationMigration(ledger: TellerLedger): void {
   }
 
   readPathNormalizationMigrationScheduled = true;
-  void replaceTellerLedgerInDb(ledger)
+  void replaceLedgerInDb(ledger)
     .catch((error) => {
       console.error(
         error instanceof Error
-          ? `Background Teller normalization failed: ${error.message}`
-          : "Background Teller normalization failed."
+          ? `Background ledger normalization failed: ${error.message}`
+          : "Background ledger normalization failed."
       );
     })
     .finally(() => {
@@ -354,11 +354,11 @@ function scheduleReadPathNormalizationMigration(ledger: TellerLedger): void {
     });
 }
 
-function isTellerLedger(value: unknown): value is TellerLedger {
-  const parsed = value as Partial<TellerLedger>;
+function isLedger(value: unknown): value is Ledger {
+  const parsed = value as Partial<Ledger>;
 
   return (
-    parsed.source === "teller" &&
+    parsed.source === "koban" &&
     parsed.version === 1 &&
     typeof parsed.lastSyncedAt === "string" &&
     typeof parsed.syncStartDate === "string" &&

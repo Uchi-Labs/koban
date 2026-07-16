@@ -631,7 +631,7 @@ function useTransactionsViewModel({
 
   // Every *user* tag the user has ever applied or styled — the row/add-tags
   // popover lists this set with each tag's colored dot (Copilot parity).
-  // `kind: "source"` tags (simplefin, plaid, teller:card_payment, ...) are
+  // `kind: "source"` tags (simplefin, plaid, plaid:card_payment, ...) are
   // machine tags a sync adapter attached — they stay on the transaction and
   // stay searchable, but they don't belong in a list of tags a person picks
   // to apply, so they're excluded here. A tag with no registry row yet
@@ -2729,7 +2729,7 @@ function TransactionRowButton({
       ? goalOverride
       : (transaction.financialGoalId ? (model.goalsById.get(transaction.financialGoalId) ?? null) : null);
   // Row chips only ever show `user` tags — source/machine tags (simplefin,
-  // teller:card_payment, ...) stay on the transaction but are noise in a
+  // plaid:card_payment, ...) stay on the transaction but are noise in a
   // scannable ledger row. They're still visible (muted) in the inspector.
   const userFacingTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind !== "source");
   const visibleTags = userFacingTags.slice(0, 1);
@@ -3247,7 +3247,7 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
   const [renameDraft, setRenameDraft] = useState("");
   const selectedStyle = tagDraft ? model.tagStyleByName.get(tagDraft.toLowerCase()) : undefined;
   const sourceStyleSelected = selectedStyle?.kind === "source";
-  // Source/machine tags (simplefin, teller:card_payment, ...) are kept on the
+  // Source/machine tags (simplefin, plaid:card_payment, ...) are kept on the
   // transaction and stay searchable, but they're a sync adapter's bookkeeping,
   // not something to edit — render them separately, muted, and non-removable.
   const userTags = transaction.tags.filter((tag) => model.tagStyleByName.get(tag.toLowerCase())?.kind !== "source");

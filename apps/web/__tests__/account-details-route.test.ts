@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   authHandler: vi.fn(),
   getSession: vi.fn(),
-  getTellerAccountDetails: vi.fn(),
   storedState: undefined as string | undefined,
   syncQueue: Promise.resolve() as Promise<void>,
   withLockedSyncStateValue: vi.fn()
@@ -28,13 +27,8 @@ vi.mock("@/lib/demo-mode", () => ({
 
 vi.mock("@/lib/finance-data", () => ({
   getFinanceData: async () => ({
-    accounts: [{ id: "teller_account_1", providerConnectionId: "provider_1" }]
+    accounts: [{ id: "plaid_account_1", providerConnectionId: "provider_1" }]
   })
-}));
-
-vi.mock("@/lib/teller-server", () => ({
-  getTellerAccountDetails: mocks.getTellerAccountDetails,
-  TellerSetupError: class TellerSetupError extends Error {}
 }));
 
 import { POST } from "@/app/api/v1/accounts/[accountId]/details/route";
@@ -43,7 +37,7 @@ const fixedNow = new Date("2026-07-12T12:00:00.000Z");
 const originalBetterAuthSecret = process.env.BETTER_AUTH_SECRET;
 
 function request(code = "123456") {
-  return new Request("http://localhost/api/v1/accounts/teller_account_1/details", {
+  return new Request("http://localhost/api/v1/accounts/plaid_account_1/details", {
     body: JSON.stringify({ totp_code: code }),
     headers: {
       "content-type": "application/json",
@@ -55,7 +49,7 @@ function request(code = "123456") {
 
 function post(code?: string) {
   return POST(request(code), {
-    params: Promise.resolve({ accountId: "teller_account_1" })
+    params: Promise.resolve({ accountId: "plaid_account_1" })
   });
 }
 
@@ -83,10 +77,6 @@ describe("account details TOTP step-up", () => {
     mocks.authHandler.mockImplementation(async () =>
       Response.json({ message: "Invalid two factor code" }, { status: 401 })
     );
-    mocks.getTellerAccountDetails.mockResolvedValue({
-      accountNumber: "account-number",
-      routingNumbers: { ach: "routing-number" }
-    });
   });
 
   afterEach(() => {
@@ -137,7 +127,6 @@ describe("account details TOTP step-up", () => {
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("900");
     expect(mocks.authHandler).not.toHaveBeenCalled();
-    expect(mocks.getTellerAccountDetails).not.toHaveBeenCalled();
   });
 
   it("rejects reuse of an accepted code within the replay window", async () => {
@@ -148,11 +137,10 @@ describe("account details TOTP step-up", () => {
       post("654321")
     ]);
 
-    expect(firstResponse.status).toBe(200);
+    expect(firstResponse.status).toBe(400);
     expect(replayResponse.status).toBe(401);
     await expect(replayResponse.json()).resolves.toMatchObject({ error: "invalid_totp" });
     expect(mocks.authHandler).toHaveBeenCalledTimes(1);
-    expect(mocks.getTellerAccountDetails).toHaveBeenCalledTimes(1);
   });
 
   it("resets failures and stores only a keyed hash after a successful verification", async () => {
@@ -162,7 +150,7 @@ describe("account details TOTP step-up", () => {
     const response = await post("777777");
     const protectionState = JSON.parse(mocks.storedState ?? "{}");
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
     expect(protectionState).toMatchObject({
       failedAttempts: 0,
       lastAcceptedAt: "2026-07-12T12:00:00.000Z"

@@ -1,7 +1,6 @@
 import type { Account, Transaction } from "@ai-finances/schema";
 import { ArrowRight, Banknote, CreditCard, Landmark, TrendingUp, WalletCards } from "lucide-react";
 import Link from "next/link";
-import { AccountCardDialog } from "@/components/account-card-dialog";
 import { AccountFaviconBadge } from "@/components/account-favicon-badge";
 import { AccountsNetWorthCard } from "@/components/accounts-net-worth-card";
 import { AccountsSummaryStrip, type AccountsSummaryStat } from "@/components/accounts-summary-strip";
@@ -91,8 +90,8 @@ function toneClassName(tone: "negative" | "neutral" | "positive") {
 }
 
 export default async function AccountsPage() {
-  const { accountGroups, accounts, dashboardSummary, tellerLedger, transactions } = await getFinanceData();
-  const balanceSnapshots = tellerLedger?.balanceSnapshots ?? [];
+  const { accountGroups, accounts, dashboardSummary, ledger, transactions } = await getFinanceData();
+  const balanceSnapshots = ledger?.balanceSnapshots ?? [];
   const transactionsByAccountId = groupTransactionsByAccountId(transactions);
   const historyByAccountId = accountHistories(balanceSnapshots);
   const accountRows = accounts.map((account) => createAccountRow(
@@ -140,7 +139,7 @@ export default async function AccountsPage() {
           <h1 className="app-page-title mt-1">Balance by account</h1>
           <p className="app-page-description mt-1.5">
             {accounts.length > 0
-              ? `${accounts.length.toLocaleString()} synced accounts · last sync ${formatDateTime(tellerLedger?.lastSyncedAt)}`
+              ? `${accounts.length.toLocaleString()} synced accounts · last sync ${formatDateTime(ledger?.lastSyncedAt)}`
               : "No accounts have been synced into the local database yet."}
           </p>
         </section>
@@ -191,9 +190,6 @@ export default async function AccountsPage() {
                   </div>
                   <div className="flex flex-col gap-1">
                     {groupRows.map((row) => {
-                      const supportsDetails =
-                        row.account.id.startsWith("teller_") &&
-                        (row.account.type === "checking" || row.account.type === "savings" || row.account.type === "cash");
                       const change = computePortfolioChange(row.history);
                       const changePositive = change !== null && change.amount >= 0;
 
@@ -206,8 +202,7 @@ export default async function AccountsPage() {
                           )}
                           key={row.account.id}
                         >
-                          {/* Stretched-link overlay keeps the whole row clickable while the
-                              card-detail button stays independently interactive above it. */}
+                          {/* Stretched-link overlay keeps the whole row clickable. */}
                           <Link
                             aria-label={`Open account page for ${row.account.name}`}
                             className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
@@ -246,16 +241,6 @@ export default async function AccountsPage() {
                           >
                             {formatCurrency(row.account.currentBalance, row.account.currency)}
                           </span>
-                          {supportsDetails ? (
-                            <span className="relative z-10 flex size-7 shrink-0 items-center justify-center">
-                              <AccountCardDialog
-                                accountId={row.account.id}
-                                institutionName={row.account.institutionName}
-                                mask={row.account.mask}
-                                name={row.account.name}
-                              />
-                            </span>
-                          ) : null}
                           <ArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                         </div>
                       );

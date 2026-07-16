@@ -1,29 +1,29 @@
 import type { Account, AccountType, Transaction } from "@ai-finances/schema";
 export { normalizeProviderCurrencyCode } from "@/lib/currency";
 
-export const tellerInternalAmountSignConvention = "internal_v1";
+export const internalAmountSignConvention = "internal_v1";
 
-export interface TellerLedgerAmountNormalization {
-  amountSignConvention: typeof tellerInternalAmountSignConvention;
+export interface LedgerAmountNormalization {
+  amountSignConvention: typeof internalAmountSignConvention;
 }
 
-interface TellerLedgerLike {
+interface LedgerLike {
   accounts: Account[];
-  normalization?: TellerLedgerAmountNormalization;
+  normalization?: LedgerAmountNormalization;
   transactions: Transaction[];
 }
 
-export function normalizeTellerAmountForAccountType(amount: number, accountType: AccountType): number {
+export function normalizeAmountForAccountType(amount: number, accountType: AccountType): number {
   return accountType === "credit_card" ? roundMoney(-amount) : roundMoney(amount);
 }
 
-export function normalizeTellerLedgerAmounts<TLedger extends TellerLedgerLike>(
+export function normalizeLedgerAmounts<TLedger extends LedgerLike>(
   ledger: TLedger
-): { changed: boolean; ledger: TLedger & { normalization: TellerLedgerAmountNormalization } } {
-  if (ledger.normalization?.amountSignConvention === tellerInternalAmountSignConvention) {
+): { changed: boolean; ledger: TLedger & { normalization: LedgerAmountNormalization } } {
+  if (ledger.normalization?.amountSignConvention === internalAmountSignConvention) {
     return {
       changed: false,
-      ledger: ledger as TLedger & { normalization: TellerLedgerAmountNormalization }
+      ledger: ledger as TLedger & { normalization: LedgerAmountNormalization }
     };
   }
 
@@ -32,7 +32,7 @@ export function normalizeTellerLedgerAmounts<TLedger extends TellerLedgerLike>(
   const transactions = ledger.transactions.map((transaction) => {
     const accountType = accountTypeById.get(transaction.accountId);
     const normalizedAmount = accountType
-      ? normalizeTellerAmountForAccountType(transaction.amount, accountType)
+      ? normalizeAmountForAccountType(transaction.amount, accountType)
       : roundMoney(transaction.amount);
 
     if (normalizedAmount !== transaction.amount) {
@@ -50,7 +50,7 @@ export function normalizeTellerLedgerAmounts<TLedger extends TellerLedgerLike>(
     ledger: {
       ...ledger,
       normalization: {
-        amountSignConvention: tellerInternalAmountSignConvention
+        amountSignConvention: internalAmountSignConvention
       },
       transactions
     }
