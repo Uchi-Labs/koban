@@ -95,6 +95,14 @@ export const SPRING_BANNER_MORPH = {
   type: "spring",
 } as const;
 
+/** Gooey nudge melt — a card sinking into the surface below it. */
+export const SPRING_GOO_MELT = {
+  damping: 28,
+  mass: 0.9,
+  stiffness: 240,
+  type: "spring",
+} as const;
+
 /** Favicon image resolution swap. */
 export const SPRING_FAVICON_SWAP = {
   damping: 28,
