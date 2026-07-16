@@ -82,16 +82,18 @@ describe("AI surface upgrades", () => {
     );
   });
 
-  it("uses the compact insight stack without losing dismiss behavior", async () => {
+  it("renders the compact insight list without losing dismiss behavior", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
     render(<InsightsFeed compact initialInsights={[insight]} />);
 
-    expect(screen.getByRole("button", { name: "1 notifications. Expand notifications." })).toBeVisible();
+    expect(screen.getByRole("heading", { name: insight.title })).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: `Dismiss ${insight.title}` }));
 
     expect(fetchMock).toHaveBeenCalledWith(`/api/v1/insights/${encodeURIComponent(insight.id)}`, { method: "DELETE" });
-    expect(screen.getByText("All caught up")).toBeVisible();
+    // The empty state renders through the motion EmptyState entrance (initial opacity:0),
+    // which jsdom can't animate to visible — assert it mounts rather than its computed opacity.
+    expect(screen.getByText("All caught up")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review transactions" })).toHaveAttribute("href", "/transactions");
   });
 });
