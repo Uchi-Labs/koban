@@ -36,7 +36,6 @@ import { TagChip } from "@/components/tag-chip";
 import { tagStyleMap } from "@/components/tag-style-map";
 import { TransactionTagPopover, type TagOption } from "@/components/transaction-tag-popover";
 import { TransactionGoalPopover, type FinancialGoal } from "@/components/transaction-goal-popover";
-import { AnimatedNumber } from "@/components/ui/animated-number";
 import { ExpandableActionBar } from "@/components/motion/expandable-action-bar";
 import { OverflowActions } from "@/components/motion/overflow-actions";
 import { RangeSlider } from "@/components/motion/range-slider";
@@ -2243,12 +2242,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             Review
             {model.reviewTransactions.length > 0 ? (
               <Badge className="ml-1 h-4 min-w-4 px-1 text-[10px] tabular-nums" variant="review">
-                <AnimatedNumber
-                  digitPopOnChange
-                  digitText={(value) => Math.round(value).toLocaleString("en-US")}
-                  duration={0.45}
-                  value={model.reviewTotalCount}
-                />
+                {model.reviewTotalCount.toLocaleString("en-US")}
               </Badge>
             ) : null}
           </TabsTrigger>

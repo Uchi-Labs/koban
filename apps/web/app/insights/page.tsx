@@ -15,12 +15,15 @@ export default async function InsightsPage() {
   const insights = deriveInsights(transactions, applyBudgetOverrides(rawCategories, overrides)).filter((item) => !dismissed.has(item.id));
   const heatmap = buildSpendingHeatmapData(transactions, dashboardSummary.currency);
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-5 md:px-6" data-testid="insights-page">
-      <header className="mb-5">
+    <main
+      className="mx-auto flex h-[calc(100svh-5.5rem-env(safe-area-inset-bottom))] w-full max-w-3xl flex-col px-4 py-5 md:h-svh md:px-6"
+      data-testid="insights-page"
+    >
+      <header className="mb-5 shrink-0">
         <h1 className="app-page-title">Insights</h1>
         <p className="app-page-description mt-1.5">Deterministic signals from your transactions, recurring activity, and budgets.</p>
       </header>
-      <div className="grid gap-5">
+      <div className="scroll-fade-y no-scrollbar -mx-1 grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-1 pb-2">
         {heatmap.length > 0 ? <SpendingHeatmap currency={dashboardSummary.currency} data={heatmap} /> : null}
         <InsightsFeed initialInsights={insights} />
       </div>

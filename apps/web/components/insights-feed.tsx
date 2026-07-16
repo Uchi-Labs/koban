@@ -4,7 +4,6 @@ import { ArrowDownRight, ArrowUpRight, BellOff, RefreshCw, X } from "lucide-reac
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
-import { NotificationStack } from "@/components/motion/notification-stack";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
@@ -38,36 +37,6 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
     if (!response.ok) setInsights(previous);
   }
 
-  if (compact && visible.length > 0) {
-    return (
-      <div data-testid="insights-feed">
-        <NotificationStack
-          className="max-w-none"
-          collapsedLabel="Insights"
-          expandedLabel={insights.length > 3 ? `View ${insights.length - 3} more` : "Open insights"}
-          items={visible.map((insight) => ({
-            description: (
-              <>
-                <span className="block">{insight.detail}</span>
-                <InsightReasoning insight={insight} />
-              </>
-            ),
-            dismissLabel: `Dismiss ${insight.title}`,
-            id: insight.id,
-            onDismiss: () => void dismiss(insight.id),
-            title: (
-              <span className="flex min-w-0 items-center gap-2">
-                <span className={cn("size-2 shrink-0 rounded-full", toneClasses[insight.tone])} />
-                <span className="truncate">{insight.title}</span>
-              </span>
-            )
-          }))}
-          onViewAll={() => window.location.assign("/insights")}
-        />
-      </div>
-    );
-  }
-
   return (
     <LazyMotion features={domAnimation}>
       <div className="grid gap-2" data-testid="insights-feed">
@@ -97,7 +66,7 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
                     {insight.kind === "new-recurring" ? <RefreshCw className="size-3.5" /> : insight.tone === "positive" ? <ArrowDownRight className="size-3.5" /> : <ArrowUpRight className="size-3.5" />}
                   </span>
                 </div>
-                <InsightReasoning insight={insight} />
+                {compact ? null : <InsightReasoning insight={insight} />}
               </div>
               <Button aria-label={`Dismiss ${insight.title}`} className="-m-1 opacity-60 group-hover:opacity-100" onClick={() => void dismiss(insight.id)} size="icon-sm" type="button" variant="ghost">
                 <X className="size-3.5" />
