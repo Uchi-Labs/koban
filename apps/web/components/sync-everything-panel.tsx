@@ -288,14 +288,15 @@ export function SyncEverythingPanel({
           </p>
         </div>
         <StatefulButton
+          className="shrink-0"
           disabled={busy || scheduleBusy || (!status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin)}
           data-sound="sync"
+          icon={<RefreshCw className="size-4" />}
           loadingText="Syncing"
           onClick={syncEverything}
           state={busy ? "loading" : "idle"}
           type="button"
         >
-          <RefreshCw className={cn("size-4", busy && "animate-spin motion-reduce:animate-none")} />
           Sync everything
         </StatefulButton>
       </CardHeader>
@@ -353,65 +354,92 @@ function SyncScheduleControls({
   scheduleBusy: boolean;
   updateSchedule: (input: { enabled?: boolean; interval_minutes?: number }) => Promise<void>;
 }) {
+  const intervalLabels: Record<number, string> = {
+    60: "Every hour",
+    240: "Every 4 hours",
+    720: "Every 12 hours",
+    1440: "Daily"
+  };
+  const nextRunLabel = schedule.next_run_at
+    ? new Date(schedule.next_run_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      })
+    : null;
+
   return (
     <div
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 px-3.5 py-3"
       aria-label="Periodic sync"
     >
-      <label className="flex items-center gap-2" htmlFor="sync-auto-enabled">
-        <Switch
-          checked={schedule.enabled}
-          disabled={scheduleBusy}
-          id="sync-auto-enabled"
-          onCheckedChange={(checked) => {
-            void updateSchedule({ enabled: checked });
-          }}
-        />
-        <span className="text-sm font-medium">Auto-sync</span>
-      </label>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Interval</span>
-        <Select
-          disabled={scheduleBusy}
-          value={String(schedule.interval_minutes)}
-          onValueChange={(value) => {
-            void updateSchedule({ interval_minutes: Number(value ?? schedule.interval_minutes) });
-          }}
-        >
-          <SelectTrigger size="sm" aria-label="Sync interval" className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="60">Every hour</SelectItem>
-            <SelectItem value="240">Every 4 hours</SelectItem>
-            <SelectItem value="720">Every 12 hours</SelectItem>
-            <SelectItem value="1440">Daily</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
+        <label className="flex items-center gap-2" htmlFor="sync-auto-enabled">
+          <Switch
+            checked={schedule.enabled}
+            disabled={scheduleBusy}
+            id="sync-auto-enabled"
+            onCheckedChange={(checked) => {
+              void updateSchedule({ enabled: checked });
+            }}
+          />
+          <span className="text-sm font-medium">Auto-sync</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Interval</span>
+          <Select
+            disabled={scheduleBusy}
+            value={String(schedule.interval_minutes)}
+            onValueChange={(value) => {
+              void updateSchedule({ interval_minutes: Number(value ?? schedule.interval_minutes) });
+            }}
+          >
+            <SelectTrigger size="sm" aria-label="Sync interval" className="w-36">
+              <SelectValue>
+                {intervalLabels[schedule.interval_minutes] ?? `Every ${schedule.interval_minutes} min`}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="60">Every hour</SelectItem>
+              <SelectItem value="240">Every 4 hours</SelectItem>
+              <SelectItem value="720">Every 12 hours</SelectItem>
+              <SelectItem value="1440">Daily</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 rounded-full",
+                schedule.enabled ? "bg-[var(--positive)]" : "bg-muted-foreground/50"
+              )}
+            />
+            {schedule.enabled ? "Enabled" : "Paused"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!schedule.enabled || scheduleBusy || busy}
+            onClick={() => {
+              void runDueSchedule({ notify: true });
+            }}
+            type="button"
+          >
+            {scheduleBusy ? "Checking…" : "Check due sync"}
+          </Button>
+        </div>
       </div>
-      <div className="flex flex-col text-xs text-muted-foreground">
-        <AnimatedBadge
-          contentKey={`${schedule.enabled ? "enabled" : "paused"}-${scheduleBusy ? "busy" : "settled"}`}
-          size="sm"
-          status={scheduleBusy ? "loading" : schedule.enabled ? "success" : "neutral"}
-        >
-          {scheduleBusy ? "Checking" : schedule.enabled ? "Enabled" : "Paused"}
-        </AnimatedBadge>
-        <span>{schedule.next_run_at ? `Next ${new Date(schedule.next_run_at).toLocaleString()}` : "No next run"}</span>
-        <span>Plaid and SimpleFIN are manual only</span>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="ml-auto"
-        disabled={!schedule.enabled || scheduleBusy || busy}
-        onClick={() => {
-          void runDueSchedule({ notify: true });
-        }}
-        type="button"
-      >
-        {scheduleBusy ? "Checking..." : "Check due sync"}
-      </Button>
+      <p className="text-xs text-muted-foreground">
+        {schedule.enabled
+          ? nextRunLabel
+            ? `Next run ${nextRunLabel}`
+            : "Waiting for the next scheduled run"
+          : "Auto-sync is off"}
+        <span className="text-muted-foreground/60"> · Plaid and SimpleFIN sync manually only</span>
+      </p>
     </div>
   );
 }
