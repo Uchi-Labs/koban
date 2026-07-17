@@ -2,7 +2,9 @@
 
 import type { Account } from "@ai-finances/schema";
 import { CreditCard, Landmark, TrendingUp, WalletCards } from "lucide-react";
+import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import React from "react";
+import { SPRING_LAYOUT } from "@/lib/motion";
 import { AccountFaviconBadge } from "@/components/account-favicon-badge";
 import { NetWorthChart } from "@/components/charts";
 import { MoneyHero } from "@/components/money-hero";
@@ -33,6 +35,7 @@ export function AccountBalanceHero({
   history: PortfolioPoint[];
 }) {
   const trends = React.useMemo(() => buildBalanceTrends(history), [history]);
+  const reduce = useReducedMotion();
   const [activeRange, setActiveRange] = React.useState<BalanceRange>(() => (
     trends.find((trend) => trend.label === "1M")?.label ?? trends[0]?.label ?? "ALL"
   ));
@@ -111,26 +114,37 @@ export function AccountBalanceHero({
             </div>
           )}
           {trends.length > 0 ? (
-            <div aria-label="Balance history range" className="flex items-center gap-0.5 rounded-2xl bg-muted p-[3px]">
-              {rangeOrder.map((range) => {
-                const available = trends.some((trend) => trend.label === range);
-                return (
-                  <button
-                    aria-pressed={activeRange === range}
-                    className={cn(
-                      "min-w-10 flex-1 rounded-2xl px-1.5 py-1.5 text-xs font-medium tabular-nums transition-colors motion-reduce:transition-none",
-                      activeRange === range ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                      !available && "hidden"
-                    )}
-                    key={range}
-                    onClick={() => setActiveRange(range)}
-                    type="button"
-                  >
-                    {range}
-                  </button>
-                );
-              })}
-            </div>
+            <LazyMotion features={domAnimation}>
+              <div aria-label="Balance history range" className="flex items-center gap-0.5 rounded-2xl bg-muted p-[3px]">
+                {rangeOrder.map((range) => {
+                  const available = trends.some((trend) => trend.label === range);
+                  const active = activeRange === range;
+                  return (
+                    <button
+                      aria-pressed={active}
+                      className={cn(
+                        "relative min-w-10 flex-1 rounded-2xl px-1.5 py-1.5 text-xs font-medium tabular-nums transition-colors motion-reduce:transition-none",
+                        active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                        !available && "hidden"
+                      )}
+                      key={range}
+                      onClick={() => setActiveRange(range)}
+                      type="button"
+                    >
+                      {active ? (
+                        <m.span
+                          aria-hidden="true"
+                          className="absolute inset-0 rounded-2xl bg-background shadow-sm"
+                          layoutId="balance-range-pill"
+                          transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                        />
+                      ) : null}
+                      <span className="relative">{range}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </LazyMotion>
           ) : null}
         </div>
       </IconiqCardContent>
