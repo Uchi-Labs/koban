@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
+import { playError } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 
 const REVEAL_TTL_MS = 60_000;
@@ -37,6 +38,25 @@ export function AccountCardDialog({ accountId, institutionName, mask, name }: {
   const [details, setDetails] = useState<RevealedDetails | null>(null);
   const [error, setError] = useState<{ kind: string; message: string } | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+
+  // Wrong/failed code: replay the t-input shake (remove → reflow → re-add per
+  // transitions-dev) alongside the error voice, so feedback is felt and heard.
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+    const input = codeInputRef.current;
+    if (!input) {
+      return;
+    }
+    input.classList.remove("is-shaking");
+    void input.offsetWidth;
+    input.classList.add("is-shaking");
+    playError();
+    const timer = window.setTimeout(() => input.classList.remove("is-shaking"), 620);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   // Revealed numbers evaporate on close, timeout, or unmount.
   const conceal = () => {
@@ -185,13 +205,14 @@ export function AccountCardDialog({ accountId, institutionName, mask, name }: {
                   <Input
                     autoComplete="one-time-code"
                     autoFocus
-                    className="tabular-nums tracking-[0.3em]"
+                    className="t-input tabular-nums tracking-[0.3em]"
                     id="account-details-totp"
                     inputMode="numeric"
                     maxLength={6}
                     onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
                     pattern="\d{6}"
                     placeholder="••••••"
+                    ref={codeInputRef}
                     value={code}
                   />
                   <Button disabled={phase === "pending" || !/^\d{6}$/.test(code)} type="submit">
@@ -238,7 +259,10 @@ function CopyChip({ label, value }: { label: string; value: string }) {
       }}
       type="button"
     >
-      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      <span className="t-icon-swap" data-state={copied ? "b" : "a"}>
+        <span className="t-icon" data-icon="a"><Copy className="size-3" /></span>
+        <span className="t-icon" data-icon="b"><Check className="size-3" /></span>
+      </span>
       {copied ? "Copied" : "Copy"}
     </button>
   );
