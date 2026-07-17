@@ -150,12 +150,13 @@ export function CategoryWorkbench({
             />
           </div>
 
-          <aside className="hidden xl:sticky xl:top-20 xl:block">
+          <aside className="hidden xl:sticky xl:top-20 xl:flex xl:flex-col xl:gap-5">
             <AllCategoriesList
               onSelect={setSelectedId}
               selectedId={selectedId}
               summaries={summaries.filter((summary) => !summary.archived)}
             />
+            <KeyMetrics detail={activeDetail} transactionsToReview={transactionsToReview} />
           </aside>
         </div>
       </div>
@@ -652,7 +653,9 @@ function DetailPane({
         </div>
       )}
 
-      <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
+      <div className="xl:hidden">
+        <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
+      </div>
       <div className="xl:hidden">
         <AllCategoriesList onSelect={onSelect} selectedId={selectedId} summaries={summaries} />
       </div>
@@ -776,7 +779,7 @@ function AllCategoriesList({
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
       </div>
-      <div className="scroll-fade-sm flex max-h-64 flex-col overflow-y-auto">
+      <div className="scroll-fade-sm no-scrollbar flex max-h-64 flex-col overflow-y-auto xl:max-h-[420px]">
         {summaries.map((summary) => {
           const remaining = summary.budgetAmount === undefined ? undefined : summary.budgetAmount - summary.spentThisMonth;
           const category: Category = {
