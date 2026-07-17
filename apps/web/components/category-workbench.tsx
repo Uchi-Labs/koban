@@ -104,48 +104,60 @@ export function CategoryWorkbench({
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6">
-        <div aria-label="Category totals">
-          <SummaryCard
-            budget={totalBudget}
-            monthLabel={monthLabel}
-            onSelectAll={() => setSelectedId(null)}
-            selectedAll={selectedId === null}
-            spent={allDetail.spentThisMonth}
-            summaries={summaries.filter((summary) => !summary.archived)}
-          />
+      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6 xl:max-w-[80rem]">
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(30rem,0.8fr)]">
+          <div className="flex min-w-0 flex-col gap-5">
+            <div aria-label="Category totals">
+              <SummaryCard
+                budget={totalBudget}
+                monthLabel={monthLabel}
+                onSelectAll={() => setSelectedId(null)}
+                selectedAll={selectedId === null}
+                spent={allDetail.spentThisMonth}
+                summaries={summaries.filter((summary) => !summary.archived)}
+              />
+            </div>
+
+            <DetailPane
+              detail={activeDetail}
+              hasTransactions={hasTransactions}
+              monthLabel={monthLabel}
+              onSelect={setSelectedId}
+              selectedId={selectedId}
+              summaries={summaries.filter((summary) => !summary.archived)}
+              transactionsToReview={transactionsToReview}
+            />
+
+            <CategoryTable
+              monthLabel={monthLabel}
+              onCreate={() => setCreating(true)}
+              onEdit={setEditing}
+              onSelect={(id) => setSelectedId((current) => (current === id ? null : id))}
+              selectedId={selectedId}
+              onReorder={async (next) => {
+                let activeIndex = 0;
+                const reordered = showArchived
+                  ? next
+                  : orderedSummaries.map((summary) => summary.archived ? summary : next[activeIndex++] ?? summary);
+                setOrderedSummaries(reordered);
+                await Promise.all(reordered.map((summary, index) => fetch(`/api/v1/categories/${encodeURIComponent(summary.id)}`, {
+                  body: JSON.stringify({ sort_order: (index + 1) * 10 }), headers: { "Content-Type": "application/json" }, method: "PATCH"
+                })));
+              }}
+              showArchived={showArchived}
+              summaries={visibleSummaries}
+              toggleArchived={() => setShowArchived((value) => !value)}
+            />
+          </div>
+
+          <aside className="hidden xl:sticky xl:top-20 xl:block">
+            <AllCategoriesList
+              onSelect={setSelectedId}
+              selectedId={selectedId}
+              summaries={summaries.filter((summary) => !summary.archived)}
+            />
+          </aside>
         </div>
-
-        <DetailPane
-          detail={activeDetail}
-          hasTransactions={hasTransactions}
-          monthLabel={monthLabel}
-          onSelect={setSelectedId}
-          selectedId={selectedId}
-          summaries={summaries.filter((summary) => !summary.archived)}
-          transactionsToReview={transactionsToReview}
-        />
-
-        <CategoryTable
-          monthLabel={monthLabel}
-          onCreate={() => setCreating(true)}
-          onEdit={setEditing}
-          onSelect={(id) => setSelectedId((current) => (current === id ? null : id))}
-          selectedId={selectedId}
-          onReorder={async (next) => {
-            let activeIndex = 0;
-            const reordered = showArchived
-              ? next
-              : orderedSummaries.map((summary) => summary.archived ? summary : next[activeIndex++] ?? summary);
-            setOrderedSummaries(reordered);
-            await Promise.all(reordered.map((summary, index) => fetch(`/api/v1/categories/${encodeURIComponent(summary.id)}`, {
-              body: JSON.stringify({ sort_order: (index + 1) * 10 }), headers: { "Content-Type": "application/json" }, method: "PATCH"
-            })));
-          }}
-          showArchived={showArchived}
-          summaries={visibleSummaries}
-          toggleArchived={() => setShowArchived((value) => !value)}
-        />
       </div>
 
       {editing ? (
@@ -641,7 +653,9 @@ function DetailPane({
       )}
 
       <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
-      <AllCategoriesList onSelect={onSelect} selectedId={selectedId} summaries={summaries} />
+      <div className="xl:hidden">
+        <AllCategoriesList onSelect={onSelect} selectedId={selectedId} summaries={summaries} />
+      </div>
     </m.section>
       </AnimatePresence>
     </LazyMotion>

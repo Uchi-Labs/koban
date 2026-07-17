@@ -16,7 +16,7 @@ export default async function InsightsPage() {
   const heatmap = buildSpendingHeatmapData(transactions, dashboardSummary.currency);
   return (
     <main
-      className="mx-auto flex h-[calc(100svh-5.5rem-env(safe-area-inset-bottom))] w-full max-w-3xl flex-col px-4 py-5 md:h-svh md:px-6"
+      className="mx-auto flex h-[calc(100svh-5.5rem-env(safe-area-inset-bottom))] w-full max-w-3xl flex-col px-4 py-5 md:h-svh md:px-6 xl:max-w-5xl"
       data-testid="insights-page"
     >
       <header className="mb-5 shrink-0">
@@ -28,7 +28,9 @@ export default async function InsightsPage() {
           instead of blowing out the column and clipping every card. */}
       <div className="scroll-fade-y no-scrollbar -mx-1 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-5 overflow-y-auto px-1 pb-2">
         {heatmap.length > 0 ? <SpendingHeatmap currency={dashboardSummary.currency} data={heatmap} /> : null}
-        <InsightsFeed initialInsights={insights} />
+        <div className="xl:max-w-3xl">
+          <InsightsFeed initialInsights={insights} />
+        </div>
       </div>
     </main>
   );
