@@ -19,7 +19,7 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", mo
 // every column edge lands on the same x regardless of that row's content (fixed px tracks
 // only — an `auto`-sized last column would resize per row and cascade misalignment into
 // every fr-based column before it).
-const RECURRING_ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3";
+const RECURRING_ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3 xl:grid-cols-[28px_minmax(0,1fr)_96px_76px_100px_56px_84px]";
 type RecurringRowStyle = CSSProperties & { "--merchant-accent": string };
 
 /**
@@ -96,8 +96,8 @@ export default async function RecurringsPage() {
         <span className="text-[13px] font-semibold tracking-tight">Recurrings</span>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[70rem] flex-1 flex-col gap-6 p-6">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+      <div className="mx-auto grid w-full max-w-[70rem] flex-1 items-start gap-6 p-6 xl:max-w-[78rem] xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 xl:mx-0 xl:max-w-none">
           <section className="text-center">
             <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated merchants</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Recurring candidates</h1>
@@ -116,7 +116,7 @@ export default async function RecurringsPage() {
           </section>
         </div>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <h2 className="text-base font-medium">Detected recurring charges</h2>
             <p className="text-sm text-muted-foreground">Sorted by expected charge date, with the account and observed transaction count shown for auditability.</p>
@@ -146,9 +146,11 @@ export default async function RecurringsPage() {
                   <p className="truncate font-medium">{candidate.merchant}</p>
                   <p className="truncate text-xs text-muted-foreground">{candidate.accountName}</p>
                 </div>
-                <div className="flex items-baseline justify-end gap-1.5 overflow-hidden">
-                  <span className="truncate text-[11px] text-muted-foreground">{candidate.frequency}</span>
-                  <span className="shrink-0 font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</span>
+                {/* Amount over cadence — stacked so "Monthly" never truncates at
+                    the narrower xl column widths. Mirrors the two-line merchant cell. */}
+                <div className="min-w-0 text-right">
+                  <p className="font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</p>
+                  <p className="text-[11px] text-muted-foreground">{candidate.frequency}</p>
                 </div>
                 <div className="text-right tabular-nums">{candidate.nextDateLabel}</div>
                 <div className="text-right tabular-nums">{candidate.lastChargedAt ? formatDate(candidate.lastChargedAt) : "N/A"}</div>
