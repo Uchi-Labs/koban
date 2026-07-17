@@ -266,7 +266,7 @@ export function ApiTokensPanel({ hostedAuth }: ApiTokensPanelProps) {
                   <code className="block overflow-x-auto rounded-md bg-background px-3 py-2 text-xs tabular-nums text-foreground ring-1 ring-border">
                     {createdToken}
                   </code>
-                  <Button onClick={() => void copyCreatedToken()} size="sm" type="button" variant="outline">
+                  <Button data-sound="copy" onClick={() => void copyCreatedToken()} size="sm" type="button" variant="outline">
                     <ActionSwapCascadeIcon className="size-4" value={copiedToken ? "copied" : "copy"}>
                       {copiedToken ? <CopyCheck className="size-4" /> : <Copy className="size-4" />}
                     </ActionSwapCascadeIcon>

@@ -309,7 +309,8 @@ export function AgentPanel({
                             </span>
                             <Button
                               className="h-7 rounded-full px-3 text-xs"
-                              data-sound="none"
+                              data-sound="send"
+                              data-sound-hover=""
                               disabled={submitting}
                               onClick={() => ask(nudgeQuestion)}
                               type="button"
@@ -355,7 +356,7 @@ export function AgentPanel({
 
                   <div className="flex flex-wrap items-center gap-2">
                     <StatefulButton
-                      data-sound="none"
+                      data-sound="send"
                       disabled={!canSubmit}
                       icon={<Send className="size-4" />}
                       loadingText="Asking"
@@ -373,7 +374,8 @@ export function AgentPanel({
                         <AvatarHoverItem index={index} key={suggestion}>
                           <Button
                             className="h-7 rounded-xl px-2.5 text-xs"
-                            data-sound="none"
+                            data-sound="send"
+                            data-sound-hover=""
                             disabled={submitting}
                             onClick={() => ask(suggestion)}
                             type="button"
