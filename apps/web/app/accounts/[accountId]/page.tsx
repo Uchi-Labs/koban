@@ -1,11 +1,9 @@
-import type { Transaction } from "@ai-finances/schema";
 import {
   ArrowLeft,
   ArrowRight,
   CalendarClock,
   ChartPie,
   Landmark,
-  Link2,
   ReceiptText,
   Repeat2,
   TrendingUp
@@ -14,6 +12,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type React from "react";
 import { AccountBalanceHero } from "@/components/account-balance-hero";
+import { AccountSyncButton } from "@/components/account-sync-button";
 import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { GainLossPill } from "@/components/gain-loss-pill";
@@ -33,7 +32,6 @@ import { getFinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
-import { cn } from "@/lib/utils";
 
 const fullDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
@@ -52,6 +50,9 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
   }
 
   const { account, recurringItems, transactions } = selection;
+  const providerConnection = financeData.providerConnections.find(
+    (connection) => connection.id === account.providerConnectionId
+  );
   const snapshots = financeData.ledger?.balanceSnapshots ?? [];
   const history = accountHistory(account.id, snapshots);
   const transactionViews = getTransactionViews(transactions, {
@@ -73,7 +74,10 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
           <ArrowLeft className="size-3.5" />
           Accounts
         </Link>
-        <span className="truncate text-xs text-muted-foreground">{account.institutionName}</span>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="truncate text-xs text-muted-foreground">{account.institutionName}</span>
+          {providerConnection ? <AccountSyncButton provider={providerConnection.provider} /> : null}
+        </div>
       </header>
 
       <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-5 p-4 sm:p-6">
