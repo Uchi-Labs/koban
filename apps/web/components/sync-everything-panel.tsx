@@ -1,7 +1,7 @@
 "use client";
 
 import { LogIn, LogOut, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { AnimatedBadge } from "@/components/ui/animated-badge";
 import { Button } from "@/components/ui/button";
@@ -101,6 +101,7 @@ export function SyncEverythingPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [scheduleBusy, setScheduleBusy] = useState(false);
+  const scheduleCheckInFlight = useRef(false);
   const [scheduleError, setScheduleError] = useState("");
   const { showToast, updateToast } = useToast();
 
@@ -206,12 +207,17 @@ export function SyncEverythingPanel({
   }
 
   const runDueSchedule = useCallback(async ({ notify = false }: { notify?: boolean } = {}) => {
-    if (busy || scheduleBusy) {
+    if (busy || scheduleBusy || scheduleCheckInFlight.current) {
       return;
     }
 
-    setScheduleBusy(true);
-    setScheduleError("");
+    // Background polls (notify=false) stay silent: no visible busy state, so
+    // the periodic due-check never greys out buttons or flashes "Checking".
+    scheduleCheckInFlight.current = true;
+    if (notify) {
+      setScheduleBusy(true);
+      setScheduleError("");
+    }
     const toastId = notify
       ? showToast({
           description: "Checking whether a scheduled sync is due.",
@@ -261,7 +267,10 @@ export function SyncEverythingPanel({
         });
       }
     } finally {
-      setScheduleBusy(false);
+      scheduleCheckInFlight.current = false;
+      if (notify) {
+        setScheduleBusy(false);
+      }
     }
   }, [busy, refreshStatus, scheduleBusy, showToast, updateToast]);
 
@@ -289,7 +298,7 @@ export function SyncEverythingPanel({
         </div>
         <StatefulButton
           className="shrink-0"
-          disabled={busy || scheduleBusy || (!status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin)}
+          disabled={busy || (!status.ready.snaptrade && !status.ready.plaid && !status.ready.simplefin)}
           data-sound="sync"
           icon={<RefreshCw className="size-4" />}
           loadingText="Syncing"

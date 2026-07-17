@@ -574,6 +574,7 @@ function AppSidebarSections({
                     {"action" in item ? (
                       <SidebarMenuButton
                         data-sound="none"
+                        data-sound-hover=""
                         isActive={active}
                         onClick={() => agentPanel.openAgent()}
                         tooltip={item.label}
@@ -584,6 +585,7 @@ function AppSidebarSections({
                     ) : (
                       <SidebarMenuButton
                         className={cn(item.label === "Transactions" && "relative overflow-visible group-data-[collapsible=icon]:overflow-hidden")}
+                        data-sound-hover=""
                         isActive={active}
                         render={<Link href={item.href} />}
                         tooltip={item.label}

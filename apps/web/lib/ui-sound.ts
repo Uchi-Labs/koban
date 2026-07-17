@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  defineSequence,
   defineSound,
   ensureReady,
   setMasterVolume,
@@ -16,14 +15,20 @@ const MASTER_VOLUME = 0.72;
 
 export const UI_SOUND_NAMES = [
   "tap",
+  "hover",
   "select",
   "toggleOn",
   "toggleOff",
+  "tabSwitch",
+  "expand",
+  "collapse",
   "success",
   "error",
   "toast",
   "open",
   "close",
+  "send",
+  "copy",
   "sync",
 ] as const;
 
@@ -33,192 +38,512 @@ type UiSoundOverride = UiSoundName | "none";
 
 const validSoundNames = new Set<string>(UI_SOUND_NAMES);
 
-// Generic press/nav: a soft, filtered triangle tick with a fast decay.
+// Voices are the "crisp" patch from the @web-kits/audio registry (MIT,
+// github.com/raphaelsalaja/audio), plus drawer/sync voices from its "core"
+// patch — a coherent designed palette instead of hand-rolled ticks. Each
+// definition is transplanted verbatim from the patch JSON.
+
+// crisp:tap
 const tapDefinition = {
-  source: { type: "triangle", frequency: { start: 920, end: 760 } },
-  filter: { type: "lowpass", frequency: 1650, resonance: 0.45 },
-  envelope: { attack: 0.001, decay: 0.042, sustain: 0, release: 0.012 },
-  gain: 0.12,
+  "source": {
+    "type": "sine",
+    "frequency": 1300,
+    "fm": {
+      "ratio": 0.5,
+      "depth": 100
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.015,
+    "sustain": 0,
+    "release": 0.005
+  },
+  "gain": 0.2
 } satisfies SoundDefinition;
 
-// Row/item selection: same triangle voice as tap, but brighter with a small pitch lift.
+// crisp:hover
+const hoverDefinition = {
+  "source": {
+    "type": "sine",
+    "frequency": 1500,
+    "fm": {
+      "ratio": 0.5,
+      "depth": 40
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.015,
+    "sustain": 0,
+    "release": 0.005
+  },
+  "gain": 0.06
+} satisfies SoundDefinition;
+
+// crisp:select
 const selectDefinition = {
-  source: { type: "triangle", frequency: { start: 980, end: 1240 } },
-  filter: { type: "lowpass", frequency: 2350, resonance: 0.55 },
-  envelope: { attack: 0.001, decay: 0.055, sustain: 0, release: 0.012 },
-  gain: 0.12,
+  "source": {
+    "type": "sine",
+    "frequency": 1200,
+    "fm": {
+      "ratio": 1,
+      "depth": 80
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.04,
+    "sustain": 0,
+    "release": 0.012
+  },
+  "gain": 0.18
 } satisfies SoundDefinition;
 
-// State on: a rising minor third so the enabled state is hearable.
+// crisp:toggle-on
 const toggleOnDefinition = {
-  layers: [
+  "layers": [
     {
-      source: { type: "triangle", frequency: { start: 520, end: 624 } },
-      filter: { type: "lowpass", frequency: 1500, resonance: 0.5 },
-      envelope: { attack: 0.001, decay: 0.068, sustain: 0, release: 0.014 },
-      gain: 0.12,
+      "source": {
+        "type": "sine",
+        "frequency": 1047,
+        "fm": {
+          "ratio": 1.5,
+          "depth": 60
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.03,
+        "sustain": 0,
+        "release": 0.01
+      },
+      "gain": 0.2
     },
     {
-      source: { type: "sine", frequency: 1248 },
-      delay: 0.018,
-      filter: { type: "lowpass", frequency: 2100, resonance: 0.4 },
-      envelope: { attack: 0.001, decay: 0.045, sustain: 0, release: 0.01 },
-      gain: 0.035,
-    },
-  ],
+      "source": {
+        "type": "sine",
+        "frequency": 1568,
+        "fm": {
+          "ratio": 1.5,
+          "depth": 50
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.03,
+        "sustain": 0,
+        "release": 0.01
+      },
+      "delay": 0.025,
+      "gain": 0.18
+    }
+  ]
 } satisfies SoundDefinition;
 
-// State off: the inverse minor third in the same voice, slightly darker.
+// crisp:toggle-off
 const toggleOffDefinition = {
-  layers: [
+  "layers": [
     {
-      source: { type: "triangle", frequency: { start: 624, end: 520 } },
-      filter: { type: "lowpass", frequency: 1250, resonance: 0.5 },
-      envelope: { attack: 0.001, decay: 0.072, sustain: 0, release: 0.014 },
-      gain: 0.105,
+      "source": {
+        "type": "sine",
+        "frequency": 1568,
+        "fm": {
+          "ratio": 1.5,
+          "depth": 60
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.03,
+        "sustain": 0,
+        "release": 0.01
+      },
+      "gain": 0.2
     },
     {
-      source: { type: "sine", frequency: 1040 },
-      delay: 0.018,
-      filter: { type: "lowpass", frequency: 1600, resonance: 0.35 },
-      envelope: { attack: 0.001, decay: 0.045, sustain: 0, release: 0.01 },
-      gain: 0.028,
-    },
-  ],
+      "source": {
+        "type": "sine",
+        "frequency": 1047,
+        "fm": {
+          "ratio": 1.5,
+          "depth": 50
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.03,
+        "sustain": 0,
+        "release": 0.01
+      },
+      "delay": 0.025,
+      "gain": 0.18
+    }
+  ]
 } satisfies SoundDefinition;
 
-// Completion: two-note micro-chime, major second into a soft major third color.
+// crisp:success
 const successDefinition = {
-  layers: [
+  "layers": [
     {
-      source: { type: "triangle", frequency: 740 },
-      filter: { type: "lowpass", frequency: 2600, resonance: 0.45 },
-      envelope: { attack: 0.002, decay: 0.07, sustain: 0, release: 0.018 },
-      gain: 0.115,
-      pan: -0.04,
+      "source": {
+        "type": "sine",
+        "frequency": 523,
+        "fm": {
+          "ratio": 2,
+          "depth": 100
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.12,
+        "sustain": 0,
+        "release": 0.04
+      },
+      "gain": 0.18
     },
     {
-      source: { type: "triangle", frequency: 932 },
-      delay: 0.055,
-      filter: { type: "lowpass", frequency: 3000, resonance: 0.45 },
-      envelope: { attack: 0.002, decay: 0.076, sustain: 0, release: 0.018 },
-      gain: 0.1,
-      pan: 0.04,
+      "source": {
+        "type": "sine",
+        "frequency": 659,
+        "fm": {
+          "ratio": 2,
+          "depth": 80
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.1,
+        "sustain": 0,
+        "release": 0.04
+      },
+      "delay": 0.06,
+      "gain": 0.16
     },
-  ],
+    {
+      "source": {
+        "type": "sine",
+        "frequency": 784,
+        "fm": {
+          "ratio": 2,
+          "depth": 70
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.1,
+        "sustain": 0,
+        "release": 0.04
+      },
+      "delay": 0.12,
+      "gain": 0.14
+    }
+  ]
 } satisfies SoundDefinition;
 
-// Error: low filtered thud plus a short brown-noise tail; felt, not alarming.
+// crisp:error
 const errorDefinition = {
-  layers: [
+  "layers": [
     {
-      source: { type: "triangle", frequency: { start: 210, end: 128 } },
-      filter: { type: "lowpass", frequency: 430, resonance: 0.7 },
-      envelope: { attack: 0.001, decay: 0.105, sustain: 0, release: 0.018 },
-      gain: 0.155,
+      "source": {
+        "type": "sine",
+        "frequency": {
+          "start": 400,
+          "end": 200
+        },
+        "fm": {
+          "ratio": 1.5,
+          "depth": 150
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.1,
+        "sustain": 0,
+        "release": 0.03
+      },
+      "gain": 0.22
     },
     {
-      source: { type: "noise", color: "brown" },
-      delay: 0.034,
-      filter: [
-        { type: "highpass", frequency: 95, resonance: 0.3 },
-        { type: "bandpass", frequency: 360, resonance: 0.8 },
-      ],
-      envelope: { attack: 0.001, decay: 0.065, sustain: 0, release: 0.012 },
-      gain: 0.06,
-    },
-  ],
+      "source": {
+        "type": "sine",
+        "frequency": {
+          "start": 250,
+          "end": 120
+        },
+        "fm": {
+          "ratio": 1.5,
+          "depth": 120
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.08,
+        "sustain": 0,
+        "release": 0.025
+      },
+      "delay": 0.03,
+      "gain": 0.15
+    }
+  ]
 } satisfies SoundDefinition;
 
-// Toast arrival: a tiny filtered-noise pop with a low triangle body.
+// crisp:notification
 const toastDefinition = {
-  layers: [
+  "layers": [
     {
-      source: { type: "noise", color: "pink" },
-      filter: { type: "bandpass", frequency: 1650, resonance: 1.2 },
-      envelope: { attack: 0.001, decay: 0.038, sustain: 0, release: 0.01 },
-      gain: 0.075,
+      "source": {
+        "type": "sine",
+        "frequency": 780,
+        "fm": {
+          "ratio": 1.5,
+          "depth": 120
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.15,
+        "sustain": 0,
+        "release": 0.05
+      },
+      "gain": 0.18
     },
     {
-      source: { type: "triangle", frequency: { start: 760, end: 620 } },
-      filter: { type: "lowpass", frequency: 1400, resonance: 0.4 },
-      envelope: { attack: 0.001, decay: 0.052, sustain: 0, release: 0.01 },
-      gain: 0.055,
-    },
-  ],
+      "source": {
+        "type": "sine",
+        "frequency": 1170,
+        "fm": {
+          "ratio": 1.5,
+          "depth": 100
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.12,
+        "sustain": 0,
+        "release": 0.04
+      },
+      "delay": 0.08,
+      "gain": 0.15
+    }
+  ]
 } satisfies SoundDefinition;
 
-// Surface open: airy two-band pink-noise whoosh moving upward.
+// crisp:tab-switch
+const tabSwitchDefinition = {
+  "source": {
+    "type": "sine",
+    "frequency": {
+      "start": 1000,
+      "end": 1400
+    },
+    "fm": {
+      "ratio": 0.5,
+      "depth": 50
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.04,
+    "sustain": 0,
+    "release": 0.012
+  },
+  "gain": 0.16
+} satisfies SoundDefinition;
+
+// crisp:expand
+const expandDefinition = {
+  "source": {
+    "type": "sine",
+    "frequency": {
+      "start": 600,
+      "end": 900
+    },
+    "fm": {
+      "ratio": 1,
+      "depth": 50
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.06,
+    "sustain": 0,
+    "release": 0.02
+  },
+  "gain": 0.12
+} satisfies SoundDefinition;
+
+// crisp:collapse
+const collapseDefinition = {
+  "source": {
+    "type": "sine",
+    "frequency": {
+      "start": 900,
+      "end": 600
+    },
+    "fm": {
+      "ratio": 1,
+      "depth": 50
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.06,
+    "sustain": 0,
+    "release": 0.02
+  },
+  "gain": 0.12
+} satisfies SoundDefinition;
+
+// crisp:send
+const sendDefinition = {
+  "source": {
+    "type": "sine",
+    "frequency": {
+      "start": 500,
+      "end": 1200
+    },
+    "fm": {
+      "ratio": 1,
+      "depth": 80
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.1,
+    "sustain": 0,
+    "release": 0.03
+  },
+  "gain": 0.16
+} satisfies SoundDefinition;
+
+// crisp:copy
+const copyDefinition = {
+  "layers": [
+    {
+      "source": {
+        "type": "sine",
+        "frequency": 1200,
+        "fm": {
+          "ratio": 0.5,
+          "depth": 60
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.02,
+        "sustain": 0,
+        "release": 0.006
+      },
+      "gain": 0.16
+    },
+    {
+      "source": {
+        "type": "sine",
+        "frequency": 1500,
+        "fm": {
+          "ratio": 0.5,
+          "depth": 50
+        }
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.02,
+        "sustain": 0,
+        "release": 0.006
+      },
+      "delay": 0.035,
+      "gain": 0.14
+    }
+  ]
+} satisfies SoundDefinition;
+
+// core:drawer-open
 const openDefinition = {
-  layers: [
-    {
-      source: { type: "noise", color: "pink" },
-      filter: { type: "bandpass", frequency: 760, resonance: 0.95 },
-      envelope: { attack: 0.004, decay: 0.072, sustain: 0, release: 0.018 },
-      gain: 0.055,
-      pan: -0.05,
-    },
-    {
-      source: { type: "noise", color: "pink" },
-      delay: 0.05,
-      filter: { type: "bandpass", frequency: 2100, resonance: 1.05 },
-      envelope: { attack: 0.004, decay: 0.08, sustain: 0, release: 0.018 },
-      gain: 0.07,
-      pan: 0.05,
-    },
-  ],
+  "source": {
+    "type": "sine",
+    "frequency": {
+      "start": 350,
+      "end": 1000
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.1,
+    "sustain": 0,
+    "release": 0.03
+  },
+  "gain": 0.08
 } satisfies SoundDefinition;
 
-// Surface close: the inverse downward whoosh, darker at the tail.
+// core:drawer-close
 const closeDefinition = {
-  layers: [
-    {
-      source: { type: "noise", color: "pink" },
-      filter: { type: "bandpass", frequency: 2100, resonance: 1.05 },
-      envelope: { attack: 0.003, decay: 0.066, sustain: 0, release: 0.016 },
-      gain: 0.062,
-      pan: 0.05,
-    },
-    {
-      source: { type: "noise", color: "pink" },
-      delay: 0.045,
-      filter: { type: "bandpass", frequency: 720, resonance: 0.95 },
-      envelope: { attack: 0.003, decay: 0.078, sustain: 0, release: 0.016 },
-      gain: 0.065,
-      pan: -0.05,
-    },
-  ],
+  "source": {
+    "type": "sine",
+    "frequency": {
+      "start": 800,
+      "end": 350
+    }
+  },
+  "envelope": {
+    "attack": 0,
+    "decay": 0.1,
+    "sustain": 0,
+    "release": 0.03
+  },
+  "gain": 0.06
 } satisfies SoundDefinition;
 
-// Sync kickoff: subtle two-step ascending sequence, distinct from success.
-const syncStepA = {
-  source: { type: "triangle", frequency: 560 },
-  filter: { type: "lowpass", frequency: 1450, resonance: 0.45 },
-  envelope: { attack: 0.001, decay: 0.055, sustain: 0, release: 0.012 },
-  gain: 0.09,
-} satisfies SoundDefinition;
-
-const syncStepB = {
-  source: { type: "triangle", frequency: 705 },
-  filter: { type: "lowpass", frequency: 1750, resonance: 0.45 },
-  envelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.012 },
-  gain: 0.095,
+// core:sync
+const syncDefinition = {
+  "layers": [
+    {
+      "source": {
+        "type": "sine",
+        "frequency": 523
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.015,
+        "sustain": 0,
+        "release": 0.005
+      },
+      "gain": 0.14
+    },
+    {
+      "source": {
+        "type": "sine",
+        "frequency": 784
+      },
+      "envelope": {
+        "attack": 0,
+        "decay": 0.015,
+        "sustain": 0,
+        "release": 0.005
+      },
+      "delay": 0.04,
+      "gain": 0.12
+    }
+  ]
 } satisfies SoundDefinition;
 
 const soundPlayers = {
-  close: defineSound(closeDefinition),
-  error: defineSound(errorDefinition),
-  open: defineSound(openDefinition),
-  select: defineSound(selectDefinition),
-  success: defineSound(successDefinition),
-  sync: defineSequence([
-    { sound: syncStepA, at: 0 },
-    { sound: syncStepB, at: 0.07 },
-  ]),
   tap: defineSound(tapDefinition),
-  toast: defineSound(toastDefinition),
-  toggleOff: defineSound(toggleOffDefinition),
+  hover: defineSound(hoverDefinition),
+  select: defineSound(selectDefinition),
   toggleOn: defineSound(toggleOnDefinition),
+  toggleOff: defineSound(toggleOffDefinition),
+  tabSwitch: defineSound(tabSwitchDefinition),
+  expand: defineSound(expandDefinition),
+  collapse: defineSound(collapseDefinition),
+  success: defineSound(successDefinition),
+  error: defineSound(errorDefinition),
+  toast: defineSound(toastDefinition),
+  open: defineSound(openDefinition),
+  close: defineSound(closeDefinition),
+  send: defineSound(sendDefinition),
+  copy: defineSound(copyDefinition),
+  sync: defineSound(syncDefinition),
 } satisfies Record<UiSoundName, (opts?: PlayOptions) => unknown>;
 
 let userGestureSeen = false;
@@ -258,6 +583,15 @@ export function prepareUiSound() {
   beginUiSoundGesture();
 }
 
+/** Small per-play detune/volume jitter so repeated sounds read as natural
+ *  variations of one voice rather than a robotic repeat. */
+function jitter(): PlayOptions {
+  return {
+    detune: (Math.random() - 0.5) * 22,
+    volume: 0.9 + Math.random() * 0.1,
+  };
+}
+
 function playUiSound(name: UiSoundName, opts?: PlayOptions) {
   if (!userGestureSeen || !canAttemptAudio()) {
     return;
@@ -270,7 +604,7 @@ function playUiSound(name: UiSoundName, opts?: PlayOptions) {
     }
 
     try {
-      soundPlayers[name](opts);
+      soundPlayers[name]({ ...jitter(), ...opts });
     } catch {
       // Audio is ornamental. A missing/blocked AudioContext must never affect app flows.
     }
@@ -327,6 +661,22 @@ export function playClose() {
 
 export function playSync() {
   playUiSound("sync");
+}
+
+export function playHover() {
+  playUiSound("hover");
+}
+
+export function playSend() {
+  playUiSound("send");
+}
+
+export function playCopy() {
+  playUiSound("copy");
+}
+
+export function playExpand(expanded: boolean) {
+  playUiSound(expanded ? "collapse" : "expand");
 }
 
 export function isUiSoundMuted(): boolean {
@@ -416,12 +766,42 @@ export function attachGlobalUiSounds(): () => void {
     }
   };
 
+  // Hover ticks are opt-in per element (`data-sound-hover`) and rate-limited,
+  // so only deliberately chosen surfaces whisper on pointer travel.
+  let lastHoverAt = 0;
+  let lastHoverTarget: HTMLElement | null = null;
+  const onPointerOver = (event: PointerEvent) => {
+    if (event.pointerType && event.pointerType !== "mouse") {
+      return;
+    }
+
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-sound-hover]");
+    if (!target || target === lastHoverTarget || isDisabled(target)) {
+      if (!target) {
+        lastHoverTarget = null;
+      }
+      return;
+    }
+
+    const now = performance.now();
+    if (now - lastHoverAt < 90) {
+      lastHoverTarget = target;
+      return;
+    }
+
+    lastHoverAt = now;
+    lastHoverTarget = target;
+    playUiSound("hover", { volume: 0.8 });
+  };
+
   document.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
   document.addEventListener("keydown", onKeyDown, { capture: true });
+  document.addEventListener("pointerover", onPointerOver, { capture: true, passive: true });
 
   return () => {
     document.removeEventListener("pointerdown", onPointerDown, { capture: true });
     document.removeEventListener("keydown", onKeyDown, { capture: true });
+    document.removeEventListener("pointerover", onPointerOver, { capture: true });
   };
 }
 
@@ -483,12 +863,16 @@ function resolveSoundForElement(target: HTMLElement): UiSoundName | undefined {
   }
 
   if (interactive.matches("[data-slot='collapsible-trigger']")) {
-    return isExpanded(interactive) ? "close" : "open";
+    return isExpanded(interactive) ? "collapse" : "expand";
+  }
+
+  if (interactive.matches("[role='tab'], [data-slot='tabs-trigger']")) {
+    return "tabSwitch";
   }
 
   if (
     interactive.matches(
-      "[role='option'], [role='menuitem'], [role='tab'], [data-slot='select-item'], [data-slot='tabs-trigger'], [data-slot='command-item']"
+      "[role='option'], [role='menuitem'], [data-slot='select-item'], [data-slot='command-item']"
     )
   ) {
     return "select";
