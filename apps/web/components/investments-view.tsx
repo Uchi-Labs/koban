@@ -11,6 +11,7 @@ import { GainLossPill } from "@/components/gain-loss-pill";
 import { LivelineChart } from "@/components/liveline-chart";
 import { MoneyHero } from "@/components/money-hero";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeProviderCurrencyCode } from "@/lib/currency";
 import { formatCurrency } from "@/lib/format";
@@ -383,7 +384,7 @@ function HoldingsSection({
             No positions synced yet. Connect a brokerage in Settings to populate holdings.
           </p>
         ) : (
-          <div className="scroll-fade-x overflow-x-auto">
+          <ScrollArea orientation="horizontal" viewportClassName="scroll-fade-x overscroll-x-contain">
             <table className="w-full border-collapse text-sm lg:min-w-[760px]">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
@@ -416,7 +417,7 @@ function HoldingsSection({
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollArea>
         )}
       </DashboardCard>
     </section>

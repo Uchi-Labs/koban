@@ -2,6 +2,7 @@
 
 import React from "react";
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -23,17 +24,19 @@ export function FinanceStatStrip({
   className?: string;
 }) {
   return (
-    <div
+    <ScrollArea
       className={cn(
         // Items never shrink below their own content width (see FinanceStatItem below),
         // so on narrow viewports the strip itself scrolls horizontally instead of any
         // individual amount getting ellipsis-clipped. scroll-fade-x hints there's more.
-        "scroll-fade-x flex min-w-0 divide-x divide-border overflow-x-auto rounded-2xl border border-border bg-muted/25",
+        "min-w-0 rounded-2xl border border-border bg-muted/25",
         className
       )}
+      orientation="horizontal"
+      viewportClassName="scroll-fade-x overscroll-x-contain"
     >
-      {children}
-    </div>
+      <div className="flex divide-x divide-border">{children}</div>
+    </ScrollArea>
   );
 }
 

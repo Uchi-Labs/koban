@@ -53,7 +53,13 @@ export function AccountsNetWorthCard({
           {settingsSlot}
         </div>
 
-        <NetWorthChart className="h-40" points={activeTrend.points} positive={positive} />
+        <NetWorthChart
+          className="h-44"
+          currency={currency}
+          points={activeTrend.points}
+          positive={positive}
+          rangeIndex={rangeOrder.indexOf(activeRange)}
+        />
 
         <div
           ref={rangeListRef}

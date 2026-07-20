@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Sheet,
   SheetContent,
@@ -378,17 +379,20 @@ function SidebarSeparator({
   )
 }
 
-function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
+function SidebarContent({ children, className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
+    <ScrollArea
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        "no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto [--radius:var(--radius-xl)] group-data-[collapsible=icon]:overflow-hidden",
+        "sidebar-fold-blur min-h-0 flex-1 [--radius:var(--radius-xl)]",
         className
       )}
+      viewportClassName="scroll-fade-y overscroll-contain group-data-[collapsible=icon]:overflow-hidden!"
       {...props}
-    />
+    >
+      <div className="flex min-h-full flex-col gap-2">{children}</div>
+    </ScrollArea>
   )
 }
 

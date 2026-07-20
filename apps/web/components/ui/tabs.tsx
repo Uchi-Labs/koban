@@ -106,7 +106,7 @@ function TabsList({
         data-variant={variant}
         className={cn(
           tabsListVariants({ variant }),
-          "scroll-fade-tabs-list relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain scroll-px-[var(--scroll-fade-width,3rem)] [--scroll-fade-width:3rem]",
+          "refined-scrollbar scroll-fade-tabs-list relative max-w-full min-w-0 overflow-x-auto overscroll-x-contain scroll-px-[var(--scroll-fade-width,3rem)] [--scroll-fade-width:3rem]",
           isOverflowing && "cursor-grab active:cursor-grabbing",
           className
         )}

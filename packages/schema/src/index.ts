@@ -147,6 +147,25 @@ export interface FinancialGoal {
   updatedAt: string;
 }
 
+export interface AgentConversation {
+  id: string;
+  title: string;
+  autoTitled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AgentConversationRole = "user" | "assistant";
+
+export interface AgentConversationTurn {
+  id: string;
+  conversationId: string;
+  role: AgentConversationRole;
+  content: string;
+  meta?: unknown;
+  createdAt: string;
+}
+
 export type RecurringCadence =
   | "weekly"
   | "biweekly"

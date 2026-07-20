@@ -340,7 +340,9 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
   return (
     <button
       aria-label={`${formatDayTitle(date)}: ${entry.items.length} recurring ${entry.items.length === 1 ? "charge" : "charges"}, ${formatCurrency(entry.total)}`}
-      className={cn(shared, "transition-[filter] hover:brightness-125")}
+      // hover:z-30 matters: brightness() creates a stacking context that traps
+      // the popover, so later sibling cells would otherwise paint over it.
+      className={cn(shared, "transition-[filter] hover:z-30 hover:brightness-125 focus:z-30")}
       onBlur={close}
       onClick={onOpen}
       onFocus={open}
@@ -349,18 +351,41 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
       style={{ backgroundColor: `color-mix(in oklab, ${entry.items[0].color} 22%, var(--muted))` }}
       type="button"
     >
-      {/* Custom floating tooltip (replaces native title) — mirrors the reference's
-          "$35.00" chip that pops above the hovered day. */}
+      {/* Custom floating popover (replaces native title). Single charge = one
+          row; multiple charges expand into the full list so hover answers
+          "what are these?" without opening the day dialog. Opaque surface so it
+          reads as a layer above neighboring cells instead of riding on their
+          icons. */}
       <span
         aria-hidden="true"
         className={cn(
-          "pointer-events-none absolute -top-1.5 left-1/2 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground tabular-nums shadow-md ring-1 ring-border transition-[opacity,transform] duration-150 motion-reduce:transition-none",
+          "pointer-events-none absolute -top-3.5 left-1/2 z-20 -translate-x-1/2 -translate-y-full rounded-lg bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground shadow-lg ring-1 ring-border transition-[opacity,transform] duration-150 motion-reduce:transition-none",
           tooltipOpen ? "opacity-100" : "translate-y-[calc(-100%+3px)] opacity-0"
         )}
       >
-        {entry.items.length === 1
-          ? `${entry.items[0].name} · ${formatCurrency(entry.items[0].amount, entry.items[0].currency)}`
-          : `${entry.items.length} charges · ${formatCurrency(entry.total)}`}
+        {entry.items.length === 1 ? (
+          <span className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className="max-w-36 truncate">{entry.items[0].name}</span>
+            <span className="tabular-nums text-muted-foreground">
+              {formatCurrency(entry.items[0].amount, entry.items[0].currency)}
+            </span>
+          </span>
+        ) : (
+          <span className="flex w-max min-w-36 flex-col gap-1">
+            {entry.items.map((item) => (
+              <span className="flex items-center gap-3 whitespace-nowrap" key={item.id}>
+                <span className="max-w-36 flex-1 truncate text-left">{item.name}</span>
+                <span className="ml-auto tabular-nums text-muted-foreground">
+                  {formatCurrency(item.amount, item.currency)}
+                </span>
+              </span>
+            ))}
+            <span className="mt-0.5 flex items-center gap-3 border-t border-border/60 pt-1 whitespace-nowrap">
+              <span className="flex-1 text-left text-muted-foreground">Total</span>
+              <span className="ml-auto font-semibold tabular-nums">{formatCurrency(entry.total)}</span>
+            </span>
+          </span>
+        )}
       </span>
       <span className="flex items-center -space-x-1.5">
         {visible.map((item) => (

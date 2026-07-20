@@ -28,6 +28,7 @@ type Orientation = "vertical" | "horizontal" | "both";
 
 interface ScrollAreaProps extends ComponentPropsWithoutRef<"div"> {
   ref?: Ref<ComponentRef<typeof ScrollAreaPrimitive.Root>>;
+  viewportRef?: Ref<ComponentRef<typeof ScrollAreaPrimitive.Viewport>>;
   viewportClassName?: string;
   /** Which axes get scrollbars. Defaults to `"vertical"`. */
   orientation?: Orientation;
@@ -38,55 +39,79 @@ function ScrollArea({
   className,
   orientation = "vertical",
   ref,
+  viewportRef,
   viewportClassName,
   ...props
 }: ScrollAreaProps) {
-    const isTouch = useTouchPrimary();
+  const isTouch = useTouchPrimary();
 
-    return (
-      <ScrollAreaContext.Provider value={isTouch}>
-        {isTouch ? (
+  return (
+    <ScrollAreaContext.Provider value={isTouch}>
+      {isTouch ? (
+        <div
+          ref={ref}
+          role="group"
+          data-slot="scroll-area"
+          aria-roledescription="scroll area"
+          className={cn("relative overflow-hidden", className)}
+          {...props}
+        >
           <div
-            ref={ref}
-            role="group"
-            data-slot="scroll-area"
-            aria-roledescription="scroll area"
-            className={cn("relative overflow-hidden", className)}
-            {...props}
+            ref={viewportRef}
+            data-slot="scroll-area-viewport"
+            className={cn(
+              "w-full rounded-[inherit]",
+              orientation === "horizontal" ? "h-fit" : "h-full",
+              orientation === "vertical" && "overflow-x-hidden! overflow-y-auto",
+              orientation === "horizontal" && "overflow-x-auto overflow-y-hidden!",
+              orientation === "both" && "overflow-auto",
+              viewportClassName
+            )}
           >
-            <div
-              data-slot="scroll-area-viewport"
-              className={cn(
-                "size-full rounded-[inherit]",
-                orientation === "vertical" && "overflow-y-auto",
-                orientation === "horizontal" && "overflow-x-auto",
-                orientation === "both" && "overflow-auto",
-                viewportClassName
-              )}
+            {children}
+          </div>
+        </div>
+      ) : (
+        <ScrollAreaPrimitive.Root
+          ref={ref}
+          data-slot="scroll-area"
+          className={cn("relative overflow-hidden", className)}
+          {...props}
+        >
+          <ScrollAreaPrimitive.Viewport
+            ref={viewportRef}
+            data-slot="scroll-area-viewport"
+            className={cn(
+              "w-full rounded-[inherit]",
+              orientation === "horizontal" ? "h-fit" : "h-full",
+              orientation === "vertical" && "overflow-x-hidden!",
+              orientation === "horizontal" && "overflow-y-hidden!",
+              viewportClassName
+            )}
+            style={{
+              overflowX: orientation === "vertical" ? "hidden" : "scroll",
+              overflowY: orientation === "horizontal" ? "hidden" : "scroll"
+            }}
+          >
+            {/* Base UI defaults Content to min-width:fit-content so horizontal
+                scroll areas can grow. For a vertical-only area that just clips
+                the content when the container is narrower than its natural
+                width (e.g. a resized sidebar), so pin it to the viewport width
+                and let children truncate instead. */}
+            <ScrollAreaPrimitive.Content
+              className={orientation === "vertical" ? "w-full min-w-0" : undefined}
+              style={orientation === "vertical" ? { minWidth: 0 } : undefined}
             >
               {children}
-            </div>
-          </div>
-        ) : (
-          <ScrollAreaPrimitive.Root
-            ref={ref}
-            data-slot="scroll-area"
-            className={cn("relative overflow-hidden", className)}
-            {...props}
-          >
-            <ScrollAreaPrimitive.Viewport
-              data-slot="scroll-area-viewport"
-              className={cn("size-full rounded-[inherit]", viewportClassName)}
-            >
-              <ScrollAreaPrimitive.Content>{children}</ScrollAreaPrimitive.Content>
-            </ScrollAreaPrimitive.Viewport>
-            {orientation !== "horizontal" && <ScrollBar orientation="vertical" />}
-            {orientation !== "vertical" && <ScrollBar orientation="horizontal" />}
-            {orientation === "both" && <ScrollAreaPrimitive.Corner />}
-          </ScrollAreaPrimitive.Root>
-        )}
-      </ScrollAreaContext.Provider>
-    );
+            </ScrollAreaPrimitive.Content>
+          </ScrollAreaPrimitive.Viewport>
+          {orientation !== "horizontal" && <ScrollBar orientation="vertical" />}
+          {orientation !== "vertical" && <ScrollBar orientation="horizontal" />}
+          {orientation === "both" && <ScrollAreaPrimitive.Corner />}
+        </ScrollAreaPrimitive.Root>
+      )}
+    </ScrollAreaContext.Provider>
+  );
 }
 
 ScrollArea.displayName = "ScrollArea";
@@ -112,7 +137,7 @@ function ScrollBar({ className, orientation = "vertical", ref, ...props }: Scrol
       // out, waiting out the thumb shrink before the fade so it visibly narrows.
       className={cn(
         "group/scrollbar absolute z-20 flex touch-none select-none",
-        "opacity-0 transition-opacity duration-120 ease-[var(--ease-strong-out)] delay-160",
+        "opacity-0 transition-opacity duration-120 ease-[var(--ease-strong-out)] delay-160 motion-reduce:transition-none",
         "data-[hovering]:duration-160 data-[scrolling]:duration-160",
         "data-[hovering]:opacity-100 data-[scrolling]:opacity-100",
         "data-[hovering]:delay-0 data-[scrolling]:delay-0",
@@ -125,7 +150,7 @@ function ScrollBar({ className, orientation = "vertical", ref, ...props }: Scrol
       <ScrollAreaPrimitive.Thumb
         data-slot="scroll-area-thumb"
         className={cn(
-          "relative rounded-full bg-foreground/25 transition-[background-color,width,height] duration-160 ease-[var(--ease-strong-in-out)]",
+          "relative rounded-full bg-foreground/25 transition-[background-color,width,height] duration-160 ease-[var(--ease-strong-in-out)] motion-reduce:transition-none",
           "group-hover/scrollbar:bg-foreground/45 active:!bg-foreground/60",
           orientation === "vertical" &&
             "mx-auto my-1 h-[var(--scroll-area-thumb-height)] w-1 group-hover/scrollbar:w-1.5",

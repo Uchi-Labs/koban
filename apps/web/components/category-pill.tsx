@@ -30,18 +30,24 @@ export function CategoryPill({ category, className }: { category: Category; clas
   return (
     <span
       className={cn(
-        "pill-tint inline-flex h-5 min-w-0 items-center gap-1 rounded-full border px-2 text-[11px] font-medium leading-none whitespace-nowrap",
+        "pill-tint category-tag inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-[7px] border pl-[3px] pr-2 text-[11px] font-medium leading-none whitespace-nowrap",
         className
       )}
       data-transfer={category.id === "cat_transfer" ? "true" : undefined}
       style={{ "--pill-color": color } as PillStyle}
     >
-      {/* Apple Color Emoji paints above the baseline at small sizes, so the glyph
-          rides 1px high in the 20px pill; nudge only the emoji case back to center. */}
-      <span aria-hidden="true" className={cn("inline-flex shrink-0 items-center justify-center", emoji && "translate-y-px")}>
-        {emoji ? emoji : CategoryIcon ? <CategoryIcon className="size-3" /> : category.name.trim().charAt(0).toUpperCase() || "?"}
+      {/* Concentric radii: outer 7px = swatch 4px + 3px inset. Apple Color Emoji
+          paints above the baseline at small sizes; nudge only the emoji case. */}
+      <span
+        aria-hidden="true"
+        className="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] text-[10px] leading-none"
+        data-swatch=""
+      >
+        <span className={cn("inline-flex items-center justify-center leading-none", emoji && "translate-y-px")}>
+          {emoji ? emoji : CategoryIcon ? <CategoryIcon className="size-3" /> : category.name.trim().charAt(0).toUpperCase() || "?"}
+        </span>
       </span>
-      <span className="truncate">{category.name}</span>
+      <span className="min-w-0 truncate leading-none">{category.name}</span>
     </span>
   );
 }

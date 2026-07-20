@@ -14,7 +14,7 @@ test("dashboard renders Plaid-backed cards", async ({ page }) => {
   const sidebar = page.locator('[data-slot="sidebar"][data-state]').first();
   await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
   await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
   await expect(sidebar).toHaveAttribute("data-state", "expanded");
   await page.screenshot({ fullPage: true, path: "test-results/dashboard-smoke.png" });
 });
@@ -711,7 +711,22 @@ async function setTheme(page: Page, theme: "dark" | "light") {
 }
 
 test("finance agent answers with local ledger evidence and a chart", async ({ page }) => {
+  test.setTimeout(60_000);
   const question = "Where did my money go this month?";
+  const readConversations = async () => {
+    const response = await page.request.get("/api/v1/conversations");
+    expect(response.ok()).toBe(true);
+    return response.json() as Promise<{
+      data: Array<{ id: string; title: string }>;
+    }>;
+  };
+
+  await page.goto("/");
+  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  const before = await readConversations();
+  await page.getByTestId("new-chat-button").click();
+  await expect(page.getByTestId("agent-panel")).toBeVisible();
+  await expect.poll(async () => (await readConversations()).data.length).toBe(before.data.length);
 
   await page.goto(`/?ask=${encodeURIComponent(question)}`);
 
@@ -722,6 +737,53 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   await expect(panel.getByLabel("Answer metrics")).toBeVisible({ timeout: 15_000 });
   await expect(panel.getByTestId("agent-answer-metric").first()).toBeVisible();
   await expect(panel.getByTestId("agent-chart")).toBeVisible();
+
+  await expect.poll(async () => {
+    const conversations = await readConversations();
+    return conversations.data.length === before.data.length + 1 && conversations.data[0]?.title !== "New chat";
+  }).toBe(true);
+  const persisted = (await readConversations()).data[0];
+  expect(persisted).toBeTruthy();
+
+  await panel.getByRole("button", { name: "Close finance agent" }).click();
+  await page.reload();
+  const persistedRow = page.getByRole("button", { name: `Open chat ${persisted.title}` });
+  await expect(persistedRow).toBeVisible();
+  await persistedRow.click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByLabel("Your question").getByText(question, { exact: true })).toBeVisible();
+  await expect(panel.getByTestId("agent-answer-text")).toContainText(/spending/i);
+
+  await panel.getByRole("button", { name: "Close finance agent" }).click();
+  await persistedRow.hover();
+  await page.getByRole("button", { name: `Actions for ${persisted.title}` }).click();
+  await page.getByRole("button", { name: "Rename" }).click();
+  const renamedTitle = "Monthly Spending Review";
+  const renameInput = page.getByRole("textbox", { name: `Rename ${persisted.title}` });
+  await renameInput.fill(renamedTitle);
+  await renameInput.press("Enter");
+  const renamedRow = page.getByRole("button", { name: `Open chat ${renamedTitle}` });
+  await expect(renamedRow).toBeVisible();
+
+  await page.getByRole("button", { name: "Open search" }).click();
+  const palette = page.locator('[data-slot="dialog-content"]').filter({
+    has: page.locator('[data-slot="command"]')
+  });
+  await palette.getByPlaceholder("Search chats, transactions, evidence, pages…").fill(renamedTitle);
+  await expect(palette.getByText("Chats", { exact: true })).toBeVisible();
+  await palette.getByText(renamedTitle, { exact: true }).click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByLabel("Your question").getByText(question, { exact: true })).toBeVisible();
+  await page.screenshot({ fullPage: true, path: "test-results/agent-panel-smoke.png" });
+
+  await panel.getByRole("button", { name: "Close finance agent" }).click();
+  await renamedRow.hover();
+  await page.getByRole("button", { name: `Actions for ${renamedTitle}` }).click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByRole("heading", { name: "Delete conversation?" })).toBeVisible();
+  await page.getByTestId("confirm-delete-chat").click();
+  await expect(renamedRow).toHaveCount(0);
+  await expect.poll(async () => (await readConversations()).data.some((conversation) => conversation.id === persisted.id)).toBe(false);
 
   const response = await page.request.post("/api/v1/assistant", {
     data: {
@@ -752,6 +814,4 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   expect(sourceStatusPayload.answer).toContain("no Gmail, Amazon, Instacart, Airbnb, or Outlook records have been imported yet");
   expect(sourceStatusPayload.metrics?.some((metric) => metric.label === "Source items")).toBe(true);
   expect(sourceStatusPayload.evidence).toEqual([]);
-
-  await page.screenshot({ fullPage: true, path: "test-results/agent-panel-smoke.png" });
 });

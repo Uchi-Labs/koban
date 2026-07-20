@@ -25,8 +25,19 @@ describe("ReviewStack", () => {
     expect(fetch).toHaveBeenNthCalledWith(1, "/api/v1/transactions/txn_1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ category_id: "cat_transportation", reviewed: true }) }));
 
     await userEvent.click(screen.getByRole("button", { name: /Undo/ }));
-    await waitFor(() => expect(screen.getByText("Uber")).toBeInTheDocument());
+    // getByRole excludes the aria-hidden layout sizer and stacked cards behind
+    // the front one, so this still asserts exactly one visible front card.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Uber" })).toBeInTheDocument());
     expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/transactions/txn_1", expect.objectContaining({ body: JSON.stringify({ category_id: "cat_food", reviewed: false }) }));
+  });
+
+  it("accepts via a rightward trackpad scroll gesture", async () => {
+    const { container } = render(<ReviewStack categories={categories} initialTransactions={getTransactionViews([transaction], { accounts: [account], categories })} suggestions={{ txn_1: "cat_transportation" }} />);
+    const stack = container.querySelector(".max-w-lg")!;
+    // Natural scrolling: fingers swiping right emit negative deltaX.
+    stack.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -140 }));
+    expect(await screen.findByRole("heading", { name: "Review complete" })).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/transactions/txn_1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ category_id: "cat_transportation", reviewed: true }) }));
   });
 
   it("skips with the j shortcut without mutating the transaction", async () => {

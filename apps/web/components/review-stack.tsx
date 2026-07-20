@@ -3,7 +3,7 @@
 import type { Category } from "@ai-finances/schema";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, RotateCcw } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion, type PanInfo } from "motion/react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPill } from "@/components/category-pill";
 import { Button } from "@/components/ui/button";
 import { CategoryPicker } from "@/components/ui/category-picker";
@@ -12,6 +12,7 @@ import { RollingDigits } from "@/components/ui/rolling-digits";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
 import { EASE_OUT, EASE_SMOOTH_OUT, SPRING_LAYOUT } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import type { TransactionView } from "@/lib/view-models";
 
 type ReviewAction = "accept" | "categorize" | "review" | "skip";
@@ -27,11 +28,14 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [exit, setExit] = useState<{ x: number; y: number } | null>(null);
+  // Which card is leaving, and in which direction. Deliberately NOT cleared
+  // after the swipe: AnimatePresence reads the exit prop from the removal
+  // render, so the vector must survive that render. The id gate keeps it from
+  // ever touching another card; undo clears it so the card can return.
+  const [exiting, setExiting] = useState<{ id: string; x: number; y: number } | null>(null);
   const current = initialTransactions[history.length];
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const suggestedId = current ? suggestions[current.id] ?? current.categoryId : undefined;
-  const suggestedCategory = suggestedId ? categoryById.get(suggestedId) ?? current?.category : undefined;
   const reviewed = history.filter((item) => item.action !== "skip").length;
   const recategorized = history.filter((item) => item.action === "categorize" || (item.action === "accept" && item.categoryId !== item.previousCategoryId)).length;
   const reviewProgress = initialTransactions.length === 0 ? 100 : (history.length / initialTransactions.length) * 100;
@@ -42,7 +46,7 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
     setBusy(true);
     setMessage("");
     const vector = action === "skip" ? { x: -520, y: 0 } : action === "categorize" ? { x: 0, y: -520 } : action === "review" ? { x: 0, y: 520 } : { x: 520, y: 0 };
-    setExit(vector);
+    setExiting({ id: current.id, ...vector });
     try {
       if (action !== "skip") {
         const body = targetCategoryId === current.categoryId
@@ -57,9 +61,9 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
       }
       setHistory((items) => [...items, { action, categoryId: targetCategoryId, previousCategoryId: current.categoryId, transactionId: current.id }]);
     } catch (error) {
+      setExiting(null);
       setMessage(error instanceof Error ? error.message : "Unable to save this review.");
     } finally {
-      setExit(null);
       setBusy(false);
     }
   }, [busy, current]);
@@ -81,6 +85,7 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
         });
         if (!response.ok) throw new Error("Unable to undo the last review.");
       }
+      setExiting(null);
       setHistory((items) => items.slice(0, -1));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to undo the last review.");
@@ -90,6 +95,12 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (pickerOpen || event.metaKey || event.ctrlKey || event.altKey) return;
+      // Never hijack real typing: bail when focus is in an editable element or
+      // any dialog (e.g. New category) is open above the stack.
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      }
       if (event.key === "j") { event.preventDefault(); void advance("skip"); }
       else if (event.key === "k") { event.preventDefault(); setPickerOpen(true); }
       else if (event.key === "Enter") { event.preventDefault(); void advance("accept", suggestedId); }
@@ -98,6 +109,44 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [advance, pickerOpen, suggestedId, undo]);
+
+  // Trackpad scroll moves the front card like a drag: the accumulated wheel
+  // delta pulls the card (content follows fingers), crossing the same 115px
+  // threshold fires the same action, and an idle timeout springs it back.
+  const stackRef = useRef<HTMLDivElement | null>(null);
+  const wheelRef = useRef<{ fired: boolean; timer: ReturnType<typeof setTimeout> | null; x: number; y: number }>({ fired: false, timer: null, x: 0, y: 0 });
+  const [wheelPull, setWheelPull] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const el = stackRef.current;
+    if (!el) return;
+    function onWheel(event: WheelEvent) {
+      if (!current || busy || pickerOpen) return;
+      // Native non-passive listener: React's onWheel is passive, and the page
+      // must not scroll while the gesture is steering the card.
+      event.preventDefault();
+      const wheel = wheelRef.current;
+      if (wheel.timer) clearTimeout(wheel.timer);
+      if (!wheel.fired) {
+        wheel.x -= event.deltaX;
+        wheel.y -= event.deltaY;
+        if (Math.abs(wheel.x) > Math.abs(wheel.y) && Math.abs(wheel.x) > 115) {
+          wheel.fired = true;
+          void advance(wheel.x > 0 ? "accept" : "skip", wheel.x > 0 ? suggestedId : undefined);
+        } else if (wheel.y < -115) { wheel.fired = true; setPickerOpen(true); }
+        else if (wheel.y > 115) { wheel.fired = true; void advance("review"); }
+        setWheelPull(wheel.fired ? null : { x: wheel.x, y: wheel.y });
+      }
+      wheel.timer = setTimeout(() => {
+        wheelRef.current = { fired: false, timer: null, x: 0, y: 0 };
+        setWheelPull(null);
+      }, 140);
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      if (wheelRef.current.timer) clearTimeout(wheelRef.current.timer);
+    };
+  }, [advance, busy, current, pickerOpen, suggestedId]);
 
   function onDragEnd(_event: PointerEvent, info: PanInfo) {
     const projectedX = info.offset.x + info.velocity.x * 0.16;
@@ -109,6 +158,8 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   }
 
   const weekLabel = current ? formatWeek(current.date) : "Review complete";
+  // Visible card stack: the front card plus up to two peeking behind it.
+  const stack = initialTransactions.slice(history.length, history.length + 3);
   return (
     <main className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col px-4 py-5 md:px-6" data-testid="review-page">
       <header className="mb-5 flex items-start justify-between gap-4">
@@ -130,46 +181,75 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
         </div>
       </header>
 
-      <div className="relative mx-auto flex w-full max-w-lg flex-1 flex-col justify-center">
+      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center" ref={stackRef}>
         <LazyMotion features={domAnimation}>
-          <AnimatePresence mode="wait">
-            {current ? (
-              <m.article
-                animate={exit ?? { opacity: 1, rotate: 0, scale: 1, x: 0, y: 0 }}
-                className="relative touch-none select-none rounded-3xl border border-border bg-card p-6 shadow-xl"
-                drag={busy ? false : true}
-                dragConstraints={{ bottom: 0, left: 0, right: 0, top: 0 }}
-                dragElastic={0.72}
-                dragMomentum={false}
-                exit={exit
-                  ? reduce
-                    ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
-                    : {
-                        opacity: 0,
-                        transform: `translate3d(${exit.x}px, ${exit.y}px, 0) scale(0.98)`,
-                        transition: { duration: 0.15, ease: EASE_OUT }
-                      }
+          {/* The stack wrapper is the positioning context: the invisible
+              in-flow copy of the front card sizes it, and every animated card
+              is an absolute overlay inside it — exits and promotions never
+              disturb the page layout below. */}
+          <div className="relative">
+          {current ? (
+            <div aria-hidden="true" className="invisible rounded-3xl border p-6">
+              <CardBody suggestedCategory={categoryById.get(suggestions[current.id] ?? current.categoryId) ?? current.category} suggestedId={suggestions[current.id] ?? current.categoryId} transaction={current} />
+            </div>
+          ) : null}
+          <AnimatePresence initial={false}>
+            {stack.length > 0 ? (
+              stack.map((transaction, depth) => {
+                const front = depth === 0;
+                const cardSuggestedId = suggestions[transaction.id] ?? transaction.categoryId;
+                const cardSuggestedCategory = categoryById.get(cardSuggestedId) ?? transaction.category;
+                const leaving = exiting?.id === transaction.id;
+                // Depth pose: each step back lifts, shrinks, fades, and blurs a
+                // touch — the "stack with a fade" read. Reduced motion keeps the
+                // stack legible but skips the offsets.
+                const pull = front && !reduce && !leaving ? wheelPull : null;
+                const pose = reduce
+                  ? { filter: "blur(0px)", opacity: front ? 1 : 0, rotate: 0, scale: 1, x: 0, y: 0 }
                   : {
-                      opacity: 1,
-                      transform: "translate3d(0, 0, 0) scale(1)",
-                      transition: { duration: 0 }
-                    }}
-                initial={reduce ? false : { opacity: 0, scale: 0.96, y: 12 }}
-                key={current.id}
-                onDragEnd={onDragEnd}
-                transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-                whileDrag={{ cursor: "grabbing", rotate: 1.5, scale: 1.015 }}
-              >
-                <div className="flex items-center gap-3">
-                  {merchantDomain(current.merchant) ? <FaviconBadge size="lg" website={merchantDomain(current.merchant)!} /> : <span className="grid size-11 place-items-center rounded-full bg-muted text-sm font-semibold">{current.merchant.slice(0, 1)}</span>}
-                  <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold">{current.merchant}</h2><p className="truncate text-sm text-muted-foreground">{current.accountName} · {current.dateLabel}</p></div>
-                </div>
-                <p className="my-10 text-center text-4xl font-semibold tracking-tight tabular-nums">{formatCurrency(Math.abs(current.amount), current.currency)}</p>
-                <div className="flex items-center justify-between gap-3 rounded-2xl bg-muted/45 p-3">
-                  <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Suggested category</p><div className="mt-1">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div></div>
-                  {suggestedId !== current.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
-                </div>
-              </m.article>
+                      filter: `blur(${depth * 1.25}px)`,
+                      opacity: 1 - depth * 0.3,
+                      rotate: pull ? pull.x * 0.02 : 0,
+                      scale: 1 - depth * 0.05,
+                      x: pull ? pull.x : 0,
+                      y: (pull ? pull.y : 0) + depth * -16
+                    };
+                return (
+                  <m.article
+                    animate={pose}
+                    aria-hidden={front ? undefined : true}
+                    className={cn(
+                      "absolute inset-x-0 top-0 touch-none select-none rounded-3xl border border-border bg-card p-6",
+                      front ? "shadow-xl" : "pointer-events-none"
+                    )}
+                    drag={front && !busy}
+                    dragConstraints={{ bottom: 0, left: 0, right: 0, top: 0 }}
+                    dragElastic={0.72}
+                    dragMomentum={false}
+                    exit={reduce
+                      ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
+                      : leaving && exiting
+                        ? {
+                            opacity: 0,
+                            rotate: exiting.x === 0 ? 0 : Math.sign(exiting.x) * 9,
+                            transition: { duration: 0.32, ease: EASE_SMOOTH_OUT },
+                            x: exiting.x,
+                            y: exiting.y
+                          }
+                        : { opacity: 0, scale: 0.98, transition: { duration: 0.15, ease: EASE_OUT } }}
+                    initial={front
+                      ? (reduce ? false : { opacity: 0, scale: 0.96, y: 12 })
+                      : (reduce ? false : { filter: "blur(3px)", opacity: 0, scale: 0.88, y: -34 })}
+                    key={transaction.id}
+                    onDragEnd={front ? onDragEnd : undefined}
+                    style={{ zIndex: stack.length - depth }}
+                    transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                    whileDrag={front ? { cursor: "grabbing", rotate: 1.5, scale: 1.015 } : undefined}
+                  >
+                    <CardBody suggestedCategory={cardSuggestedCategory} suggestedId={cardSuggestedId} transaction={transaction} />
+                  </m.article>
+                );
+              })
             ) : (
               <m.section
                 animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
@@ -187,6 +267,7 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
               </m.section>
             )}
           </AnimatePresence>
+          </div>
         </LazyMotion>
 
         <div className="mt-5 grid grid-cols-4 gap-2">
@@ -204,6 +285,26 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
         {message ? <p aria-live="polite" className="mt-2 text-center text-xs text-[var(--negative)]">{message}</p> : null}
       </div>
     </main>
+  );
+}
+
+function CardBody({ suggestedCategory, suggestedId, transaction }: {
+  suggestedCategory: Category | undefined;
+  suggestedId: string;
+  transaction: TransactionView;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        {merchantDomain(transaction.merchant) ? <FaviconBadge size="lg" website={merchantDomain(transaction.merchant)!} /> : <span className="grid size-11 place-items-center rounded-full bg-muted text-sm font-semibold">{transaction.merchant.slice(0, 1)}</span>}
+        <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold">{transaction.merchant}</h2><p className="truncate text-sm text-muted-foreground">{transaction.accountName} · {transaction.dateLabel}</p></div>
+      </div>
+      <p className="my-10 text-center text-4xl font-semibold tracking-tight tabular-nums">{formatCurrency(Math.abs(transaction.amount), transaction.currency)}</p>
+      <div className="flex items-center justify-between gap-3 rounded-2xl bg-muted/45 p-3">
+        <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Suggested category</p><div className="mt-1">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div></div>
+        {suggestedId !== transaction.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
+      </div>
+    </>
   );
 }
 

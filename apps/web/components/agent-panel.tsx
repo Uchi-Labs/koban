@@ -1,16 +1,25 @@
 "use client";
 
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import { Send, Sparkles, X } from "lucide-react";
+import { ArrowDown, Send, Sparkles, X } from "lucide-react";
 import * as React from "react";
 import { AgentAnswer } from "@/components/agent-answer";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { AvatarHoverGroup, AvatarHoverItem } from "@/components/ui/motion-recipes";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport
+} from "@/components/ui/message-scroller";
 import { StatefulButton } from "@/components/ui/stateful-button";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import type { AgentStreamControls } from "@/lib/hooks/use-agent-stream";
-import { EASE_SMOOTH_OUT, SPRING_GOO_MELT, SPRING_PANEL } from "@/lib/motion";
+import type { AgentConversationTurnSummary } from "@/lib/agent-conversations";
+import type { AgentMeta, AgentStreamControls } from "@/lib/hooks/use-agent-stream";
+import { EASE_SMOOTH_OUT, SPRING_PANEL } from "@/lib/motion";
 import { playClose, playOpen } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 
@@ -21,22 +30,10 @@ const suggestedQuestions = [
   "What rules would clean this up?"
 ];
 
-// Gooey suggestion nudge: a card above the question box that merges into it
-// like liquid when dismissed. Two mirrored trees share one grid cell — a
-// goo-filtered background layer draws the card silhouettes (the SVG filter
-// blurs alpha then thresholds it back, so nearby shapes grow a fillet bridge),
-// while the unfiltered content layer keeps text and buttons crisp. Both trees
-// animate the same marginBottom so they stay pixel-aligned.
-const NUDGE_HEIGHT_PX = 44;
-const NUDGE_GAP_PX = 10;
-// Matches the flattened color of the textarea's bg-input/50 over bg-background,
-// since the goo layer must be solid for the alpha threshold to bite.
-const GOO_SURFACE_CLASS = "rounded-2xl bg-[color-mix(in_srgb,var(--input)_50%,var(--background))]";
-
 // Drag-resizable height for the finance agent bottom drawer. The sheet is
 // anchored to the bottom edge, so height grows as the pointer moves up:
 // height = window.innerHeight - clientY, clamped and capped to the viewport.
-const AGENT_PANEL_MIN_HEIGHT = 320;
+const AGENT_PANEL_MIN_HEIGHT = 480;
 const AGENT_PANEL_MAX_HEIGHT = 900;
 const AGENT_PANEL_DEFAULT_HEIGHT = 560;
 const AGENT_PANEL_HEIGHT_STORAGE_KEY = "koban:agent-panel-height";
@@ -49,34 +46,37 @@ function clampAgentPanelHeight(px: number) {
 }
 
 export function AgentPanel({
+  conversationLoading,
   draftPrefill,
+  onAskAction,
   onCloseAction,
   open,
-  stream
+  persistenceError,
+  stream,
+  submitting,
+  turns
 }: {
+  conversationLoading: boolean;
   draftPrefill: string;
+  onAskAction: (question: string) => void;
   onCloseAction: () => void;
   open: boolean;
+  persistenceError: string;
   stream: AgentStreamControls;
+  submitting: boolean;
+  turns: AgentConversationTurnSummary[];
 }) {
   const reduce = useReducedMotion();
   const [draft, setDraft] = React.useState(() => draftPrefill);
-  const [nudgeQuestion] = React.useState(
-    () => suggestedQuestions[Math.floor(Math.random() * suggestedQuestions.length)]
-  );
-  const [nudgePhase, setNudgePhase] = React.useState<"open" | "melting" | "gone">(() =>
-    draftPrefill.trim() ? "gone" : "open"
-  );
-  const nudgeActive = nudgePhase !== "gone";
   const [panelHeight, setPanelHeight] = React.useState(AGENT_PANEL_DEFAULT_HEIGHT);
   const [resizing, setResizing] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const turnIdRef = React.useRef(0);
   const previousOpenRef = React.useRef(open);
   const closeAction = React.useEffectEvent(onCloseAction);
-  const submitting = stream.status === "streaming";
   const canSubmit = draft.trim().length > 0 && !submitting;
 
-  // Hydrate the persisted width after mount (localStorage is client-only, so the
+  // Hydrate the persisted height after mount (localStorage is client-only, so the
   // first render must match the SSR default to avoid a hydration mismatch).
   React.useEffect(() => {
     const stored = window.localStorage.getItem(AGENT_PANEL_HEIGHT_STORAGE_KEY);
@@ -150,23 +150,16 @@ export function AgentPanel({
       return;
     }
 
-      const onKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          closeAction();
-        }
-      };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAction();
+      }
+    };
 
-      window.addEventListener("keydown", onKeyDown);
-      return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
-
-  function meltNudge() {
-    if (nudgePhase !== "open") {
-      return;
-    }
-    setNudgePhase(reduce ? "gone" : "melting");
-  }
 
   function ask(nextQuestion = draft) {
     const question = nextQuestion.trim();
@@ -175,9 +168,9 @@ export function AgentPanel({
       return;
     }
 
-    meltNudge();
     setDraft(question);
-    stream.ask(question);
+    turnIdRef.current += 1;
+    onAskAction(question);
   }
 
   return (
@@ -245,99 +238,137 @@ export function AgentPanel({
                 </Button>
               </header>
 
-              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+              <div className="relative min-h-0 flex-1">
+                {conversationLoading ? (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <Spinner aria-label="Loading chat" size="lg" variant="ring" />
+                  </div>
+                ) : turns.length === 0 && stream.status === "idle" ? (
+                  // overflow-y-auto + m-auto: centered when it fits, scrolls (never
+                  // paints over the composer) when the drawer is short.
+                  <div className="scroll-fade-y flex h-full flex-col overflow-y-auto overscroll-contain p-4">
+                    {persistenceError ? (
+                      <Alert appearance="destructive" message={persistenceError} variant="inline" width="100%" />
+                    ) : null}
+                    <section
+                      aria-label="Finance agent suggestions"
+                      className="m-auto flex flex-col items-center gap-4 py-6 text-center"
+                    >
+                      <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                        <Sparkles aria-hidden="true" className="size-5" />
+                      </span>
+                      <div className="max-w-sm space-y-1">
+                        <h3 className="text-sm font-semibold">Ask your ledger</h3>
+                        <p className="text-sm leading-5 text-muted-foreground">
+                          Explore spending, review work, source health, or cleanup opportunities.
+                        </p>
+                      </div>
+                      <div className="flex max-w-lg flex-wrap justify-center gap-2">
+                        {suggestedQuestions.map((suggestion) => (
+                          <Button
+                            className="h-auto rounded-xl px-3 py-2 text-left text-xs whitespace-normal"
+                            data-sound="send"
+                            data-sound-hover=""
+                            key={suggestion}
+                            onClick={() => ask(suggestion)}
+                            type="button"
+                            variant="secondary"
+                          >
+                            {suggestion}
+                          </Button>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+                ) : (
+                  <MessageScrollerProvider
+                    autoScroll
+                    defaultScrollPosition="last-anchor"
+                    scrollMargin={16}
+                  >
+                    <MessageScroller>
+                      <MessageScrollerViewport className="scroll-fade-y overscroll-contain">
+                        <MessageScrollerContent
+                          aria-busy={submitting}
+                          className="gap-4 p-4 pb-12"
+                        >
+                          {turns.map((turn, index) => turn.role === "user" ? (
+                            <UserMessage content={turn.content} key={turn.id} messageId={turn.id} />
+                          ) : (
+                            <AssistantMessage
+                              content={turn.content}
+                              key={turn.id}
+                              messageId={turn.id}
+                              meta={toAgentMeta(turn.meta)}
+                              question={previousUserQuestion(turns, index)}
+                            />
+                          ))}
+
+                          {stream.status !== "idle" ? (
+                            <>
+                              <UserMessage
+                                content={stream.question}
+                                key={`question-${turnIdRef.current}`}
+                                messageId={`question-${turnIdRef.current}`}
+                              />
+                              <MessageScrollerItem
+                                key={`answer-${turnIdRef.current}`}
+                                messageId={`answer-${turnIdRef.current}`}
+                              >
+                                <div className="flex flex-col gap-4">
+                                  {stream.error ? (
+                                    <Alert appearance="destructive" message={stream.error} variant="inline" width="100%" />
+                                  ) : null}
+
+                                  <AgentAnswer
+                                    answer={stream.answer}
+                                    meta={stream.meta}
+                                    question={stream.question}
+                                    status={stream.status}
+                                    variant="panel"
+                                  />
+                                </div>
+                              </MessageScrollerItem>
+                            </>
+                          ) : null}
+
+                          {persistenceError ? (
+                            <MessageScrollerItem messageId="conversation-persistence-error">
+                              <Alert appearance="destructive" message={persistenceError} variant="inline" width="100%" />
+                            </MessageScrollerItem>
+                          ) : null}
+                        </MessageScrollerContent>
+                      </MessageScrollerViewport>
+                      <MessageScrollerButton
+                        behavior={reduce ? "auto" : "smooth"}
+                        className="bottom-3 rounded-full border-border/80 bg-background/95 shadow-lg backdrop-blur-[var(--blur-small)] motion-reduce:transition-none"
+                        data-sound="none"
+                        size="sm"
+                        variant="outline"
+                      >
+                        <ArrowDown aria-hidden="true" data-icon="inline-start" />
+                        Jump to latest
+                      </MessageScrollerButton>
+                    </MessageScroller>
+                  </MessageScrollerProvider>
+                )}
+              </div>
+
+              <div className="shrink-0 border-t border-border bg-background p-4">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs text-muted-foreground" htmlFor="agent-panel-question">
                       Question
                     </label>
                     <div className="grid">
-                      {nudgeActive ? (
-                        <>
-                          <svg aria-hidden="true" className="pointer-events-none absolute size-0">
-                            <filter height="160%" id="agent-goo" width="140%" x="-20%" y="-30%">
-                              <feGaussianBlur in="SourceGraphic" stdDeviation="6" />
-                              <feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 25 -11" />
-                            </filter>
-                          </svg>
-                          <div
-                            aria-hidden="true"
-                            className="pointer-events-none col-start-1 row-start-1 flex flex-col [filter:url(#agent-goo)]"
-                          >
-                            <m.div
-                              animate={{
-                                marginBottom: nudgePhase === "melting" ? -NUDGE_HEIGHT_PX : NUDGE_GAP_PX
-                              }}
-                              className={cn("w-full shrink-0", GOO_SURFACE_CLASS)}
-                              initial={false}
-                              style={{ height: NUDGE_HEIGHT_PX }}
-                              transition={SPRING_GOO_MELT}
-                            />
-                            <div className={cn("min-h-0 flex-1", GOO_SURFACE_CLASS)} />
-                          </div>
-                        </>
-                      ) : null}
                       <div className="relative col-start-1 row-start-1 flex flex-col">
-                        {nudgeActive ? (
-                          <m.div
-                            animate={
-                              nudgePhase === "melting"
-                                ? { filter: "blur(4px)", marginBottom: -NUDGE_HEIGHT_PX, opacity: 0 }
-                                : { filter: "blur(0px)", marginBottom: NUDGE_GAP_PX, opacity: 1 }
-                            }
-                            className={cn(
-                              "flex shrink-0 items-center gap-2 pr-1.5 pl-3",
-                              nudgePhase === "melting" && "pointer-events-none"
-                            )}
-                            initial={false}
-                            onAnimationComplete={() => {
-                              if (nudgePhase === "melting") {
-                                setNudgePhase("gone");
-                              }
-                            }}
-                            style={{ height: NUDGE_HEIGHT_PX }}
-                            transition={{
-                              ...SPRING_GOO_MELT,
-                              filter: { duration: 0.18 },
-                              opacity: { duration: 0.18 }
-                            }}
-                          >
-                            <Sparkles aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
-                            <span className="sr-only">Suggested question:</span>
-                            <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                              {nudgeQuestion}
-                            </span>
-                            <Button
-                              className="h-7 rounded-full px-3 text-xs"
-                              data-sound="send"
-                              data-sound-hover=""
-                              disabled={submitting}
-                              onClick={() => ask(nudgeQuestion)}
-                              type="button"
-                            >
-                              Ask
-                            </Button>
-                            <Button
-                              aria-label="Dismiss suggested question"
-                              className="size-7 rounded-full text-muted-foreground"
-                              data-sound="none"
-                              onClick={meltNudge}
-                              size="icon"
-                              type="button"
-                              variant="ghost"
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-                          </m.div>
-                        ) : null}
                         <Textarea
                           aria-label="Finance question"
-                          className={cn("min-h-24", nudgeActive && "bg-transparent")}
+                          className="min-h-24 px-4 py-3"
                           disabled={submitting}
                           id="agent-panel-question"
                           onChange={(event) => {
                             setDraft(event.target.value);
-                            meltNudge();
                           }}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
@@ -368,39 +399,6 @@ export function AgentPanel({
                     </StatefulButton>
                   </div>
 
-                  {!draft.trim() ? (
-                    <AvatarHoverGroup className="flex flex-wrap gap-2">
-                      {suggestedQuestions.filter((suggestion) => suggestion !== nudgeQuestion).map((suggestion, index) => (
-                        <AvatarHoverItem index={index} key={suggestion}>
-                          <Button
-                            className="h-7 rounded-xl px-2.5 text-xs"
-                            data-sound="send"
-                            data-sound-hover=""
-                            disabled={submitting}
-                            onClick={() => ask(suggestion)}
-                            type="button"
-                            variant="secondary"
-                          >
-                            {suggestion}
-                          </Button>
-                        </AvatarHoverItem>
-                      ))}
-                    </AvatarHoverGroup>
-                  ) : null}
-                </div>
-
-                {stream.error ? (
-                  <Alert appearance="destructive" message={stream.error} variant="inline" width="100%" />
-                ) : null}
-
-                <div className={cn("min-h-0", stream.status === "idle" && "hidden")}>
-                  <AgentAnswer
-                    answer={stream.answer}
-                    meta={stream.meta}
-                    question={stream.question}
-                    status={stream.status}
-                    variant="panel"
-                  />
                 </div>
               </div>
             </m.aside>
@@ -409,4 +407,80 @@ export function AgentPanel({
       </AnimatePresence>
     </LazyMotion>
   );
+}
+
+function UserMessage({
+  content,
+  messageId
+}: {
+  content: string;
+  messageId: string;
+}) {
+  return (
+    <MessageScrollerItem messageId={messageId} scrollAnchor>
+      <section aria-label="Your question" className="flex flex-col items-end gap-1.5">
+        <span className="px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          You
+        </span>
+        <p className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-5 text-primary-foreground shadow-sm">
+          {content}
+        </p>
+      </section>
+    </MessageScrollerItem>
+  );
+}
+
+function AssistantMessage({
+  content,
+  messageId,
+  meta,
+  question
+}: {
+  content: string;
+  messageId: string;
+  meta: AgentMeta | null;
+  question: string;
+}) {
+  return (
+    <MessageScrollerItem messageId={messageId}>
+      <AgentAnswer
+        answer={content}
+        meta={meta}
+        question={question}
+        status="done"
+        variant="panel"
+      />
+    </MessageScrollerItem>
+  );
+}
+
+function previousUserQuestion(turns: AgentConversationTurnSummary[], index: number) {
+  for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+    if (turns[candidate]?.role === "user") {
+      return turns[candidate]?.content ?? "";
+    }
+  }
+
+  return "";
+}
+
+function toAgentMeta(value: unknown): AgentMeta | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<AgentMeta>;
+
+  if (
+    !Array.isArray(candidate.evidence) ||
+    !Array.isArray(candidate.insights) ||
+    !Array.isArray(candidate.metrics) ||
+    typeof candidate.generatedAt !== "string" ||
+    typeof candidate.mode !== "string" ||
+    typeof candidate.question !== "string"
+  ) {
+    return null;
+  }
+
+  return candidate as AgentMeta;
 }

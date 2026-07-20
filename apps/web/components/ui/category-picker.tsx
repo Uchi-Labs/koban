@@ -6,6 +6,7 @@ import { BanIcon, CheckIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { LazyMotion, domAnimation, m, useReducedMotion, type Variants } from "motion/react";
 import * as React from "react";
 import { NewCategoryDialog } from "@/components/new-category-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { filterCategories } from "@/lib/rule-match";
 import { SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -157,9 +158,10 @@ export function CategoryPicker({
                 value={query}
               />
             </div>
-            <div
-              className="scroll-fade mt-1 max-h-[19rem] overflow-y-auto"
-              ref={listRef}
+            <ScrollArea
+              className="mt-1 max-h-[19rem]"
+              viewportClassName="scroll-fade-y h-fit max-h-[19rem] overscroll-contain"
+              viewportRef={listRef}
               role="listbox"
             >
               {filtered.length === 0 ? (
@@ -199,7 +201,7 @@ export function CategoryPicker({
                   );
                 })
               )}
-            </div>
+            </ScrollArea>
             <div className="mt-1 flex flex-col border-t border-border/60 pt-1">
               <button
                 className="flex min-h-7 w-full cursor-default items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm text-foreground outline-hidden transition-colors hover:bg-accent"

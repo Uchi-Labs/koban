@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import React, { useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { hexToRgb, oklchToHex } from "@/lib/bloom-color";
 import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralCategoryEmoji } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
@@ -196,27 +197,34 @@ export function NewCategoryDialog({
                 {emojiOpen ? (
                   <m.div
                     animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
-                    className="scroll-fade-sm absolute top-16 z-30 grid max-h-56 w-72 origin-top grid-cols-6 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
+                    className="absolute top-16 z-30 w-72 origin-top overflow-hidden rounded-2xl border border-border bg-popover shadow-lg"
                     exit={reduce
                       ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
                       : { opacity: 0, transform: "translateY(0) scale(0.99)", transition: { duration: 0.1, ease: EASE_OUT } }}
                     initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.96)" }}
                     transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
                   >
-                    {financeEmojiOptions.map((option, index) => (
-                      <button
-                        aria-label={`Use ${option}`}
-                        className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
-                        key={`${option}-${index}`}
-                        onClick={() => {
-                          emojiTouchedRef.current = true;
-                          updateState({ emoji: option, emojiOpen: false });
-                        }}
-                        type="button"
-                      >
-                        {option}
-                      </button>
-                    ))}
+                    <ScrollArea
+                      className="max-h-56"
+                      viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-56 overscroll-contain"
+                    >
+                      <div className="grid grid-cols-6 gap-1 p-2">
+                        {financeEmojiOptions.map((option, index) => (
+                          <button
+                            aria-label={`Use ${option}`}
+                            className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
+                            key={`${option}-${index}`}
+                            onClick={() => {
+                              emojiTouchedRef.current = true;
+                              updateState({ emoji: option, emojiOpen: false });
+                            }}
+                            type="button"
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   </m.div>
                 ) : null}
               </AnimatePresence>
@@ -256,14 +264,25 @@ export function NewCategoryDialog({
           )}
 
           <div className="flex w-full items-center gap-2">
-            <div className="flex flex-1 items-center gap-1">
+            <div
+              className="flex flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain"
+              onWheel={(event) => {
+                // Map the (dominant) vertical wheel axis onto horizontal scroll
+                // so a plain scrollwheel can move through the swatches.
+                const el = event.currentTarget;
+                if (el.scrollWidth <= el.clientWidth) return;
+                if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+                  el.scrollLeft += event.deltaY;
+                }
+              }}
+            >
               {SWATCHES.map((swatch) => {
                 const selected = swatch === color;
                 return (
                   <button
                     aria-label={`Use color ${swatch}`}
                     aria-pressed={selected}
-                    className="grid h-11 flex-1 place-items-center rounded-full transition-transform [@media(hover:hover)_and_(pointer:fine)]:hover:scale-110 motion-reduce:transition-none sm:h-10"
+                    className="grid h-11 w-5 shrink-0 flex-1 place-items-center rounded-full transition-transform [@media(hover:hover)_and_(pointer:fine)]:hover:scale-110 motion-reduce:transition-none sm:h-10"
                     key={swatch}
                     onClick={() => updateState({ color: swatch })}
                     style={{ backgroundColor: swatch }}

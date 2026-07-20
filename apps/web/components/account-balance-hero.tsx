@@ -1,8 +1,9 @@
 "use client";
 
 import type { Account } from "@ai-finances/schema";
-import { CreditCard, Landmark, TrendingUp, WalletCards } from "lucide-react";
+import { CreditCard, Landmark, Pencil, TrendingUp, WalletCards } from "lucide-react";
 import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
+import { useRouter } from "next/navigation";
 import React from "react";
 import { SPRING_LAYOUT } from "@/lib/motion";
 import { AccountFaviconBadge } from "@/components/account-favicon-badge";
@@ -65,7 +66,7 @@ export function AccountBalanceHero({
               <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 {account.institutionName}
               </p>
-              <h1 className="mt-0.5 truncate text-xl font-semibold tracking-tight">{account.name}</h1>
+              <AccountNameEditor account={account} />
               <p className="mt-1 text-sm text-muted-foreground">
                 {account.mask ? `•••• ${account.mask}` : account.type.replace("_", " ")}
               </p>
@@ -152,6 +153,72 @@ export function AccountBalanceHero({
   );
 }
 
+/**
+ * Inline rename. The alias persists as a user overlay (survives provider
+ * resync) and is merged at the read boundary, so it shows everywhere the
+ * account name appears. Submitting an empty name restores the provider name.
+ */
+function AccountNameEditor({ account }: { account: Account }) {
+  const router = useRouter();
+  const [editing, setEditing] = React.useState(false);
+  const [savedName, setSavedName] = React.useState<string | null>(null);
+  const displayName = savedName ?? account.name;
+  const [draft, setDraft] = React.useState(displayName);
+  const cancelled = React.useRef(false);
+
+  async function save() {
+    setEditing(false);
+    const next = draft.trim();
+    if (next === displayName) return;
+    const response = await fetch(`/api/v1/accounts/${encodeURIComponent(account.id)}`, {
+      body: JSON.stringify({ name: next.length === 0 ? null : next }),
+      headers: { "Content-Type": "application/json" },
+      method: "PATCH"
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { name: string };
+      setSavedName(payload.name);
+      setDraft(payload.name);
+      // Server components re-render so the new name lands everywhere at once.
+      router.refresh();
+    } else {
+      setDraft(displayName);
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        aria-label="Account name"
+        autoFocus
+        className="mt-0.5 w-full min-w-0 rounded-md border border-input bg-transparent px-1.5 py-0.5 text-xl font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        onBlur={() => { if (cancelled.current) { cancelled.current = false; return; } void save(); }}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          else if (event.key === "Escape") { cancelled.current = true; setDraft(displayName); setEditing(false); }
+        }}
+        placeholder={account.name}
+        value={draft}
+      />
+    );
+  }
+
+  return (
+    <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+      <h1 className="truncate text-xl font-semibold tracking-tight">{displayName}</h1>
+      <button
+        aria-label="Rename account"
+        className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
+        onClick={() => { setDraft(displayName); setEditing(true); }}
+        type="button"
+      >
+        <Pencil className="size-3.5" aria-hidden />
+      </button>
+    </span>
+  );
+}
+
 function buildBalanceTrends(source: PortfolioPoint[]): BalanceTrend[] {
   const points = [...source].sort((left, right) => left.time - right.time);
   const latest = points.at(-1)?.time;
@@ -181,10 +248,14 @@ function balanceChange(points: PortfolioPoint[]) {
 }
 
 function formatPointLabel(time: number, range: BalanceRange) {
-  const options: Intl.DateTimeFormatOptions = range === "ALL" || range === "1Y"
-    ? { month: "short", year: "2-digit" }
-    : { day: "numeric", month: "short" };
-  return new Intl.DateTimeFormat("en-US", options).format(new Date(time * 1000));
+  const date = new Date(time * 1000);
+  // Long ranges span years — use the "Aug '24" form (apostrophe) so the year is
+  // unambiguous and consistent with the net-worth and cash-flow charts.
+  if (range === "ALL" || range === "1Y") {
+    const year = String(date.getFullYear() % 100).padStart(2, "0");
+    return `${new Intl.DateTimeFormat("en-US", { month: "short" }).format(date)} '${year}`;
+  }
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" }).format(date);
 }
 
 function accountIcon(type: Account["type"]) {

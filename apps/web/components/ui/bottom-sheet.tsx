@@ -13,6 +13,7 @@ import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } fro
 import { createPortal } from "react-dom";
 import { EASE_DRAWER, SPRING_PANEL } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const OVERLAY_TRANSITION = { duration: 0.2, ease: EASE_DRAWER } as const;
 const DEFAULT_SNAP_POINTS: Array<number | "auto"> = [0.58, 0.92];
@@ -195,7 +196,12 @@ export function BottomSheet({
                 </div>
               ) : null}
             </div>
-            <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-6">{children}</div>
+            <ScrollArea
+              className="min-h-0 flex-1"
+              viewportClassName="scroll-fade-y overscroll-contain px-4 pb-6"
+            >
+              {children}
+            </ScrollArea>
           </m.div>
           </div>
         ) : null}

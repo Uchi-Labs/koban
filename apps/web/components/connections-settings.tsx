@@ -323,7 +323,7 @@ function ConnectionRow({
         />
       </div>
       <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-12 md:contents">
-        <Badge className="font-normal" variant="outline">{providerLabels[row.provider]}</Badge>
+        <Badge className="font-normal md:justify-self-start" variant="outline">{providerLabels[row.provider]}</Badge>
         <ConnectionStatusDot status={row.status} />
         <span className="text-xs text-muted-foreground md:text-sm md:text-foreground tabular-nums">
           <span className="md:hidden">Accounts </span>{row.accountCount.toLocaleString()}
@@ -403,7 +403,7 @@ function ConnectionStatusDot({ status }: { status: ProviderStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center gap-1.5 rounded-2xl border border-border px-2 text-xs font-normal text-foreground",
+        "inline-flex h-5 items-center gap-1.5 rounded-2xl border border-border px-2 text-xs font-normal text-foreground md:justify-self-start",
         status === "error" && "border-destructive/30 text-destructive",
         status === "connected" && "border-(--positive)/25 text-(--positive)"
       )}

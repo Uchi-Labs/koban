@@ -4,6 +4,7 @@ import { Check, Plus, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 import { Popover, PopoverPopup, PopoverPortal, PopoverPositioner, PopoverTrigger } from "@/components/motion/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 export interface TagOption {
@@ -17,6 +18,8 @@ export interface TransactionTagPopoverProps {
   nativeButton?: boolean;
   onOpenChange?: (open: boolean) => void;
   onToggle: (tag: string) => void;
+  /** Controlled open state; omit for the default uncontrolled trigger. */
+  open?: boolean;
   selected: string[];
   settingsHref?: string;
   side?: "bottom" | "left" | "right" | "top";
@@ -29,24 +32,28 @@ export function TransactionTagPopover({
   nativeButton = true,
   onOpenChange,
   onToggle,
+  open: controlledOpen,
   selected,
   settingsHref = "/settings",
   side = "bottom",
   tags
 }: TransactionTagPopoverProps) {
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
   const [query, setQuery] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const setOpenState = React.useCallback(
     (next: boolean) => {
-      setOpen(next);
+      if (controlledOpen === undefined) {
+        setUncontrolledOpen(next);
+      }
       if (!next) {
         setQuery("");
       }
       onOpenChange?.(next);
     },
-    [onOpenChange]
+    [controlledOpen, onOpenChange]
   );
 
   const selectedSet = React.useMemo(() => new Set(selected.map((tag) => tag.toLowerCase())), [selected]);
@@ -86,7 +93,11 @@ export function TransactionTagPopover({
                 value={query}
               />
             </div>
-            <div className="scroll-fade max-h-[16rem] overflow-y-auto p-1" role="listbox">
+            <ScrollArea
+              className="max-h-[16rem]"
+              viewportClassName="scroll-fade-y h-fit max-h-[16rem] overscroll-contain p-1"
+              role="listbox"
+            >
               {filtered.length === 0 && !trimmed ? (
                 <p className="px-2.5 py-6 text-center text-sm text-muted-foreground">No tags yet.</p>
               ) : null}
@@ -133,7 +144,7 @@ export function TransactionTagPopover({
                   </span>
                 </button>
               ) : null}
-            </div>
+            </ScrollArea>
             <Link
               className="flex items-center gap-2 border-t border-border/60 px-3 py-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
               href={settingsHref}

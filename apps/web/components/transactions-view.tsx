@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Clock3,
   Download,
+  RefreshCw,
   Eraser,
   Flag,
   Link2,
@@ -22,6 +23,7 @@ import {
   Target,
   X
 } from "lucide-react";
+import { useSyncControls } from "@/components/sync-provider";
 import Link from "next/link";
 import { toast } from "sonner";
 import React from "react";
@@ -63,6 +65,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { SwipeableRow, useCoarsePointer } from "@/components/ui/swipeable-list";
 import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -2205,8 +2208,10 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
           <TransactionInspector model={model} />
           <MobileTransactionInspector model={model} />
         </TabsContent>
-        <TabsContent className="scroll-fade min-h-0 flex-1 overflow-y-auto" value="review">
-          <ReviewTab model={model} />
+        <TabsContent className="min-h-0 flex-1 overflow-hidden" value="review">
+          <ScrollArea className="h-full" viewportClassName="scroll-fade-y overscroll-contain">
+            <ReviewTab model={model} />
+          </ScrollArea>
         </TabsContent>
       </Tabs>
       <NewRuleDialog
@@ -2225,6 +2230,7 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
 }
 
 function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
+  const { syncNow, syncing } = useSyncControls();
   const commandHintId = React.useId();
   const searchClearRef = React.useRef<HTMLDivElement>(null);
   const categoryFilterItems = [
@@ -2250,6 +2256,17 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
       </div>
 
       <div className="flex w-full min-w-0 flex-wrap items-center gap-2 md:w-auto md:flex-1 md:justify-end">
+        <Button
+          aria-label="Sync accounts"
+          className="rounded-full"
+          disabled={syncing}
+          onClick={syncNow}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <RefreshCw className={cn("size-4", syncing && "animate-spin motion-reduce:animate-none")} />
+        </Button>
         <Button
           aria-label="Download transactions"
           className="rounded-full"
@@ -2284,7 +2301,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             onChange={(event) => model.setQuery(event.target.value)}
             value={model.query}
           />
-          <InputGroupAddon align="inline-end" className="gap-1 pr-1">
+          <InputGroupAddon align="inline-end" className="gap-1 pr-2">
             {model.query ? (
               <InputGroupButton
                 aria-label="Clear transaction search"
@@ -2306,11 +2323,14 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
               </InputGroupButton>
             ) : null}
             <InputGroupText>
+              {/* Pill badge inside a pill input — corner language follows the container.
+                  Flex-centered spans: ⌘ and K sit on different baselines otherwise. */}
               <kbd
                 aria-label="Command K"
-                className="rounded-md border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground"
+                className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-muted-foreground"
               >
-                ⌘K
+                <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
+                <span className="text-[10px] leading-none">K</span>
               </kbd>
             </InputGroupText>
           </InputGroupAddon>
@@ -2531,7 +2551,10 @@ function TransactionBulkActions({ ids, model }: { ids: Set<string>; model: Trans
 
 function StaticTransactionsList({ model }: { model: TransactionsViewModel }) {
   return (
-    <div className="transaction-list-scroll scroll-fade min-h-0 flex-1 overflow-auto">
+    <ScrollArea
+      className="transaction-list-scroll min-h-0 flex-1"
+      viewportClassName="scroll-fade-y overscroll-contain"
+    >
       <div className="mx-auto w-full max-w-[70rem]">
         {model.groupedTransactions.map((group) => (
           <section className="transaction-date-group" key={group.label}>
@@ -2548,12 +2571,12 @@ function StaticTransactionsList({ model }: { model: TransactionsViewModel }) {
         ))}
         <TransactionListEmptyState model={model} />
       </div>
-    </div>
+    </ScrollArea>
   );
 }
 
 function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }) {
-  const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const items = useMemo(() => flattenTransactionGroups(model.groupedTransactions), [model.groupedTransactions]);
   const stickyIndexes = useMemo(
     () => items.flatMap((item, index) => (item.type === "header" ? [index] : [])),
@@ -2571,7 +2594,7 @@ function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     estimateSize: (index) => (items[index]?.type === "header" ? 32 : 56),
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollElement,
     // virtual-core measures the scroll element's rect via ResizeObserver, which
     // hasn't reported yet on first paint -- it defaults to {width:0, height:0}
     // (no rows considered visible) until the observer fires, then re-renders
@@ -2596,7 +2619,11 @@ function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }
     .find((index) => index <= (virtualItems[0]?.index ?? 0));
 
   return (
-    <div className="transaction-list-scroll scroll-fade min-h-0 flex-1 overflow-auto" ref={parentRef}>
+    <ScrollArea
+      className="transaction-list-scroll min-h-0 flex-1"
+      viewportClassName="scroll-fade-y overscroll-contain"
+      viewportRef={setScrollElement}
+    >
       {items.length > 0 ? (
         <div
           className="relative mx-auto w-full max-w-[70rem]"
@@ -2642,7 +2669,7 @@ function VirtualizedTransactionsList({ model }: { model: TransactionsViewModel }
       ) : null}
       <TransactionListEmptyState model={model} />
       <TransactionListLoadingState model={model} />
-    </div>
+    </ScrollArea>
   );
 }
 
@@ -2736,6 +2763,9 @@ function TransactionRowButton({
   const extraTagCount = userFacingTags.length - visibleTags.length;
   const selectTransaction = () => model.selectTransaction(transaction);
   const bulkSelected = model.selectedTransactionIds.has(transaction.id);
+  // Row-menu "Edit category"/"Add tag" open pickers anchored AT the row instead
+  // of yanking focus to the inspector — the inspector stays for deliberate work.
+  const [rowPicker, setRowPicker] = React.useState<"category" | "tag" | null>(null);
 
   return (
     <div
@@ -2861,14 +2891,14 @@ function TransactionRowButton({
                 icon: <Shapes className="size-3.5" />,
                 id: "category",
                 label: "Edit category",
-                onClick: () => model.selectTransaction(transaction, { focus: "category" })
+                onClick: () => setRowPicker("category")
               },
               {
                 ariaLabel: `Add tag to ${transaction.merchant}`,
                 icon: <Tag className="size-3.5" />,
                 id: "tag",
                 label: "Add tag",
-                onClick: () => model.selectTransaction(transaction, { focus: "tag" })
+                onClick: () => setRowPicker("tag")
               },
               {
                 ariaLabel: `Exclude ${transaction.merchant}`,
@@ -2882,6 +2912,23 @@ function TransactionRowButton({
             primaryActions={[]}
             size="sm"
           />
+          {/* Invisible anchor: the row-menu "Add tag" opens this popover right
+              at the actions cluster instead of focusing the inspector input. */}
+          <TransactionTagPopover
+            align="end"
+            nativeButton={false}
+            onOpenChange={(next) => {
+              if (!next) {
+                setRowPicker(null);
+              }
+            }}
+            onToggle={(tag) => void model.toggleTransactionTagByName(transaction, tag)}
+            open={rowPicker === "tag"}
+            selected={userFacingTags}
+            tags={model.allTagOptions}
+          >
+            <span aria-hidden="true" className="pointer-events-none inline-block size-px" />
+          </TransactionTagPopover>
         </span>
       </span>
 
@@ -2893,7 +2940,13 @@ function TransactionRowButton({
             aiSuggestionMessage={model.aiSuggestionMessage}
             align="start"
             categories={model.categories}
+            onOpenChange={(next) => {
+              if (!next) {
+                setRowPicker(null);
+              }
+            }}
             onSelect={(categoryId) => void model.commitCategoryFromPicker(transaction, categoryId)}
+            open={rowPicker === "category" ? true : undefined}
             uncategorizedMerchants={model.uncategorizedMerchants}
             value={transaction.category.id}
           >
@@ -3040,69 +3093,71 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
   return (
     <aside
       aria-label="Selected transaction inspector"
-      className="t-panel-slide hidden min-h-0 flex-col overflow-y-auto border-l border-border/60 bg-muted/10 lg:flex [--panel-translate-y:24px]"
+      className="t-panel-slide hidden min-h-0 flex-col border-l border-border/60 bg-muted/10 lg:flex [--panel-translate-y:24px]"
       data-animating={panelAnimating ? "true" : undefined}
       data-open={model.inspectorOpen ? "true" : "false"}
       onTransitionEnd={finishPanelTransition}
     >
-      <header className="flex items-center justify-between border-b border-border px-5 py-3">
-        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          <TextSwap value={transaction.status === "pending" ? "Pending transaction" : "Posted transaction"} />
-        </span>
-        <div className="flex items-center gap-1.5">
-          <StatefulButton
-            errorText="Failed"
-            loadingText="Saving"
-            onClick={() => model.toggleReviewed(transaction)}
-            size="sm"
-            state={model.reviewToggleState}
-            successText={transaction.reviewed ? "Move to review" : "Mark reviewed"}
-            type="button"
-            variant="outline"
-          >
-            {transaction.reviewed ? "Move to review" : "Mark reviewed"}
-          </StatefulButton>
-          <Button
-            aria-label="Close inspector"
-            data-sound="none"
-            onClick={() => {
-              model.stopVoiceRecognition();
-              playClose();
-              model.setInspectorOpen(false);
-            }}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-      </header>
+      <ScrollArea className="min-h-0 flex-1" viewportClassName="scroll-fade-y overscroll-contain">
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <TextSwap value={transaction.status === "pending" ? "Pending transaction" : "Posted transaction"} />
+          </span>
+          <div className="flex items-center gap-1.5">
+            <StatefulButton
+              errorText="Failed"
+              loadingText="Saving"
+              onClick={() => model.toggleReviewed(transaction)}
+              size="sm"
+              state={model.reviewToggleState}
+              successText={transaction.reviewed ? "Move to review" : "Mark reviewed"}
+              type="button"
+              variant="outline"
+            >
+              {transaction.reviewed ? "Move to review" : "Mark reviewed"}
+            </StatefulButton>
+            <Button
+              aria-label="Close inspector"
+              data-sound="none"
+              onClick={() => {
+                model.stopVoiceRecognition();
+                playClose();
+                model.setInspectorOpen(false);
+              }}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </header>
 
-      <div className="grid gap-3 p-3">
-        <IconiqCard className="gap-0 rounded-xl border-border/50 bg-card/90 py-0 shadow-sm">
-          <IconiqCardContent className="flex items-start justify-between gap-4 px-4 py-4">
-            <div className="min-w-0">
-              <span className="text-xs text-muted-foreground">{transaction.dateLabel}</span>
-              <h2 className="mt-0.5 truncate text-lg font-semibold">{transaction.merchant}</h2>
-              <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <TextSwap className="text-xs text-muted-foreground capitalize" value={transaction.status} />
-              <Badge variant={transaction.reviewed ? "synced" : "review"}>
-                {transaction.reviewed ? "Reviewed" : "To review"}
-              </Badge>
-              <Amount amount={transaction.amount} compact currency={transaction.currency} />
-            </div>
-          </IconiqCardContent>
-        </IconiqCard>
-        <TransactionInspectorDetails model={model} transaction={transaction} />
-      </div>
-      {model.inspectorMessage ? (
-        <p aria-live="polite" className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-          {model.inspectorMessage}
-        </p>
-      ) : null}
+        <div className="grid gap-3 p-3">
+          <IconiqCard className="gap-0 rounded-xl border-border/50 bg-card/90 py-0 shadow-sm">
+            <IconiqCardContent className="flex items-start justify-between gap-4 px-4 py-4">
+              <div className="min-w-0">
+                <span className="text-xs text-muted-foreground">{transaction.dateLabel}</span>
+                <h2 className="mt-0.5 truncate text-lg font-semibold">{transaction.merchant}</h2>
+                <p className="text-sm text-muted-foreground">{transaction.accountName}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <TextSwap className="text-xs text-muted-foreground capitalize" value={transaction.status} />
+                <Badge variant={transaction.reviewed ? "synced" : "review"}>
+                  {transaction.reviewed ? "Reviewed" : "To review"}
+                </Badge>
+                <Amount amount={transaction.amount} compact currency={transaction.currency} />
+              </div>
+            </IconiqCardContent>
+          </IconiqCard>
+          <TransactionInspectorDetails model={model} transaction={transaction} />
+        </div>
+        {model.inspectorMessage ? (
+          <p aria-live="polite" className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
+            {model.inspectorMessage}
+          </p>
+        ) : null}
+      </ScrollArea>
     </aside>
   );
 }
@@ -3790,7 +3845,11 @@ function MerchantReviewGroup({
       </div>
       <div className="t-acc-panel">
         <div className="t-acc-panel-inner">
-          <div className="overflow-x-auto border-t border-border">
+          <ScrollArea
+            className="border-t border-border"
+            orientation="horizontal"
+            viewportClassName="scroll-fade-x overscroll-x-contain"
+          >
             <div className="min-w-[42rem] divide-y divide-border">
               {group.rows.map((transaction) => (
                 <div
@@ -3843,7 +3902,7 @@ function MerchantReviewGroup({
                 </div>
               ))}
             </div>
-          </div>
+          </ScrollArea>
         </div>
       </div>
     </div>

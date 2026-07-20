@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader } from "@/components/ui/loader";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useShakeReplay } from "@/lib/transitions";
@@ -263,9 +264,15 @@ export function ApiTokensPanel({ hostedAuth }: ApiTokensPanelProps) {
                   Token created
                 </div>
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <code className="block overflow-x-auto rounded-md bg-background px-3 py-2 text-xs tabular-nums text-foreground ring-1 ring-border">
-                    {createdToken}
-                  </code>
+                  <ScrollArea
+                    className="max-w-full rounded-md bg-background ring-1 ring-border"
+                    orientation="horizontal"
+                    viewportClassName="scroll-fade-x overscroll-x-contain px-3 py-2"
+                  >
+                    <code className="block w-max min-w-full text-xs whitespace-nowrap tabular-nums text-foreground">
+                      {createdToken}
+                    </code>
+                  </ScrollArea>
                   <Button data-sound="copy" onClick={() => void copyCreatedToken()} size="sm" type="button" variant="outline">
                     <ActionSwapCascadeIcon className="size-4" value={copiedToken ? "copied" : "copy"}>
                       {copiedToken ? <CopyCheck className="size-4" /> : <Copy className="size-4" />}

@@ -6,6 +6,7 @@ import { AccountsNetWorthCard } from "@/components/accounts-net-worth-card";
 import { AccountsSummaryStrip, type AccountsSummaryStat } from "@/components/accounts-summary-strip";
 import { LivelineChart } from "@/components/liveline-chart";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
 import { formatCurrency } from "@/lib/format";
 import { getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
@@ -264,50 +265,55 @@ export default async function AccountsPage() {
               <p className="text-sm text-muted-foreground">Latest synced transaction per account, useful for spotting stale connections.</p>
             </CardHeader>
             <CardContent className="flex flex-col gap-0.5">
-              <div className="scroll-fade-y no-scrollbar contents xl:flex xl:max-h-[78vh] xl:flex-col xl:gap-0.5 xl:overflow-y-auto">
-                {accountRows.map((row) => {
-                  const accent = accentForGroup(groupIdByAccountId.get(row.account.id) ?? "");
+              <ScrollArea
+                className="xl:max-h-[78vh]"
+                viewportClassName="scroll-fade-y h-fit xl:max-h-[78vh]"
+              >
+                <div className="flex flex-col gap-0.5">
+                  {accountRows.map((row) => {
+                    const accent = accentForGroup(groupIdByAccountId.get(row.account.id) ?? "");
 
-                  return (
-                    <Link
-                      aria-label={`View transactions for ${row.account.name}`}
-                      className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none xl:grid-cols-[minmax(0,1.3fr)_auto]"
-                      href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
-                      key={`${row.account.id}-activity`}
-                    >
-                      <div className="flex min-w-0 items-start gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="mt-1.5 size-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: `var(${accent.colorVar})` }}
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{row.account.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {row.latestTransaction ? row.latestTransaction.merchantName : "No transactions synced"}
+                    return (
+                      <Link
+                        aria-label={`View transactions for ${row.account.name}`}
+                        className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none xl:grid-cols-[minmax(0,1.3fr)_auto]"
+                        href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
+                        key={`${row.account.id}-activity`}
+                      >
+                        <div className="flex min-w-0 items-start gap-2">
+                          <span
+                            aria-hidden="true"
+                            className="mt-1.5 size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: `var(${accent.colorVar})` }}
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{row.account.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {row.latestTransaction ? row.latestTransaction.merchantName : "No transactions synced"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="contents xl:hidden">
+                          <RowStat label="Latest activity" value={row.latestTransaction ? formatDate(row.latestTransaction.date) : "N/A"} />
+                          <RowStat label="Transaction count" value={row.transactionCount.toLocaleString()} />
+                          <RowStat label="Last updated" value={formatDateTime(row.account.lastUpdatedAt)} />
+                        </div>
+                        <div className="hidden min-w-max flex-col items-end gap-0.5 text-xs xl:flex">
+                          <p className="whitespace-nowrap text-muted-foreground">
+                            <span className="font-medium text-foreground tabular-nums">
+                              {row.latestTransaction ? formatDate(row.latestTransaction.date) : "N/A"}
+                            </span>
+                            {` · ${row.transactionCount.toLocaleString()} transactions`}
+                          </p>
+                          <p className="whitespace-nowrap text-muted-foreground">
+                            Last updated <span className="font-medium text-foreground tabular-nums">{formatDateTime(row.account.lastUpdatedAt)}</span>
                           </p>
                         </div>
-                      </div>
-                      <div className="contents xl:hidden">
-                        <RowStat label="Latest activity" value={row.latestTransaction ? formatDate(row.latestTransaction.date) : "N/A"} />
-                        <RowStat label="Transaction count" value={row.transactionCount.toLocaleString()} />
-                        <RowStat label="Last updated" value={formatDateTime(row.account.lastUpdatedAt)} />
-                      </div>
-                      <div className="hidden min-w-max flex-col items-end gap-0.5 text-xs xl:flex">
-                        <p className="whitespace-nowrap text-muted-foreground">
-                          <span className="font-medium text-foreground tabular-nums">
-                            {row.latestTransaction ? formatDate(row.latestTransaction.date) : "N/A"}
-                          </span>
-                          {` · ${row.transactionCount.toLocaleString()} transactions`}
-                        </p>
-                        <p className="whitespace-nowrap text-muted-foreground">
-                          Last updated <span className="font-medium text-foreground tabular-nums">{formatDateTime(row.account.lastUpdatedAt)}</span>
-                        </p>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
             </CardContent>
           </Card>
         </div>

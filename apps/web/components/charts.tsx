@@ -1,5 +1,6 @@
 "use client";
 
+import { animate, useReducedMotion } from "motion/react";
 import dynamic from "next/dynamic";
 import React from "react";
 import {
@@ -7,10 +8,10 @@ import {
   ChartContainer,
   ChartLine,
   ChartTooltip,
-  ChartTooltipContent,
   type ChartConfig
 } from "@/components/ui/charts";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EASE_SMOOTH_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export interface SpendingTrendPoint {
@@ -167,17 +168,40 @@ export function MiniLineChart({
   );
 }
 
+/*
+ * Scrub-first portfolio chart (VytasBu reference):
+ * - the readout lives in a fixed lane ABOVE the plot and rides the crosshair
+ *   horizontally, so it never occludes the line;
+ * - everything left of the crosshair keeps the colored line + fill ("the past"),
+ *   everything right drops to a muted hairline ("the future");
+ * - at rest the latest point carries a pulsing live dot;
+ * - range switches blur-zoom (in for shorter ranges, out for longer).
+ */
 export function NetWorthChart({
   className,
+  currency = "USD",
   label = "Net worth",
   points,
-  positive
+  positive,
+  rangeIndex
 }: {
   className?: string;
+  currency?: string;
   label?: string;
   points: NetWorthTrendPoint[];
   positive: boolean;
+  /** Position of the active range in the card's range order; drives zoom direction. */
+  rangeIndex?: number;
 }) {
+  const reduce = useReducedMotion();
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  const fillId = `nwFill${uid}`;
+  const clipId = `nwClip${uid}`;
+  const zoomRef = React.useRef<HTMLDivElement>(null);
+  const prevRangeIndex = React.useRef(rangeIndex);
+  const [scrub, setScrub] = React.useState<{ index: number; x: number } | null>(null);
+  const scrubPoint = scrub ? points[scrub.index] : undefined;
+
   // Spec: rising net worth uses the primary token, decline uses red.
   const netWorthConfig = {
     value: {
@@ -186,53 +210,181 @@ export function NetWorthChart({
     }
   } satisfies ChartConfig;
 
+  React.useEffect(() => {
+    const prev = prevRangeIndex.current;
+    prevRangeIndex.current = rangeIndex;
+    if (rangeIndex === undefined || prev === undefined || prev === rangeIndex || reduce || !zoomRef.current) {
+      return;
+    }
+    // Shorter range = dive into the data; longer range = pull back out.
+    const zoomIn = rangeIndex < prev;
+    const controls = animate(
+      zoomRef.current,
+      {
+        filter: ["blur(0px)", "blur(7px)", "blur(0px)"],
+        opacity: [1, 0.75, 1],
+        scale: [1, zoomIn ? 1.04 : 0.96, 1]
+      },
+      { duration: 0.45, ease: [...EASE_SMOOTH_OUT] }
+    );
+    return () => controls.stop();
+  }, [rangeIndex, reduce]);
+
+  const handleMouseMove = React.useCallback((state: unknown) => {
+    const next = state as {
+      activeCoordinate?: { x?: number };
+      activeTooltipIndex?: number | string;
+      isTooltipActive?: boolean;
+    } | null;
+    const rawIndex = next?.activeTooltipIndex;
+    const index = typeof rawIndex === "string" ? Number(rawIndex) : rawIndex;
+    if (next?.isTooltipActive && typeof next.activeCoordinate?.x === "number" && typeof index === "number" && Number.isFinite(index)) {
+      setScrub({ index, x: next.activeCoordinate.x });
+    } else {
+      setScrub(null);
+    }
+  }, []);
+
   return (
-    <ChartContainer
-      className={cn("min-h-0 aspect-[3/1] w-full", className)}
-      config={netWorthConfig}
-      initialDimension={CHART_INITIAL_DIMENSION}
-    >
-      <AreaChart data={points} margin={{ bottom: 0, left: 4, right: 12, top: 8 }}>
-        <defs>
-          <linearGradient id="networthFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="var(--color-value)" stopOpacity={0.34} />
-            <stop offset="0.58" stopColor="var(--color-value)" stopOpacity={0.09} />
-            <stop offset="1" stopColor="var(--color-value)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid stroke="var(--border)" strokeOpacity={0.5} vertical={false} />
-        <XAxis
-          axisLine={false}
-          dataKey="label"
-          interval="preserveStartEnd"
-          minTickGap={48}
-          tick={{ fontSize: 11 }}
-          tickLine={false}
-          tickMargin={6}
-        />
-        <YAxis
-          axisLine={false}
-          domain={["auto", "auto"]}
-          tick={{ fontSize: 11 }}
-          tickFormatter={(value: number) => compactCurrency.format(value)}
-          tickLine={false}
-          width={52}
-        />
-        <ChartTooltip
-          content={<ChartTooltipContent formatter={tooltipCurrency} indicator="line" />}
-          cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "3 3", strokeOpacity: 0.4 }}
-        />
-        <ChartArea
-          dataKey="value"
-          dot={false}
-          fill="url(#networthFill)"
-          stroke="var(--color-value)"
-          strokeWidth={2}
-          style={{ filter: "drop-shadow(0 0 5px color-mix(in oklab, var(--color-value) 45%, transparent))" }}
-          type="monotone"
-        />
-      </AreaChart>
-    </ChartContainer>
+    <div className={cn("flex min-h-0 w-full flex-col", className)}>
+      {/* Fixed readout lane: value + date ride the crosshair, clamped to the plot. */}
+      <div aria-hidden="true" className="relative h-5 shrink-0">
+        {scrubPoint ? (
+          <div
+            className="absolute top-0 flex -translate-x-1/2 items-baseline gap-2.5 whitespace-nowrap"
+            style={{ left: `clamp(5rem, ${scrub?.x ?? 0}px, calc(100% - 5rem))` }}
+          >
+            <span className="text-xs font-semibold tabular-nums text-foreground">
+              {scrubPoint.value.toLocaleString("en-US", { currency, style: "currency" })}
+            </span>
+            <span className="text-[11px] text-muted-foreground">{scrubPoint.label}</span>
+          </div>
+        ) : null}
+      </div>
+      <div className="min-h-0 flex-1" ref={zoomRef}>
+        <ChartContainer
+          className="h-full min-h-0 w-full"
+          config={netWorthConfig}
+          initialDimension={CHART_INITIAL_DIMENSION}
+        >
+          <AreaChart
+            data={points}
+            margin={{ bottom: 0, left: 8, right: 0, top: 8 }}
+            onMouseLeave={() => setScrub(null)}
+            onMouseMove={handleMouseMove}
+          >
+            <defs>
+              <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stopColor="var(--color-value)" stopOpacity={0.34} />
+                <stop offset="0.58" stopColor="var(--color-value)" stopOpacity={0.09} />
+                <stop offset="1" stopColor="var(--color-value)" stopOpacity={0} />
+              </linearGradient>
+              <clipPath id={clipId}>
+                <rect height="100%" width={scrub ? Math.max(0, scrub.x) : "100%"} x="0" y="0" />
+              </clipPath>
+            </defs>
+            <XAxis
+              axisLine={false}
+              dataKey="label"
+              interval="preserveStartEnd"
+              minTickGap={48}
+              // Inset the plot from the right so the endpoint dot clears the
+              // Y-axis labels instead of crowding them.
+              padding={{ left: 0, right: 12 }}
+              tick={{ fontSize: 11 }}
+              tickLine={false}
+              tickMargin={6}
+            />
+            <YAxis
+              axisLine={false}
+              domain={["auto", "auto"]}
+              orientation="right"
+              tick={{ fontSize: 11 }}
+              tickCount={4}
+              tickFormatter={(value: number) => compactCurrency.format(value)}
+              tickLine={false}
+              width={52}
+            />
+            <ChartTooltip
+              content={() => null}
+              cursor={{ stroke: "var(--foreground)", strokeOpacity: 0.3, strokeWidth: 1 }}
+            />
+            {/* Muted "future" line: always full-width, sits under the emphasis pass. */}
+            <ChartArea
+              activeDot={false}
+              dataKey="value"
+              dot={(props: { cx?: number; cy?: number; index?: number; key?: React.Key | null }) => {
+                const { key, ...dotProps } = props;
+                return (
+                  <RestPulseDot
+                    {...dotProps}
+                    key={key ?? `rest-${props.index}`}
+                    show={props.index === points.length - 1 && !scrub}
+                  />
+                );
+              }}
+              fill="transparent"
+              isAnimationActive={false}
+              stroke="color-mix(in oklab, var(--muted-foreground) 45%, transparent)"
+              strokeWidth={1.5}
+              type="monotone"
+            />
+            {/* Colored "past" pass: clipped to the crosshair while scrubbing. */}
+            <ChartArea
+              activeDot={{ fill: "var(--color-value)", r: 3.5, stroke: "var(--card)", strokeWidth: 1.5 }}
+              dataKey="value"
+              dot={false}
+              fill={`url(#${fillId})`}
+              stroke="var(--color-value)"
+              strokeWidth={2}
+              style={{
+                clipPath: `url(#${clipId})`,
+                filter: "drop-shadow(0 0 5px color-mix(in oklab, var(--color-value) 45%, transparent))"
+              }}
+              type="monotone"
+            />
+          </AreaChart>
+        </ChartContainer>
+      </div>
+    </div>
+  );
+}
+
+/* Rest-state live marker on the latest datum; the halo breathes unless
+   prefers-reduced-motion. Rendered inside the recharts SVG tree. */
+function RestPulseDot({ cx, cy, show }: { cx?: number; cy?: number; index?: number; show: boolean }) {
+  const reduce = useReducedMotion();
+  const haloRef = React.useRef<SVGCircleElement>(null);
+
+  React.useEffect(() => {
+    if (!show || reduce || !haloRef.current) {
+      return;
+    }
+    const controls = animate(
+      haloRef.current,
+      { opacity: [0.45, 0], scale: [1, 2.4] },
+      { duration: 1.8, ease: "easeOut", repeat: Infinity }
+    );
+    return () => controls.stop();
+  }, [reduce, show]);
+
+  if (!show || typeof cx !== "number" || typeof cy !== "number") {
+    return <g />;
+  }
+
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        fill="var(--color-value)"
+        opacity={reduce ? 0.25 : 0.45}
+        r={4.5}
+        ref={haloRef}
+        style={{ transformOrigin: `${cx}px ${cy}px` }}
+      />
+      <circle cx={cx} cy={cy} fill="var(--color-value)" r={3} stroke="var(--card)" strokeWidth={1} />
+    </g>
   );
 }
 
@@ -344,21 +496,6 @@ function TooltipRow({ color, label, value }: { color: string; label: string; val
       </span>
       <span className="font-medium tabular-nums text-foreground">{value}</span>
     </div>
-  );
-}
-
-function tooltipCurrency(value: unknown, name: unknown) {
-  const amount = typeof value === "number" ? value : Number(value);
-
-  return (
-    <span className="flex w-full items-center justify-between gap-3">
-      <span className="text-muted-foreground">{String(name)}</span>
-      <span className="font-medium tabular-nums">
-        {Number.isFinite(amount)
-          ? amount.toLocaleString("en-US", { currency: "USD", style: "currency" })
-          : String(value)}
-      </span>
-    </span>
   );
 }
 

@@ -1,5 +1,8 @@
 import type {
   Account,
+  AgentConversation,
+  AgentConversationRole,
+  AgentConversationTurn,
   Category,
   EnrichmentSuggestion,
   EnrichmentSuggestionAction,
@@ -19,7 +22,7 @@ import type {
   TransactionRuleMatchField,
   TransactionRuleMatchOperator
 } from "@ai-finances/schema";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { appCategories } from "@/lib/categories";
@@ -195,6 +198,23 @@ interface FinancialGoalRow {
 interface FinancialGoalStatsRow extends FinancialGoalRow {
   saved_amount_minor: number;
   transaction_count: number;
+}
+
+interface AgentConversationRow {
+  auto_titled: boolean;
+  created_at: string;
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
+interface AgentConversationTurnRow {
+  content: string;
+  conversation_id: string;
+  created_at: string;
+  id: string;
+  meta: unknown;
+  role: AgentConversationRole;
 }
 
 interface TransactionRuleRow {
@@ -589,6 +609,20 @@ export interface FinancialGoalWithStats extends FinancialGoal {
    */
   savedAmountMinor: number;
   transactionCount: number;
+}
+
+export interface AgentConversationCreateInput {
+  title?: string;
+}
+
+export interface AgentConversationTurnCreateInput {
+  content: string;
+  meta?: unknown;
+  role: AgentConversationRole;
+}
+
+export interface AgentConversationWithTurns extends AgentConversation {
+  turns: AgentConversationTurn[];
 }
 
 export interface EnrichmentRunResult {
@@ -1053,6 +1087,7 @@ export async function resetLocalAppData(): Promise<LocalAppDataResetSummary> {
       await db.query("DELETE FROM external_sources");
       await db.query("DELETE FROM enrichment_suggestions");
       await db.query("DELETE FROM transaction_rules");
+      await db.query("DELETE FROM agent_conversations");
       await db.query("DELETE FROM transactions");
       await db.query("DELETE FROM investment_positions");
       await db.query("DELETE FROM account_balance_snapshots");
@@ -1389,6 +1424,255 @@ function normalizeTargetAmount(value: number | undefined): number | undefined {
 
   const rounded = Math.round(value);
   return rounded > 0 ? rounded : undefined;
+}
+
+export const defaultAgentConversationTitle = "New chat";
+
+export async function listAgentConversations(): Promise<AgentConversation[]> {
+  const db = await getFinanceDb();
+  const result = await db.query<AgentConversationRow>(
+    `SELECT id, title, auto_titled, created_at, updated_at
+    FROM agent_conversations
+    ORDER BY updated_at DESC, id DESC`
+  );
+
+  return result.rows.map(agentConversationFromRow);
+}
+
+export async function getAgentConversation(conversationId: string): Promise<AgentConversation | null> {
+  const db = await getFinanceDb();
+  const result = await db.query<AgentConversationRow>(
+    `SELECT id, title, auto_titled, created_at, updated_at
+    FROM agent_conversations
+    WHERE id = $1`,
+    [conversationId]
+  );
+
+  return result.rows[0] ? agentConversationFromRow(result.rows[0]) : null;
+}
+
+export async function listAgentConversationTurns(conversationId: string): Promise<AgentConversationTurn[]> {
+  const db = await getFinanceDb();
+  const result = await db.query<AgentConversationTurnRow>(
+    `SELECT id, conversation_id, role, content, meta, created_at
+    FROM agent_conversation_turns
+    WHERE conversation_id = $1
+    ORDER BY created_at ASC, id ASC`,
+    [conversationId]
+  );
+
+  return result.rows.map(agentConversationTurnFromRow);
+}
+
+export async function getAgentConversationWithTurns(
+  conversationId: string
+): Promise<AgentConversationWithTurns | null> {
+  const conversation = await getAgentConversation(conversationId);
+
+  if (!conversation) {
+    return null;
+  }
+
+  return {
+    ...conversation,
+    turns: await listAgentConversationTurns(conversationId)
+  };
+}
+
+export async function createAgentConversation(
+  input: AgentConversationCreateInput = {}
+): Promise<AgentConversation> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const timestamp = new Date().toISOString();
+    const conversation: AgentConversation = {
+      autoTitled: false,
+      createdAt: timestamp,
+      id: `conv_${randomUUID()}`,
+      title: normalizeAgentConversationTitle(input.title ?? defaultAgentConversationTitle),
+      updatedAt: timestamp
+    };
+
+    await db.query(
+      `INSERT INTO agent_conversations (id, title, auto_titled, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5)`,
+      [conversation.id, conversation.title, conversation.autoTitled, conversation.createdAt, conversation.updatedAt]
+    );
+
+    return conversation;
+  });
+}
+
+export async function renameAgentConversation(
+  conversationId: string,
+  title: string
+): Promise<AgentConversation | null> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const existing = await db.query<AgentConversationRow>(
+      "SELECT * FROM agent_conversations WHERE id = $1",
+      [conversationId]
+    );
+    const row = existing.rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    const nextTitle = normalizeAgentConversationTitle(title);
+    const updatedAt = nextIsoTimestamp(row.updated_at);
+    const result = await db.query<AgentConversationRow>(
+      `UPDATE agent_conversations
+      SET title = $1, auto_titled = FALSE, updated_at = $2
+      WHERE id = $3
+      RETURNING *`,
+      [nextTitle, updatedAt, conversationId]
+    );
+
+    return agentConversationFromRow(result.rows[0]);
+  });
+}
+
+/**
+ * Persist an automatically generated or fallback title. The predicate is
+ * intentionally re-checked inside the write queue so an in-flight AI response
+ * cannot overwrite a manual rename that completed after generation started.
+ */
+export async function setAgentConversationGeneratedTitle(
+  conversationId: string,
+  title: string,
+  autoTitled: boolean
+): Promise<AgentConversation | null> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const existing = await db.query<AgentConversationRow>(
+      "SELECT * FROM agent_conversations WHERE id = $1",
+      [conversationId]
+    );
+    const row = existing.rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    const current = agentConversationFromRow(row);
+
+    if (current.title !== defaultAgentConversationTitle) {
+      return current;
+    }
+
+    const result = await db.query<AgentConversationRow>(
+      `UPDATE agent_conversations
+      SET title = $1, auto_titled = $2, updated_at = $3
+      WHERE id = $4
+        AND title = $5
+      RETURNING *`,
+      [
+        normalizeAgentConversationTitle(title),
+        autoTitled,
+        nextIsoTimestamp(row.updated_at),
+        conversationId,
+        defaultAgentConversationTitle
+      ]
+    );
+
+    if (result.rows[0]) {
+      return agentConversationFromRow(result.rows[0]);
+    }
+
+    const reloaded = await db.query<AgentConversationRow>(
+      "SELECT * FROM agent_conversations WHERE id = $1",
+      [conversationId]
+    );
+    return reloaded.rows[0] ? agentConversationFromRow(reloaded.rows[0]) : null;
+  });
+}
+
+export async function appendAgentConversationTurn(
+  conversationId: string,
+  input: AgentConversationTurnCreateInput
+): Promise<AgentConversationTurn | null> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await db.exec("BEGIN");
+
+    try {
+      const existing = await db.query<AgentConversationRow>(
+        "SELECT * FROM agent_conversations WHERE id = $1 FOR UPDATE",
+        [conversationId]
+      );
+      const conversation = existing.rows[0];
+
+      if (!conversation) {
+        await db.exec("ROLLBACK");
+        return null;
+      }
+
+      const createdAt = nextIsoTimestamp(conversation.updated_at);
+      const turn: AgentConversationTurn = {
+        content: input.content,
+        conversationId,
+        createdAt,
+        id: `turn_${randomUUID()}`,
+        meta: input.meta,
+        role: input.role
+      };
+
+      await db.query(
+        `INSERT INTO agent_conversation_turns (id, conversation_id, role, content, meta, created_at)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+        [turn.id, turn.conversationId, turn.role, turn.content, JSON.stringify(turn.meta ?? null), turn.createdAt]
+      );
+      await db.query("UPDATE agent_conversations SET updated_at = $1 WHERE id = $2", [createdAt, conversationId]);
+      await db.exec("COMMIT");
+
+      return turn;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
+export async function deleteAgentConversation(conversationId: string): Promise<boolean> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const result = await db.query<{ id: string }>(
+      "DELETE FROM agent_conversations WHERE id = $1 RETURNING id",
+      [conversationId]
+    );
+    return result.rows.length > 0;
+  });
+}
+
+function agentConversationFromRow(row: AgentConversationRow): AgentConversation {
+  return {
+    autoTitled: row.auto_titled,
+    createdAt: row.created_at,
+    id: row.id,
+    title: row.title,
+    updatedAt: row.updated_at
+  };
+}
+
+function agentConversationTurnFromRow(row: AgentConversationTurnRow): AgentConversationTurn {
+  return {
+    content: row.content,
+    conversationId: row.conversation_id,
+    createdAt: row.created_at,
+    id: row.id,
+    meta: parseOptionalJsonValue(row.meta),
+    role: row.role
+  };
+}
+
+function normalizeAgentConversationTitle(value: string): string {
+  const title = value.trim().replace(/\s+/g, " ").slice(0, 120);
+  return title || defaultAgentConversationTitle;
+}
+
+function nextIsoTimestamp(previous: string): string {
+  return new Date(Math.max(Date.now(), Date.parse(previous) + 1)).toISOString();
 }
 
 export async function listTagStyles(): Promise<TagStyle[]> {
@@ -5011,6 +5295,28 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS agent_conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      auto_titled BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_conversation_turns (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES agent_conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      meta JSONB,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS agent_conversations_updated_idx
+      ON agent_conversations(updated_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS agent_conversation_turns_conversation_idx
+      ON agent_conversation_turns(conversation_id, created_at ASC, id ASC);
+
     CREATE TABLE IF NOT EXISTS transaction_rules (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -7887,6 +8193,22 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   }
 
   return {};
+}
+
+function parseOptionalJsonValue(value: unknown): unknown | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeSyncIntervalMinutes(value: number): number {

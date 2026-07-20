@@ -4,7 +4,6 @@ import type { Account, AccountGroup } from "@ai-finances/schema";
 import {
   ArrowLeftRight,
   BarChart3,
-  Bot,
   Check,
   CircleAlert,
   CreditCard,
@@ -14,19 +13,22 @@ import {
   Lightbulb,
   LoaderCircle,
   PieChart,
+  Plus,
   RefreshCw,
   Repeat2,
   ScrollText,
   Search,
-  Settings,
-  WalletCards
+  Settings
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useState } from "react";
-import { formatCurrency } from "@/lib/format";
 import { attachGlobalUiSounds, playClose, playError, playOpen, playSuccess, prepareUiSound } from "@/lib/ui-sound";
 import { AgentPanelProvider, useAgentPanel } from "@/components/agent-panel-provider";
+import { SidebarAccountRow } from "@/components/sidebar-account-row";
+import { SyncProvider } from "@/components/sync-provider";
+import { AgentChatSidebar } from "@/components/agent-chat-sidebar";
 import { CommandPalette } from "@/components/command-palette";
 import {
   Sidebar,
@@ -368,6 +370,7 @@ function AppShellContent({
   }
 
   return (
+    <SyncProvider value={{ syncNow, syncing }}>
     <SidebarProvider
       data-resizing={resizingSidebar ? "true" : undefined}
       style={
@@ -451,6 +454,7 @@ function AppShellContent({
       </nav>
       <CommandPalette onOpenChangeAction={changePaletteOpen} open={paletteOpen} />
     </SidebarProvider>
+    </SyncProvider>
   );
 }
 
@@ -487,6 +491,7 @@ function AppSidebarSections({
   syncNow: () => void;
   transactionCount: number;
 }) {
+  const { isMobile, state, toggleSidebar } = useSidebar();
   const syncButtonLabel = syncStatus === "syncing"
     ? "Syncing"
     : syncStatus === "success"
@@ -499,9 +504,35 @@ function AppSidebarSections({
     <>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-1 py-0.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary group-data-[collapsible=icon]:hidden">
-            <WalletCards className="size-4" />
-          </div>
+          {/* Koban maneki mark. Collapsed rail shows only the logo, which then
+              doubles as the expand affordance. */}
+          {/* Maneki hop: the cat pops up on hover (bounce ease, transform-only). */}
+          <button
+            aria-label="Expand sidebar"
+            className="group/logo hidden shrink-0 cursor-pointer group-data-[collapsible=icon]:block"
+            onClick={toggleSidebar}
+            type="button"
+          >
+            <Image
+              alt=""
+              className="size-7 object-contain transition-transform duration-[var(--duration-fast)] ease-[var(--ease-bounce-strong)] group-hover/logo:-translate-y-1 group-hover/logo:scale-110 group-hover/logo:-rotate-6 motion-reduce:transition-none motion-reduce:group-hover/logo:transform-none"
+              height={28}
+              priority
+              src="/icons/koban-1024-transparent.png"
+              width={28}
+            />
+          </button>
+          <span className="group/logo shrink-0 group-data-[collapsible=icon]:hidden">
+            <Image
+              alt=""
+              aria-hidden="true"
+              className="size-7 object-contain transition-transform duration-[var(--duration-fast)] ease-[var(--ease-bounce-strong)] group-hover/logo:-translate-y-1 group-hover/logo:scale-110 group-hover/logo:-rotate-6 motion-reduce:transition-none motion-reduce:group-hover/logo:transform-none"
+              height={28}
+              priority
+              src="/icons/koban-1024-transparent.png"
+              width={28}
+            />
+          </span>
           <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             Koban
           </span>
@@ -517,39 +548,44 @@ function AppSidebarSections({
               Demo
             </span>
           ) : null}
-          <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:ml-0" />
+          <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <div className="mx-2 mb-1 flex items-center gap-1 group-data-[collapsible=icon]:mx-0 group-data-[collapsible=icon]:justify-center">
+            <div className="mx-2 mb-1 flex flex-col gap-1 group-data-[collapsible=icon]:mx-0 group-data-[collapsible=icon]:items-center">
+              <button
+                aria-label="Start a new chat"
+                className={cn(
+                  "flex h-10 w-full items-center justify-start gap-2 rounded-[0.875rem] border border-foreground bg-foreground px-3 text-sm font-semibold text-background shadow-[inset_0_1px_0_color-mix(in_oklab,var(--background)_35%,transparent),0_8px_18px_-12px_color-mix(in_oklab,var(--foreground)_45%,transparent)] transition-[transform,opacity] hover:opacity-90 active:scale-[0.98] motion-reduce:transition-none group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
+                  agentPanel.open && !agentPanel.activeConversationId && "ring-2 ring-sidebar-ring/35"
+                )}
+                data-sound="open"
+                data-testid="new-chat-button"
+                onClick={agentPanel.startNewConversation}
+                style={{
+                  backgroundImage: "linear-gradient(180deg, oklch(from var(--foreground) calc(l + 0.08) c h), var(--foreground) 55%, oklch(from var(--foreground) calc(l - 0.035) c h))"
+                }}
+                type="button"
+              >
+                <Plus aria-hidden="true" className="size-4 shrink-0" />
+                <span className="group-data-[collapsible=icon]:hidden">New</span>
+              </button>
               <button
                 aria-label="Open search"
-                className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-input/30 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-input/50 hover:text-foreground motion-reduce:transition-none group-data-[collapsible=icon]:w-11 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 sm:h-10 sm:group-data-[collapsible=icon]:w-10"
+                className="flex h-9 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground motion-reduce:transition-none group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
                 data-sound="none"
                 onClick={onOpenPalette}
                 type="button"
               >
-                <Search className="size-4 shrink-0" />
+                <Search aria-hidden="true" className="size-4 shrink-0" />
                 <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Search</span>
-                <kbd className="rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  ⌘K
+                <kbd className="inline-flex items-center gap-0.5 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-2 py-0.5 font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
+                  <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
+                  <span className="text-[10px] leading-none">K</span>
                 </kbd>
-              </button>
-              <button
-                aria-label="Ask the finance agent"
-                className={cn(
-                  "flex size-11 shrink-0 items-center justify-center rounded-lg border border-input bg-input/30 text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary group-data-[collapsible=icon]:hidden sm:size-10",
-                  agentPanel.open && "border-primary/40 bg-primary/15 text-primary"
-                )}
-                data-sound="open"
-                onClick={() => agentPanel.openAgent()}
-                title="Ask the finance agent"
-                type="button"
-              >
-                <Bot className="size-4" />
               </button>
             </div>
             <SharedLayoutBg
@@ -612,6 +648,19 @@ function AppSidebarSections({
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {!isMobile && state === "expanded" ? (
+          <AgentChatSidebar
+            activeConversationId={agentPanel.activeConversationId}
+            busyConversationId={agentPanel.busyConversationId}
+            conversations={agentPanel.conversations}
+            insertedConversationId={agentPanel.insertedConversationId}
+            loading={agentPanel.conversationsLoading}
+            onDeleteConversation={agentPanel.deleteConversation}
+            onOpenConversation={agentPanel.openConversation}
+            onRenameConversation={agentPanel.renameConversation}
+          />
+        ) : null}
+
         {accountGroups.map((group) => (
           <SidebarGroup className="group-data-[collapsible=icon]:hidden" key={group.id}>
             <SidebarGroupLabel>{group.name}</SidebarGroupLabel>
@@ -627,24 +676,13 @@ function AppSidebarSections({
                   const href = `/accounts/${encodeURIComponent(accountId)}`;
 
                   return account ? [
-                    <li className={cn("rounded-lg", pathname === href && "bg-sidebar-accent/70")} key={account.id}>
-                      <Link
-                        aria-current={pathname === href ? "page" : undefined}
-                        aria-label={`Open account page for ${account.name}`}
-                        className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
-                        href={href}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="size-1.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: accountColorByType[account.type] }}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>
-                        <span className="shrink-0 font-medium tabular-nums">
-                          {formatCurrency(Math.abs(account.currentBalance), account.currency)}
-                        </span>
-                      </Link>
-                    </li>
+                    <SidebarAccountRow
+                      account={account}
+                      active={pathname === href}
+                      dotColor={accountColorByType[account.type]}
+                      href={href}
+                      key={account.id}
+                    />
                   ] : [];
                 })}
               </SharedLayoutBg>

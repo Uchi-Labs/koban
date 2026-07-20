@@ -220,7 +220,7 @@ describe("TransactionsView", () => {
   it("shows the command palette hint and clears transaction search", async () => {
     renderTransactions();
 
-    expect(screen.getByText("⌘K")).toBeInTheDocument();
+    expect(screen.getByLabelText("Command K")).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("Search transactions"), "Uber");
     expect(screen.getByLabelText("Search transactions")).toHaveValue("Uber");

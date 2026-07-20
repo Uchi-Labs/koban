@@ -184,7 +184,7 @@ export default async function DashboardPage() {
                       {category ? (
                         <CategoryPill className="min-w-0 max-w-full" category={category} />
                       ) : (
-                        <span className="pill-tint">🏷️ Other</span>
+                        <CategoryPill category={{ archived: false, color: "", emoji: "🏷️", icon: "circle", id: "cat_other", name: "Other", sortOrder: 0 }} />
                       )}
                       <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
                         {formatCurrency(cell.amount, dashboardSummary.currency)}

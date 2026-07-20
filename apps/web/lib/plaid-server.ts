@@ -521,7 +521,9 @@ async function syncPlaidDataInternal(client: PlaidApiClient = createPlaidClient(
   const transactions: Transaction[] = [];
   const nextItems: StoredPlaidItem[] = [];
 
-  for (const item of items) {
+  // Items are independent (per-item cursor, no shared state until the single
+  // ledger write below), so sync them concurrently; results keep item order.
+  const itemResults = await Promise.all(items.map(async (item) => {
     // Prefer a stored name, but if it's missing or is just the raw ins_* id
     // (e.g. CLI-imported items), resolve the real name from Plaid once.
     const institutionName =
@@ -538,43 +540,55 @@ async function syncPlaidDataInternal(client: PlaidApiClient = createPlaidClient(
         syncedAt: finishedAt
       });
 
-      accounts.push(...itemSync.accounts);
-      balanceSnapshots.push(...itemSync.balanceSnapshots);
-      removedTransactionIds.push(...itemSync.removedTransactionIds);
-      transactions.push(...itemSync.transactions);
-      successfulProviderConnectionIds.push(providerConnectionId);
-      providerConnections.push({
-        configured: true,
-        displayName: `Plaid - ${institutionName}`,
-        id: providerConnectionId,
-        lastSyncedAt: finishedAt,
-        provider: "plaid",
-        status: "connected"
-      });
-      nextItems.push({
-        ...item,
-        errorMessage: undefined,
-        institutionName,
-        lastSyncedAt: finishedAt,
-        nextCursor: itemSync.nextCursor
-      });
+      return {
+        itemSync,
+        nextItem: {
+          ...item,
+          errorMessage: undefined,
+          institutionName,
+          lastSyncedAt: finishedAt,
+          nextCursor: itemSync.nextCursor
+        },
+        providerConnection: {
+          configured: true,
+          displayName: `Plaid - ${institutionName}`,
+          id: providerConnectionId,
+          lastSyncedAt: finishedAt,
+          provider: "plaid" as const,
+          status: "connected" as const
+        },
+        providerConnectionId
+      };
     } catch (error) {
       const errorMessage = `${institutionName}: ${plaidErrorMessage(error, "sync failed")}`;
-      errors.push(errorMessage);
-      providerConnections.push({
-        configured: true,
-        displayName: `Plaid - ${institutionName}`,
+      return {
         errorMessage,
-        id: providerConnectionId,
-        lastSyncedAt: item.lastSyncedAt,
-        provider: "plaid",
-        status: "error"
-      });
-      nextItems.push({
-        ...item,
-        errorMessage,
-        institutionName
-      });
+        nextItem: { ...item, errorMessage, institutionName },
+        providerConnection: {
+          configured: true,
+          displayName: `Plaid - ${institutionName}`,
+          errorMessage,
+          id: providerConnectionId,
+          lastSyncedAt: item.lastSyncedAt,
+          provider: "plaid" as const,
+          status: "error" as const
+        },
+        providerConnectionId
+      };
+    }
+  }));
+
+  for (const result of itemResults) {
+    providerConnections.push(result.providerConnection);
+    nextItems.push(result.nextItem);
+    if (result.itemSync) {
+      accounts.push(...result.itemSync.accounts);
+      balanceSnapshots.push(...result.itemSync.balanceSnapshots);
+      removedTransactionIds.push(...result.itemSync.removedTransactionIds);
+      transactions.push(...result.itemSync.transactions);
+      successfulProviderConnectionIds.push(result.providerConnectionId);
+    } else if (result.errorMessage) {
+      errors.push(result.errorMessage);
     }
   }
 
