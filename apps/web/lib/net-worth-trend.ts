@@ -2,7 +2,10 @@ import type { Transaction } from "@ai-finances/schema";
 import type { NetWorthRange, NetWorthRangeTrend } from "@/components/dashboard-net-worth-card";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
+// Month ticks carry a 2-digit year in the "Aug '24" form (apostrophe, matching
+// the cash-flow chart) so a multi-year axis is never ambiguous about the year —
+// and the apostrophe stops "Aug 24" from reading like a day-of-month.
+const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
 const dateLabelFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" });
 
 interface TransactionTrendBuckets {
@@ -206,7 +209,9 @@ function bucketTransactionTrends(transactions: Transaction[]): TransactionTrendB
 }
 
 function formatMonthLabel(month: string) {
-  return monthLabelFormatter.format(new Date(`${month}-01T12:00:00Z`));
+  const date = new Date(`${month}-01T12:00:00Z`);
+  const year = String(date.getUTCFullYear() % 100).padStart(2, "0");
+  return `${monthLabelFormatter.format(date)} '${year}`;
 }
 
 function formatDateLabel(date: string) {

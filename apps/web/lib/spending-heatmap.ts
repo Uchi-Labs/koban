@@ -6,6 +6,16 @@ export interface SpendingHeatmapActivity extends Activity {
   spend: number;
 }
 
+/** One category's own heatmap, its levels computed within its own spend
+ *  distribution so the intensity is meaningful even for a small category. */
+export interface CategoryHeatmap {
+  color: string;
+  data: SpendingHeatmapActivity[];
+  id: string;
+  name: string;
+  total: number;
+}
+
 export function buildSpendingHeatmapData(
   transactions: Transaction[],
   currency = "USD"
@@ -13,7 +23,41 @@ export function buildSpendingHeatmapData(
   const spending = transactions.filter(isSpendingTransaction);
   const anchor = spending.map((transaction) => transaction.date).sort().at(-1);
   if (!anchor) return [];
+  return buildHeatmapSeries(spending, anchor, currency);
+}
 
+/**
+ * "All spending" plus a per-category heatmap for every category with spend in
+ * the window. Every series shares the same 365-day window (anchored on the
+ * latest spending date across all categories) so the calendars line up when the
+ * viewer switches categories to spot seasonal patterns.
+ */
+export function buildCategorySpendingHeatmaps(
+  transactions: Transaction[],
+  categories: Array<{ color: string; id: string; name: string }>,
+  currency = "USD"
+): { all: SpendingHeatmapActivity[]; categories: CategoryHeatmap[] } {
+  const spending = transactions.filter(isSpendingTransaction);
+  const anchor = spending.map((transaction) => transaction.date).sort().at(-1);
+  if (!anchor) return { all: [], categories: [] };
+
+  const all = buildHeatmapSeries(spending, anchor, currency);
+  const categoryHeatmaps = categories
+    .map((category) => {
+      const categorySpending = spending.filter((transaction) => transaction.categoryId === category.id);
+      if (categorySpending.length === 0) return null;
+      const data = buildHeatmapSeries(categorySpending, anchor, currency);
+      const total = data.reduce((sum, day) => sum + day.spend, 0);
+      return total > 0 ? { color: category.color, data, id: category.id, name: category.name, total } : null;
+    })
+    .filter((category): category is CategoryHeatmap => category !== null)
+    .sort((left, right) => right.total - left.total);
+
+  return { all, categories: categoryHeatmaps };
+}
+
+/** Daily aggregation + quantile levels over the fixed 365-day window ending at `anchor`. */
+function buildHeatmapSeries(spending: Transaction[], anchor: string, currency: string): SpendingHeatmapActivity[] {
   const anchorDate = new Date(`${anchor}T00:00:00Z`);
   const firstDate = new Date(anchorDate);
   firstDate.setUTCDate(anchorDate.getUTCDate() - 364);

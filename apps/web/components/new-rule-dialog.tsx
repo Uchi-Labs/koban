@@ -7,6 +7,7 @@ import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { deriveRuleMatchValue } from "@/lib/rule-match";
 
 const RULE_MATCH_FIELD = "merchant_or_description";
@@ -179,7 +180,10 @@ export function NewRuleDialog({ category, merchant, onCreated, onOpenChange, ope
           ) : rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">No transactions match “{matchValue}”.</p>
           ) : (
-            <div className="scroll-fade max-h-72 overflow-y-auto">
+            <ScrollArea
+              className="max-h-72"
+              viewportClassName="scroll-fade-y h-fit max-h-72 overscroll-contain"
+            >
               <ul className="flex flex-col">
                 {rows.map((item) => (
                   <li
@@ -204,7 +208,7 @@ export function NewRuleDialog({ category, merchant, onCreated, onOpenChange, ope
               {overflow > 0 ? (
                 <p className="px-1 pt-2 text-center text-xs text-muted-foreground">+ {overflow.toLocaleString()} more</p>
               ) : null}
-            </div>
+            </ScrollArea>
           )}
         </div>
 

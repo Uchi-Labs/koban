@@ -28,10 +28,12 @@ import {
 } from "@/components/ui/iconiq-card";
 import { accountHistory, getInvestmentsData, type HoldingView } from "@/lib/investments";
 import { createAccountCategorySpending, selectAccountDetailData } from "@/lib/account-detail";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { getFinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
+import { cn } from "@/lib/utils";
 
 const fullDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
@@ -94,28 +96,35 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
             title="Transactions"
           >
             {transactionViews.length > 0 ? (
-              <div className="flex flex-col">
-                {groupTransactions(transactionViews.slice(0, 18)).map(([date, rows]) => (
-                  <section className="border-b border-border/35 py-2.5 last:border-b-0" key={date}>
-                    <h3 className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              // One grid for the WHOLE list (all date groups) so pills and
+              // amounts share the same columns end-to-end. Each date header and
+              // each row spans all three columns; the rows re-use the tracks via
+              // subgrid, so nothing drifts between groups.
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3">
+                {groupTransactions(transactionViews.slice(0, 18)).map(([date, rows], groupIndex) => (
+                  <section className="contents" key={date}>
+                    <h3
+                      className={cn(
+                        "col-span-3 pb-1.5 pt-2.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase",
+                        groupIndex > 0 && "mt-1 border-t border-border/35"
+                      )}
+                    >
                       {fullDateFormatter.format(new Date(`${date}T12:00:00Z`))}
                     </h3>
-                    <div className="grid gap-0.5">
-                      {rows.map((transaction) => (
-                        <Link
-                          className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
-                          href={`/transactions?account_id=${encodeURIComponent(account.id)}&q=${encodeURIComponent(transaction.merchant)}`}
-                          key={transaction.id}
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-medium">{transaction.merchant}</span>
-                            <span className="block truncate text-xs text-muted-foreground">{transaction.description}</span>
-                          </span>
-                          <CategoryPill category={transaction.category} className="hidden max-w-36 sm:inline-flex" />
-                          <Amount amount={transaction.amount} currency={transaction.currency} />
-                        </Link>
-                      ))}
-                    </div>
+                    {rows.map((transaction) => (
+                      <Link
+                        className="col-span-3 grid grid-cols-subgrid items-center gap-x-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+                        href={`/transactions?account_id=${encodeURIComponent(account.id)}&q=${encodeURIComponent(transaction.merchant)}`}
+                        key={transaction.id}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{transaction.merchant}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{transaction.description}</span>
+                        </span>
+                        <CategoryPill category={transaction.category} className="hidden max-w-36 justify-self-start sm:inline-flex" />
+                        <Amount amount={transaction.amount} className="justify-self-end" currency={transaction.currency} />
+                      </Link>
+                    ))}
                   </section>
                 ))}
               </div>
@@ -292,7 +301,7 @@ function InvestmentsSection({ holdings }: { holdings: HoldingView[] }) {
   return (
     <SectionCard description="Positions reported for this investment account" icon={<TrendingUp className="size-4" />} title="Investments">
       {holdings.length > 0 ? (
-        <div className="overflow-x-auto">
+        <ScrollArea orientation="horizontal" viewportClassName="scroll-fade-x overscroll-x-contain">
           <table className="w-full min-w-[680px] border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-left text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -320,7 +329,7 @@ function InvestmentsSection({ holdings }: { holdings: HoldingView[] }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollArea>
       ) : (
         <EmptyState
           actions={

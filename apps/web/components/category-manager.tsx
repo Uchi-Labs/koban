@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralCategoryEmoji } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
 
@@ -158,27 +159,34 @@ export function CategoryEditDialog({
                   {emojiOpen ? (
                     <m.div
                       animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
-                      className="scroll-fade-sm absolute top-11 left-0 z-30 grid max-h-56 w-72 origin-top-left grid-cols-6 gap-1 overflow-y-auto rounded-2xl border border-border bg-popover p-2 shadow-lg"
+                      className="absolute top-11 left-0 z-30 w-72 origin-top-left overflow-hidden rounded-2xl border border-border bg-popover shadow-lg"
                       exit={reduce
                         ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
                         : { opacity: 0, transform: "translateY(0) scale(0.99)", transition: { duration: 0.1, ease: EASE_OUT } }}
                       initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.96)" }}
                       transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
                     >
-                      {financeEmojiOptions.map((option, index) => (
-                        <button
-                          aria-label={`Use ${option}`}
-                          className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
-                          key={`${option}-${index}`}
-                          onClick={() => {
-                            setEmojiDraft(option);
-                            setEmojiOpen(false);
-                          }}
-                          type="button"
-                        >
-                          {option}
-                        </button>
-                      ))}
+                      <ScrollArea
+                        className="max-h-56"
+                        viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-56 overscroll-contain"
+                      >
+                        <div className="grid grid-cols-6 gap-1 p-2">
+                          {financeEmojiOptions.map((option, index) => (
+                            <button
+                              aria-label={`Use ${option}`}
+                              className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
+                              key={`${option}-${index}`}
+                              onClick={() => {
+                                setEmojiDraft(option);
+                                setEmojiOpen(false);
+                              }}
+                              type="button"
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
                     </m.div>
                   ) : null}
                 </AnimatePresence>

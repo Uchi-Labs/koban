@@ -7,6 +7,7 @@ import {
   CreditCard,
   Layers,
   LayoutDashboard,
+  MessageSquare,
   PanelRightOpen,
   PieChart,
   RefreshCw,
@@ -34,6 +35,7 @@ import {
 import { CommandDialog } from "@/components/ui/command";
 import { Amount } from "@/components/amount";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/toast";
 import { looksLikeQuestion } from "@/lib/agent-question";
 import { useAgentStream } from "@/lib/hooks/use-agent-stream";
@@ -198,6 +200,15 @@ export function CommandPalette({
     onOpenChangeAction(false);
   }
 
+  function openChatFromPalette(id: string) {
+    playSelect();
+    void agentPanel.openConversation(id);
+    agentStream.reset();
+    setInlineQuestion("");
+    setQuery("");
+    onOpenChangeAction(false);
+  }
+
   function go(href: string) {
     playSelect();
     onOpenChangeAction(false);
@@ -289,11 +300,11 @@ export function CommandPalette({
   }
 
   return (
-    <CommandDialog onOpenChange={handleDialogOpenChange} open={open} title="Search" description="Search transactions, evidence, and pages">
+    <CommandDialog onOpenChange={handleDialogOpenChange} open={open} title="Search" description="Search chats, transactions, evidence, and pages">
       <Command onKeyDownCapture={handleCommandKeyDown} shouldFilter={false}>
         <CommandInput
           onValueChange={handleQueryChange}
-          placeholder={inlineAnswerOpen ? "Ask another finance question…" : "Search transactions, evidence, pages…"}
+          placeholder={inlineAnswerOpen ? "Ask another finance question…" : "Search chats, transactions, evidence, pages…"}
           value={query}
         />
         <InlineAgentPanel
@@ -308,7 +319,9 @@ export function CommandPalette({
         {!inlineAnswerOpen ? (
           <PaletteCommandList
             canAskAgent={canAskAgent}
+            chats={matchingChats(agentPanel.conversations, query)}
             onAsk={() => startInlineAnswer()}
+            onOpenChat={openChatFromPalette}
             onGo={go}
             onRunDestination={runDestination}
             onSync={() => void syncNow()}
@@ -348,40 +361,45 @@ function InlineAgentPanel({
             initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
             transition={reduce ? { duration: 0.15 } : { duration: 0.35, ease: EASE_OUT }}
           >
-            <div className="scroll-fade flex max-h-[30rem] flex-col gap-3 overflow-y-auto px-3 pt-3 pb-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-xs text-muted-foreground">{inlineQuestion}</p>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    className="h-7 rounded-xl px-2 text-xs"
-                    data-sound="none"
-                    onClick={onOpenPanel}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <PanelRightOpen className="size-3.5" />
-                    Open in panel
-                  </Button>
-                  <Button
-                    className="h-7 rounded-xl px-2 text-xs"
-                    data-sound="none"
-                    onClick={onBack}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <ArrowLeft className="size-3.5" />
-                    Back to search
-                  </Button>
+            <ScrollArea
+              className="max-h-[30rem]"
+              viewportClassName="scroll-fade-y h-fit max-h-[30rem] overscroll-contain px-3 pt-3 pb-4"
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-xs text-muted-foreground">{inlineQuestion}</p>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      className="h-7 rounded-xl px-2 text-xs"
+                      data-sound="none"
+                      onClick={onOpenPanel}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <PanelRightOpen className="size-3.5" />
+                      Open in panel
+                    </Button>
+                    <Button
+                      className="h-7 rounded-xl px-2 text-xs"
+                      data-sound="none"
+                      onClick={onBack}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <ArrowLeft className="size-3.5" />
+                      Back to search
+                    </Button>
+                  </div>
                 </div>
+                <AgentAnswer
+                  answer={agentStream.answer}
+                  meta={agentStream.meta}
+                  question={agentStream.question || inlineQuestion}
+                  status={agentStream.status}
+                  variant="inline"
+                />
               </div>
-              <AgentAnswer
-                answer={agentStream.answer}
-                meta={agentStream.meta}
-                question={agentStream.question || inlineQuestion}
-                status={agentStream.status}
-                variant="inline"
-              />
-            </div>
+            </ScrollArea>
           </m.div>
         ) : null}
       </AnimatePresence>
@@ -391,8 +409,10 @@ function InlineAgentPanel({
 
 function PaletteCommandList({
   canAskAgent,
+  chats,
   onAsk,
   onGo,
+  onOpenChat,
   onRunDestination,
   onSync,
   query,
@@ -400,8 +420,10 @@ function PaletteCommandList({
   searching
 }: {
   canAskAgent: boolean;
+  chats: ReturnType<typeof matchingChats>;
   onAsk: () => void;
   onGo: (href: string) => void;
+  onOpenChat: (id: string) => void;
   onRunDestination: (destination: Destination) => void;
   onSync: () => void;
   query: string;
@@ -420,6 +442,25 @@ function PaletteCommandList({
               <span className="min-w-0 flex-1 truncate">Ask the agent: "{query.trim()}"</span>
               <CommandShortcut>⌘↵</CommandShortcut>
             </CommandItem>
+          </CommandGroup>
+          <CommandSeparator />
+        </>
+      ) : null}
+
+      {chats.length > 0 ? (
+        <>
+          <CommandGroup heading="Chats">
+            {chats.map((chat) => (
+              <CommandItem
+                data-sound="none"
+                key={chat.id}
+                onSelect={() => onOpenChat(chat.id)}
+                value={`chat-${chat.id}-${chat.title}`}
+              >
+                <MessageSquare className="text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+              </CommandItem>
+            ))}
           </CommandGroup>
           <CommandSeparator />
         </>
@@ -479,4 +520,15 @@ function PaletteCommandList({
       </CommandGroup>
     </CommandList>
   );
+}
+
+function matchingChats(
+  conversations: ReturnType<typeof useAgentPanel>["conversations"],
+  query: string
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  return conversations
+    .filter((conversation) => !normalizedQuery || conversation.title.toLowerCase().includes(normalizedQuery))
+    .slice(0, 6);
 }

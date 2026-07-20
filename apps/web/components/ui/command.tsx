@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/input-group"
 import { SearchIcon, CheckIcon, XIcon } from "lucide-react"
 import { EASE_OUT } from "@/lib/motion"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 function Command({
   className,
@@ -111,14 +112,16 @@ function CommandList({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.List>) {
   return (
-    <CommandPrimitive.List
-      data-slot="command-list"
-      className={cn(
-        "scroll-fade no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
-        className
-      )}
-      {...props}
-    />
+    <ScrollArea
+      className="max-h-72"
+      viewportClassName="scroll-fade-y h-fit max-h-72 overscroll-contain scroll-py-1"
+    >
+      <CommandPrimitive.List
+        data-slot="command-list"
+        className={cn("outline-none", className)}
+        {...props}
+      />
+    </ScrollArea>
   )
 }
 

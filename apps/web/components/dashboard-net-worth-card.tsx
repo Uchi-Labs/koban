@@ -59,7 +59,13 @@ export function DashboardNetWorthCard({
         </div>
       </div>
 
-      <NetWorthChart className="mt-3 h-32" points={activeTrend.points} positive={positive} />
+      <NetWorthChart
+        className="mt-3 h-36"
+        currency={currency}
+        points={activeTrend.points}
+        positive={positive}
+        rangeIndex={rangeOrder.indexOf(activeRange)}
+      />
 
       {accountStats && accountStats.length > 0 ? (
         <FinanceStatStrip className="mt-3">

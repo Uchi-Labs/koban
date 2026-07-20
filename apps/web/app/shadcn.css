@@ -173,6 +173,19 @@
   color: var(--pill-color);
 }
 
+/* Category tag: tinted chip with a stronger leading swatch. The category color
+   carries identity via border/wash/swatch while the name stays foreground, so
+   user-picked colors can't break name contrast the way full-wash pills could. */
+.pill-tint.category-tag {
+  border-color: color-mix(in oklab, var(--pill-color) 22%, transparent);
+  background-color: color-mix(in oklab, var(--pill-color) 8%, transparent);
+  color: var(--foreground);
+}
+.pill-tint.category-tag [data-swatch] {
+  background-color: color-mix(in oklab, var(--pill-color) 28%, transparent);
+  color: var(--pill-color);
+}
+
 /* ── Motion tokens (transitions.dev scale + Emil's curves) ─────────── */
 :root {
   --duration-stagger: 40ms;
@@ -775,6 +788,34 @@
   }
 }
 
+/* Chat-history insertions can push the last row through the sidebar fold.
+   The ScrollArea mask handles opacity; this viewport-edge veil adds the soft
+   blur visible in the reference while remaining truthful to overflow state. */
+.sidebar-fold-blur::after {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--scroll-fade-size, 2.25rem);
+  pointer-events: none;
+  content: "";
+  opacity: 0;
+  backdrop-filter: blur(2px);
+  mask-image: linear-gradient(to bottom, transparent, black);
+  transition: opacity 180ms var(--ease-smooth-out);
+}
+
+.sidebar-fold-blur:has([data-overflow-y-end])::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-fold-blur::after {
+    transition: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -1219,22 +1260,58 @@ button.transaction-review-row:active {
 }
 
 @supports (animation-timeline: scroll()) {
-  .scroll-fade-tabs-list {
+  .scroll-fade-tabs-list:not(.refined-scrollbar) {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
 
-  .scroll-fade-tabs-list::-webkit-scrollbar {
+  .scroll-fade-tabs-list:not(.refined-scrollbar)::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Native-scroll primitives that cannot safely take a ScrollArea wrapper (for
+   example Tabs and Base UI Select) still use the same physical scrollbar
+   treatment: a narrow low-contrast thumb at rest, widening and darkening on
+   hover. The track stays transparent so it does not add a second container. */
+.refined-scrollbar {
+  scrollbar-color: color-mix(in oklab, var(--foreground) 25%, transparent) transparent;
+  scrollbar-width: thin;
+}
+.refined-scrollbar:hover {
+  scrollbar-color: color-mix(in oklab, var(--foreground) 45%, transparent) transparent;
+}
+.refined-scrollbar::-webkit-scrollbar {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+.refined-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.refined-scrollbar::-webkit-scrollbar-thumb {
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 25%, transparent);
+  background-clip: padding-box;
+}
+.refined-scrollbar:hover::-webkit-scrollbar-thumb {
+  border-width: 2px;
+  background: color-mix(in oklab, var(--foreground) 45%, transparent);
+  background-clip: padding-box;
+}
+.refined-scrollbar::-webkit-scrollbar-thumb:active {
+  background: color-mix(in oklab, var(--foreground) 60%, transparent);
+  background-clip: padding-box;
 }
 
 /* ── Scroll-fade utilities ──────────────────────────────────────────────────
    Mask-based edge fades driven by scroll position via scroll-driven animations.
    Vendored & adapted from shadcn's scroll-fade
    (https://ui.shadcn.com — registry "scroll-fade"). Each edge only fades when
-   there is scrollable content past it; falls back to a static symmetric fade
-   where scroll-driven animations are unsupported or reduced motion is asked.
+   there is scrollable content past it; Base UI edge-state attributes preserve
+   that truth when scroll-driven animations are unsupported or reduced.
    Put the class on the *scrolling viewport* (Base UI ScrollArea: viewportClassName). */
 @property --sf-t {
   syntax: "<number>";
@@ -1290,24 +1367,40 @@ button.transaction-review-row:active {
   --scroll-fade-size: 3.5rem;
 }
 
-/* Static fallback (no scroll-driven animation support): symmetric axis fade. */
+/* Base UI exposes edge state even when scroll-driven animations are unavailable.
+   Seed the fade variables from those attributes so true starts/ends remain
+   crisp. Native scrollers without edge attributes fall back to no mask rather
+   than showing a false affordance. */
+[data-slot="scroll-area-viewport"][data-overflow-y-start] {
+  --sf-t: 1;
+}
+[data-slot="scroll-area-viewport"][data-overflow-y-end] {
+  --sf-b: 1;
+}
+[data-slot="scroll-area-viewport"][data-overflow-x-start] {
+  --sf-l: 1;
+}
+[data-slot="scroll-area-viewport"][data-overflow-x-end] {
+  --sf-r: 1;
+}
+
 .scroll-fade,
 .scroll-fade-y {
   mask-image: linear-gradient(
     to bottom,
-    transparent 0,
-    black var(--scroll-fade-size),
-    black calc(100% - var(--scroll-fade-size)),
-    transparent 100%
+    transparent,
+    black calc(var(--sf-t) * var(--scroll-fade-size)),
+    black calc(100% - var(--sf-b) * var(--scroll-fade-size)),
+    transparent
   );
 }
 .scroll-fade-x {
   mask-image: linear-gradient(
     to right,
-    transparent 0,
-    black var(--scroll-fade-size),
-    black calc(100% - var(--scroll-fade-size)),
-    transparent 100%
+    transparent,
+    black calc(var(--sf-l) * var(--scroll-fade-size)),
+    black calc(100% - var(--sf-r) * var(--scroll-fade-size)),
+    transparent
   );
 }
 
@@ -1366,27 +1459,33 @@ button.transaction-review-row:active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Drop the scroll-linked mask animation; hold a static symmetric fade. */
+  /* Drop scroll-linked animation. Base UI's edge-state variables above keep
+     its fades accurate; native scrollers stay crisp instead of lying about
+     unavailable content. */
   .scroll-fade,
   .scroll-fade-y {
     animation: none;
-    mask-image: linear-gradient(
-      to bottom,
-      transparent 0,
-      black var(--scroll-fade-size),
-      black calc(100% - var(--scroll-fade-size)),
-      transparent 100%
-    );
   }
   .scroll-fade-x {
     animation: none;
-    mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      black var(--scroll-fade-size),
-      black calc(100% - var(--scroll-fade-size)),
-      transparent 100%
-    );
+  }
+  [data-overflowing].scroll-fade-tabs-list {
+    animation: none;
+    mask-image: none;
+  }
+  [data-overflowing].scroll-fade-tabs-list:not(.refined-scrollbar) {
+    scrollbar-width: thin;
+  }
+  [data-overflowing].scroll-fade-tabs-list:not(.refined-scrollbar)::-webkit-scrollbar {
+    display: block;
+    height: 0.25rem;
+  }
+  [data-overflowing].scroll-fade-tabs-list:not(.refined-scrollbar)::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  [data-overflowing].scroll-fade-tabs-list:not(.refined-scrollbar)::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--foreground) 25%, transparent);
   }
 }
 

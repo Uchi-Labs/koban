@@ -3,6 +3,7 @@
 import { Check, Plus } from "lucide-react";
 import * as React from "react";
 import { Popover, PopoverPopup, PopoverPortal, PopoverPositioner, PopoverTrigger } from "@/components/motion/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 export interface FinancialGoal {
@@ -153,7 +154,11 @@ export function TransactionGoalPopover({
                 value={query}
               />
             </div>
-            <div className="scroll-fade max-h-[16rem] overflow-y-auto p-1" role="listbox">
+            <ScrollArea
+              className="max-h-[16rem]"
+              viewportClassName="scroll-fade-y h-fit max-h-[16rem] overscroll-contain p-1"
+              role="listbox"
+            >
               {state === "loading" ? (
                 <p className="px-2.5 py-6 text-center text-sm text-muted-foreground">Loading goals…</p>
               ) : null}
@@ -212,7 +217,7 @@ export function TransactionGoalPopover({
                   </span>
                 </button>
               ) : null}
-            </div>
+            </ScrollArea>
           </PopoverPopup>
         </PopoverPositioner>
       </PopoverPortal>

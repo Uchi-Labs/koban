@@ -140,6 +140,7 @@ function SelectContent({
         >
           <SelectScrollUpButton />
           <SelectPrimitive.List
+            className="refined-scrollbar scroll-fade-y max-h-(--available-height) overflow-y-auto overscroll-contain"
             render={
               <m.div
                 animate="open"

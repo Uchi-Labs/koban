@@ -83,13 +83,15 @@ const DEFAULT_LABELS: Labels = {
 /** Rolling-window label used when data comes from a GitHub username. */
 const ROLLING_TOTAL_LABEL = "{{count}} contributions in the last year";
 
-/** Theme-native mint ramp, shared by blocks and the legend. */
+/** Theme-native ramp, shared by blocks and the legend. The accent defaults to
+ *  the mint --positive but a consumer can override --heatmap-accent (e.g. a
+ *  category color) on the graph container to re-tint the whole ramp. */
 const LEVEL_CLASSES = cn(
   'data-[level="0"]:fill-muted',
-  'data-[level="1"]:fill-[color-mix(in_oklab,var(--positive)_28%,var(--muted))]',
-  'data-[level="2"]:fill-[color-mix(in_oklab,var(--positive)_48%,var(--muted))]',
-  'data-[level="3"]:fill-[color-mix(in_oklab,var(--positive)_72%,var(--muted))]',
-  'data-[level="4"]:fill-[var(--positive)]'
+  'data-[level="1"]:fill-[color-mix(in_oklab,var(--heatmap-accent,var(--positive))_28%,var(--muted))]',
+  'data-[level="2"]:fill-[color-mix(in_oklab,var(--heatmap-accent,var(--positive))_48%,var(--muted))]',
+  'data-[level="3"]:fill-[color-mix(in_oklab,var(--heatmap-accent,var(--positive))_72%,var(--muted))]',
+  'data-[level="4"]:fill-[var(--heatmap-accent,var(--positive))]'
 );
 
 /** Entrance timing: the muted grid fades in as a canvas, then colored blocks
@@ -877,8 +879,7 @@ export const ContributionGraphCalendar = ({
       // The padding (offset by the negative margin) keeps hover-scaled edge
       // blocks inside the clip boundary instead of being cut off.
       className={cn(
-        "-m-1 max-w-full overflow-x-auto overflow-y-hidden p-1",
-        "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-1",
+        "refined-scrollbar scroll-fade-x -m-1 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain p-1",
         className
       )}
       {...props}

@@ -10,6 +10,7 @@ import { NewCategoryDialog } from "@/components/new-category-dialog";
 import { Button } from "@/components/ui/button";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { RollingDigits } from "@/components/ui/rolling-digits";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, EASE_SMOOTH_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -779,8 +780,12 @@ function AllCategoriesList({
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
       </div>
-      <div className="scroll-fade-sm no-scrollbar flex max-h-64 flex-col overflow-y-auto xl:max-h-[420px]">
-        {summaries.map((summary) => {
+      <ScrollArea
+        className="max-h-64 xl:max-h-[420px]"
+        viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-64 xl:max-h-[420px]"
+      >
+        <div className="flex flex-col">
+          {summaries.map((summary) => {
           const remaining = summary.budgetAmount === undefined ? undefined : summary.budgetAmount - summary.spentThisMonth;
           const category: Category = {
             archived: false,
@@ -819,8 +824,9 @@ function AllCategoriesList({
               </span>
             </button>
           );
-        })}
-      </div>
+          })}
+        </div>
+      </ScrollArea>
       </IconiqCardContent>
     </IconiqCard>
   );

@@ -10,7 +10,7 @@ import type {
 import { unstable_noStore as noStore } from "next/cache";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { applyInclusionOverrides, getAccountInclusionOverrides } from "@/lib/account-overlays";
+import { applyInclusionOverrides, applyNameOverrides, getAccountInclusionOverrides, getAccountNameOverrides } from "@/lib/account-overlays";
 import { displayCurrencyCode } from "@/lib/currency";
 import {
   buildDemoFactors,
@@ -117,7 +117,7 @@ export async function getShellData(): Promise<ShellData> {
   const demoMode = await isDemoModeEnabled();
   const now = Date.now();
   if (shellDataCache && shellDataCache.expiresAt > now) {
-    return demoScrambleShellData(shellDataCache.value, demoMode);
+    return demoScrambleShellData(await applyShellOverrides(shellDataCache.value), demoMode);
   }
 
   const snapshot = await readShellSnapshot();
@@ -131,7 +131,7 @@ export async function getShellData(): Promise<ShellData> {
       transactionCount: 0
     };
     shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
-    return demoScrambleShellData(value, demoMode);
+    return demoScrambleShellData(await applyShellOverrides(value), demoMode);
   }
 
   const value = {
@@ -144,7 +144,22 @@ export async function getShellData(): Promise<ShellData> {
     transactionCount: snapshot.transactionCount
   };
   shellDataCache = { expiresAt: now + shellDataCacheTtlMs, value };
-  return demoScrambleShellData(value, demoMode);
+  return demoScrambleShellData(await applyShellOverrides(value), demoMode);
+}
+
+// User overlays (rename, net-worth inclusion) are applied per-request on the
+// way out — like demo scrambling — so an edit reflects in the sidebar
+// immediately instead of waiting on the 30s shell cache. The cache holds raw
+// provider values; overrides never bake into it.
+async function applyShellOverrides(value: ShellData): Promise<ShellData> {
+  const [inclusion, names] = await Promise.all([getAccountInclusionOverrides(), getAccountNameOverrides()]);
+  if (Object.keys(inclusion).length === 0 && Object.keys(names).length === 0) {
+    return value;
+  }
+  let accounts = value.accounts;
+  if (Object.keys(inclusion).length > 0) accounts = applyInclusionOverrides(accounts, inclusion);
+  if (Object.keys(names).length > 0) accounts = applyNameOverrides(accounts, names);
+  return { ...value, accounts, accountGroups: createAccountGroups(accounts) };
 }
 
 function demoScrambleShellData(value: ShellData, demoMode: boolean): ShellData {
@@ -270,11 +285,11 @@ export async function updateStoredTransactionInDb(
 }
 
 async function withInclusionOverrides(ledger: Ledger): Promise<Ledger> {
-  const overrides = await getAccountInclusionOverrides();
-  const withOverrides =
-    Object.keys(overrides).length === 0
-      ? ledger
-      : { ...ledger, accounts: applyInclusionOverrides(ledger.accounts, overrides) };
+  const [overrides, nameOverrides] = await Promise.all([getAccountInclusionOverrides(), getAccountNameOverrides()]);
+  let accounts = ledger.accounts;
+  if (Object.keys(overrides).length > 0) accounts = applyInclusionOverrides(accounts, overrides);
+  if (Object.keys(nameOverrides).length > 0) accounts = applyNameOverrides(accounts, nameOverrides);
+  const withOverrides = accounts === ledger.accounts ? ledger : { ...ledger, accounts };
 
   if (!(await isDemoModeEnabled())) {
     return withOverrides;

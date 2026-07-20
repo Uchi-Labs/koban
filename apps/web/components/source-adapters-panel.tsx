@@ -16,6 +16,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   SetupChecklist,
   SetupChecklistCard,
@@ -1247,9 +1248,13 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
 
 function CodeLine({ children }: { children: React.ReactNode }) {
   return (
-    <code className="block w-fit max-w-full overflow-x-auto rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
-      {children}
-    </code>
+    <ScrollArea
+      className="w-fit max-w-full rounded-md bg-muted"
+      orientation="horizontal"
+      viewportClassName="scroll-fade-x overscroll-x-contain px-2 py-1"
+    >
+      <code className="block w-max font-mono text-xs whitespace-nowrap text-foreground">{children}</code>
+    </ScrollArea>
   );
 }
 

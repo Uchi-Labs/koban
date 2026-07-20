@@ -155,41 +155,46 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
   return Effect.gen(function* () {
     const startedAt = new Date().toISOString();
     const enrichmentLimit = normalizeEnrichmentLimit(options.enrichmentLimit);
-    const snapTradeResult = normalizeSnapTradeStep(
-      isSnapTradeConfigured()
-        ? yield* runSyncStepEffect(syncSnapTradeDataEffect(), {
-            timeout: "2 minutes",
-            timeoutError: () => new SnapTradeSyncError({ message: "SnapTrade sync timed out." })
-          })
-        : {
-            data: skippedSnapTradeSyncResult(),
-            status: "succeeded" as const
-          }
+    // The three providers are independent (writes serialize inside
+    // finance-db's queue), so run them concurrently — wall-clock is the
+    // slowest provider instead of the sum.
+    const [snapTradeRaw, plaidRaw, simpleFinRaw] = yield* Effect.all(
+      [
+        isSnapTradeConfigured()
+          ? runSyncStepEffect(syncSnapTradeDataEffect(), {
+              timeout: "2 minutes",
+              timeoutError: () => new SnapTradeSyncError({ message: "SnapTrade sync timed out." })
+            })
+          : Effect.succeed({
+              data: skippedSnapTradeSyncResult(),
+              status: "succeeded" as const
+            }),
+        options.includePlaid && isPlaidConfigured()
+          ? runSyncStepEffect(syncPlaidDataEffect(), {
+              // First sync of a new item pulls up to 24 months of history — far
+              // more than the steady-state cursor delta the old 2m budget assumed.
+              timeout: "10 minutes",
+              timeoutError: () => new PlaidSyncError({ message: "Plaid sync timed out." })
+            })
+          : Effect.succeed({
+              data: skippedPlaidSyncResult(options.includePlaid ? "not_configured" : "manual_only"),
+              status: "succeeded" as const
+            }),
+        options.includeSimpleFin && isSimpleFinConfigured()
+          ? runSyncStepEffect(syncSimpleFinDataEffect(), {
+              timeout: "10 minutes",
+              timeoutError: () => new SimpleFinSyncError({ message: "SimpleFIN sync timed out." })
+            })
+          : Effect.succeed({
+              data: skippedSimpleFinSyncResult(options.includeSimpleFin ? "not_configured" : "manual_only"),
+              status: "succeeded" as const
+            })
+      ] as const,
+      { concurrency: 3 }
     );
-    const plaidResult = normalizePlaidStep(
-      options.includePlaid && isPlaidConfigured()
-        ? yield* runSyncStepEffect(syncPlaidDataEffect(), {
-            // First sync of a new item pulls up to 24 months of history — far
-            // more than the steady-state cursor delta the old 2m budget assumed.
-            timeout: "10 minutes",
-            timeoutError: () => new PlaidSyncError({ message: "Plaid sync timed out." })
-          })
-        : {
-            data: skippedPlaidSyncResult(options.includePlaid ? "not_configured" : "manual_only"),
-            status: "succeeded" as const
-          }
-    );
-    const simpleFinResult = normalizeSimpleFinStep(
-      options.includeSimpleFin && isSimpleFinConfigured()
-        ? yield* runSyncStepEffect(syncSimpleFinDataEffect(), {
-            timeout: "10 minutes",
-            timeoutError: () => new SimpleFinSyncError({ message: "SimpleFIN sync timed out." })
-          })
-        : {
-            data: skippedSimpleFinSyncResult(options.includeSimpleFin ? "not_configured" : "manual_only"),
-            status: "succeeded" as const
-          }
-    );
+    const snapTradeResult = normalizeSnapTradeStep(snapTradeRaw);
+    const plaidResult = normalizePlaidStep(plaidRaw);
+    const simpleFinResult = normalizeSimpleFinStep(simpleFinRaw);
     const sourceResult = normalizeSourceStep(
       yield* runSyncStepEffect(syncSourceAdaptersEffect(options.sourceIds), {
         timeout: "2 minutes",

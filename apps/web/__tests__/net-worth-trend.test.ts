@@ -42,10 +42,10 @@ describe("buildNetWorthRangeTrends", () => {
     expect(trends.map((trend) => [trend.points[0]?.label, trend.points.at(-1)?.label])).toEqual([
       ["Feb 23", "Mar 1"],
       ["Jan 31", "Mar 1"],
-      ["Jan", "Mar"],
-      ["Jan", "Mar"],
-      ["Apr", "Mar"],
-      ["Dec", "Mar"]
+      ["Jan '26", "Mar '26"],
+      ["Jan '26", "Mar '26"],
+      ["Apr '25", "Mar '26"],
+      ["Dec '25", "Mar '26"]
     ]);
   });
 });
