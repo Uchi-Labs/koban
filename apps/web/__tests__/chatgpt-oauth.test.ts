@@ -22,6 +22,7 @@ let testRoot: string | undefined;
 afterEach(async () => {
   await closeFinanceDbForTests();
   delete process.env.AI_FINANCES_PGLITE_DIR;
+  delete process.env.CODEX_HOME;
 
   if (testRoot) {
     rmSync(testRoot, { force: true, recursive: true });
@@ -179,6 +180,9 @@ describe("chatgpt oauth", () => {
 function useTempFinanceDb(): void {
   testRoot = mkdtempSync(path.join(tmpdir(), "ai-finances-chatgpt-oauth-"));
   process.env.AI_FINANCES_PGLITE_DIR = path.join(testRoot, "db");
+  // Point CODEX_HOME at the empty temp dir so the ~/.codex/auth.json import
+  // fallback is a deterministic no-op regardless of the host machine.
+  process.env.CODEX_HOME = testRoot;
 }
 
 function jwtWithExpiry(expiryMs: number): string {
