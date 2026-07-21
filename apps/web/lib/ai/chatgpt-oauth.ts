@@ -1,4 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   readWorkspaceEnv,
   type WorkspaceEnv
@@ -30,6 +33,9 @@ const chatGptOAuthClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
 const chatGptOAuthAuthorizeUrl = "https://auth.openai.com/oauth/authorize";
 export const chatGptOAuthTokenUrl = "https://auth.openai.com/oauth/token";
 export const chatGptCodexBaseUrl = "https://chatgpt.com/backend-api/codex";
+// The Codex backend requires a client_version query param on its endpoints and
+// rejects requests without it (HTTP 400). Tracks the Codex CLI's version.
+export const codexClientVersion = "0.144.6";
 export const chatGptOAuthTokensEnvKey = "CHATGPT_OAUTH_TOKENS_B64";
 export const chatGptOAuthTokensStateKey = "chatgpt_oauth_tokens_v1";
 export const chatGptOAuthPendingCookie = "ai_finances_chatgpt_oauth";
@@ -38,6 +44,7 @@ const pendingStateTtlMs = 10 * 60 * 1000;
 const refreshWindowMs = 5 * 60 * 1000;
 const fallbackExpiryMs = 15 * 60 * 1000;
 const chatGptOAuthEnvSeededStateKey = "chatgpt_oauth_tokens_env_seeded_v1";
+const chatGptOAuthCodexSeededStateKey = "chatgpt_oauth_tokens_codex_seeded_v1";
 const chatGptOAuthScope = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 
 export function isChatGptOAuthEnabled(env: WorkspaceEnv = readWorkspaceEnv()): boolean {
@@ -66,21 +73,56 @@ export async function getStoredChatGptOAuthTokens(env: WorkspaceEnv = readWorksp
     return storedTokens;
   }
 
+  // Seed once from CHATGPT_OAUTH_TOKENS_B64, then from an existing Codex CLI
+  // session ($CODEX_HOME/auth.json). After either seed the DB owns + refreshes
+  // the tokens; each source is imported at most once (guarded by a sentinel).
   const envTokens = parseChatGptOAuthTokens(env[chatGptOAuthTokensEnvKey]);
 
-  if (!envTokens) {
-    return undefined;
+  if (envTokens && !(await readStoredOAuthValue(chatGptOAuthEnvSeededStateKey))) {
+    await writeStoredOAuthValue(chatGptOAuthTokensStateKey, encodeChatGptOAuthTokens(envTokens));
+    await writeStoredOAuthValue(chatGptOAuthEnvSeededStateKey, new Date().toISOString());
+    return envTokens;
   }
 
-  const seededAt = await readStoredOAuthValue(chatGptOAuthEnvSeededStateKey);
+  const codexTokens = readCodexHomeTokens();
 
-  if (seededAt) {
-    return undefined;
+  if (codexTokens && !(await readStoredOAuthValue(chatGptOAuthCodexSeededStateKey))) {
+    await writeStoredOAuthValue(chatGptOAuthTokensStateKey, encodeChatGptOAuthTokens(codexTokens));
+    await writeStoredOAuthValue(chatGptOAuthCodexSeededStateKey, new Date().toISOString());
+    return codexTokens;
   }
 
-  await writeStoredOAuthValue(chatGptOAuthTokensStateKey, encodeChatGptOAuthTokens(envTokens));
-  await writeStoredOAuthValue(chatGptOAuthEnvSeededStateKey, new Date().toISOString());
-  return envTokens;
+  return undefined;
+}
+
+/**
+ * Reuse an existing Codex CLI session (`$CODEX_HOME/auth.json`, default
+ * `~/.codex/auth.json`) so a local dev instance can ride the same ChatGPT
+ * subscription without a second sign-in. The stored access token may be stale
+ * — that's fine, the normal refresh flow renews it from the refresh token on
+ * first use. Local-dev convenience; the file is simply absent in hosted
+ * deployments, so this is a silent no-op there.
+ */
+export function readCodexHomeTokens(): ChatGptOAuthTokens | undefined {
+  const home = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+
+  try {
+    const parsed = JSON.parse(readFileSync(join(home, "auth.json"), "utf8")) as {
+      tokens?: { access_token?: unknown; refresh_token?: unknown };
+    };
+    const access = parsed.tokens?.access_token;
+    const refresh = parsed.tokens?.refresh_token;
+
+    if (typeof access !== "string" || access.length === 0 || typeof refresh !== "string" || refresh.length === 0) {
+      return undefined;
+    }
+
+    // 0 expiry when the JWT has no `exp` → treated as already expired, forcing a
+    // refresh on first use.
+    return { access, expiry: jwtExpiryMs(access) ?? 0, refresh };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function chatGptOAuthStatus(env: WorkspaceEnv = readWorkspaceEnv()): Promise<{
@@ -326,6 +368,29 @@ function tokenExpiry(accessToken: string, expiresIn: number | undefined, previou
   }
 
   return previousExpiry && previousExpiry > Date.now() ? previousExpiry : Date.now() + fallbackExpiryMs;
+}
+
+/**
+ * The Codex backend requires a `chatgpt-account-id` header. The id lives in the
+ * access token's `https://api.openai.com/auth` claim. Treated as routing
+ * metadata only — never trusted for authorization.
+ */
+export function chatGptAccountIdFromToken(accessToken: string): string | undefined {
+  const [, payload] = accessToken.split(".");
+
+  if (!payload) {
+    return undefined;
+  }
+
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      "https://api.openai.com/auth"?: { chatgpt_account_id?: unknown };
+    };
+    const accountId = claims["https://api.openai.com/auth"]?.chatgpt_account_id;
+    return typeof accountId === "string" && accountId.length > 0 ? accountId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function jwtExpiryMs(jwt: string): number | undefined {

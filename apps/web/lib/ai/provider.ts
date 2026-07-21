@@ -9,8 +9,11 @@ import {
   type LanguageModel
 } from "ai";
 import type { z } from "zod";
+import { randomUUID } from "node:crypto";
 import {
+  chatGptAccountIdFromToken,
   chatGptCodexBaseUrl,
+  codexClientVersion,
   getFreshChatGptOAuthAccessToken
 } from "@/lib/ai/chatgpt-oauth";
 import type { LlmChatMessage, LlmProviderStatus } from "@/lib/llm-enrichment";
@@ -397,27 +400,53 @@ async function callChatGptResponses({
     throw new Error("ChatGPT OAuth is enabled but no usable token is saved.");
   }
 
-  const response = await fetcher(`${chatGptCodexBaseUrl}/responses`, {
-    body: JSON.stringify(chatGptResponsesRequestBody({
-      jsonSchema,
-      maxOutputTokens,
-      messages,
-      model: provider.model,
-      schemaName
-    })),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
-    method: "POST",
-    signal: AbortSignal.timeout(provider.timeoutMs)
-  });
+  // The Codex backend requires the account-id header, the codex client headers,
+  // and a client_version query param — without them it returns HTTP 400.
+  const accountId = chatGptAccountIdFromToken(accessToken);
+  const url = `${chatGptCodexBaseUrl}/responses?client_version=${codexClientVersion}`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "OpenAI-Beta": "responses=experimental",
+    originator: "codex_cli_rs",
+    session_id: randomUUID(),
+    ...(accountId ? { "chatgpt-account-id": accountId } : {})
+  };
+  const body = chatGptResponsesRequestBody({ jsonSchema, maxOutputTokens, messages, model: provider.model, schemaName });
 
-  if (!response.ok) {
-    throw new Error(`ChatGPT OAuth Responses request failed with status ${response.status}.`);
+  // The Codex backend rejects params the platform Responses API accepts (e.g.
+  // max_output_tokens) with 400 "Unsupported parameter: X". Strip the named
+  // param and retry — capability negotiation, bounded so it can't loop.
+  let parsed: Record<string, unknown> | undefined;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await fetcher(url, {
+      body: JSON.stringify(body),
+      headers,
+      method: "POST",
+      signal: AbortSignal.timeout(provider.timeoutMs)
+    });
+
+    if (response.ok) {
+      parsed = await readFinalResponsesEvent(response);
+      break;
+    }
+
+    const detail = await response.text().catch(() => "");
+    const unsupported = /Unsupported parameter:\s*([a-zA-Z0-9_]+)/.exec(detail)?.[1];
+    if (unsupported && unsupported in body && attempt < 4) {
+      delete body[unsupported];
+      continue;
+    }
+
+    throw new Error(`ChatGPT OAuth Responses request failed with status ${response.status}.${detail ? ` ${detail.slice(0, 300)}` : ""}`);
   }
 
-  const parsed = (await response.json()) as Record<string, unknown>;
+  if (!parsed) {
+    throw new Error("ChatGPT OAuth Responses request could not be completed after stripping unsupported parameters.");
+  }
+
+  // The backend streams SSE; the final `response.completed` event carries the
+  // full response object, which the existing extractors understand.
   const text = extractResponsesText(parsed);
 
   if (!text) {
@@ -457,6 +486,9 @@ function chatGptResponsesRequestBody({
     })),
     max_output_tokens: maxOutputTokens,
     model,
+    // The Codex backend only accepts streaming requests (rejects stream:false
+    // with "Stream must be set to true"); the SSE is reassembled at the caller.
+    stream: true,
     store: false
   };
 
@@ -480,6 +512,60 @@ function chatGptResponsesRequestBody({
   }
 
   return body;
+}
+
+/**
+ * The Codex backend only streams (SSE). Buffer it and return the final
+ * response object from the `response.completed` event so the existing
+ * extractors work unchanged; fall back to accumulated text deltas, and to plain
+ * JSON when the body isn't SSE (e.g. a mocked fetch in tests).
+ */
+async function readFinalResponsesEvent(response: Response): Promise<Record<string, unknown>> {
+  const raw = await response.text();
+
+  if (!raw.includes("data:")) {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return { output_text: "" };
+    }
+  }
+
+  let deltas = "";
+  let finalResponse: Record<string, unknown> | undefined;
+
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) {
+      continue;
+    }
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") {
+      continue;
+    }
+
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(data) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    if ((event.type === "response.completed" || event.type === "response.done") && event.response && typeof event.response === "object") {
+      finalResponse = event.response as Record<string, unknown>;
+    } else if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      deltas += event.delta;
+    }
+  }
+
+  // Prefer the completed event's response object (carries finish reason etc.),
+  // but the actual text arrives as streamed deltas — fall back to those when the
+  // final object has no inline text (the common case for this backend).
+  if (finalResponse) {
+    return extractResponsesText(finalResponse) ? finalResponse : { ...finalResponse, output_text: deltas };
+  }
+
+  return { output_text: deltas };
 }
 
 function extractResponsesText(response: Record<string, unknown>): string {

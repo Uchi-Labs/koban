@@ -262,7 +262,9 @@ function createLlmEnrichmentStatus(
   const credentialSource = resolveCredentialSource({
     chatGptOAuthConnected,
     chatGptOAuthEnabled,
-    explicitOpenAiKey,
+    // Opt-in: prefer the ChatGPT subscription even when an OPENAI_API_KEY is
+    // present (e.g. exported globally in the shell for other tools).
+    explicitOpenAiKey: env.AI_FINANCES_PREFER_CHATGPT_OAUTH === "1" ? undefined : explicitOpenAiKey,
     provider
   });
   const baseUrl = resolveLlmBaseUrl(env, provider, credentialSource);
