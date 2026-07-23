@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { categoryColorPalette, inferCategoryEmoji, isValidCssColor, neutralCategoryEmoji } from "@/lib/category-style";
+import {
+  categoryColorPalette,
+  filterFinanceEmojiOptions,
+  financeEmojiSearchOptions,
+  inferCategoryEmoji,
+  isValidCssColor,
+  neutralCategoryEmoji
+} from "@/lib/category-style";
 
 describe("category style helpers", () => {
   it("assigns deterministic emoji for common finance category names", () => {
@@ -8,6 +15,26 @@ describe("category style helpers", () => {
     expect(inferCategoryEmoji("Rent")).toBe("🏠");
     expect(inferCategoryEmoji("Software subscriptions")).toBe("💻");
     expect(inferCategoryEmoji("Unmapped category")).toBe(neutralCategoryEmoji);
+  });
+});
+
+describe("filterFinanceEmojiOptions", () => {
+  it("keeps a curated, unique catalog with searchable finance keywords", () => {
+    expect(financeEmojiSearchOptions.length).toBeGreaterThanOrEqual(80);
+    expect(financeEmojiSearchOptions.length).toBeLessThanOrEqual(120);
+    expect(new Set(financeEmojiSearchOptions.map(({ emoji }) => emoji)).size).toBe(financeEmojiSearchOptions.length);
+    expect(financeEmojiSearchOptions.every(({ keywords }) => keywords.length >= 2 && keywords.length <= 5)).toBe(true);
+  });
+
+  it("matches keywords case-insensitively and requires every search term", () => {
+    expect(filterFinanceEmojiOptions("CAFÉ").map(({ emoji }) => emoji)).toContain("☕");
+    expect(filterFinanceEmojiOptions("travel hotel").map(({ emoji }) => emoji)).toEqual(["🏨"]);
+    expect(filterFinanceEmojiOptions("not-a-finance-keyword")).toEqual([]);
+  });
+
+  it("returns the full catalog for an empty query and matches an emoji directly", () => {
+    expect(filterFinanceEmojiOptions("   ")).toEqual(financeEmojiSearchOptions);
+    expect(filterFinanceEmojiOptions("💳").map(({ emoji }) => emoji)).toEqual(["💳"]);
   });
 });
 
