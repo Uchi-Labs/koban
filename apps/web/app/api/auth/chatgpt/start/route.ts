@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { createAuthorizationRedirect } from "chatgpt-oauth/web";
 import {
   chatGptOAuthPendingCookie,
-  createChatGptOAuthStart,
-  encodeChatGptOAuthPendingState,
+  chatgptAuth,
+  encodeChatGptOAuthPendingLogin,
   isChatGptOAuthEnabled
 } from "@/lib/ai/chatgpt-oauth";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
@@ -21,13 +22,13 @@ export async function POST(request: NextRequest) {
   }
 
   const redirectUri = new URL("/api/auth/chatgpt/callback", request.nextUrl.origin).toString();
-  const { authorizationUrl, pendingState } = createChatGptOAuthStart(redirectUri);
+  const pending = await createAuthorizationRedirect(chatgptAuth, redirectUri);
   const response = NextResponse.json({
     object: "chatgpt_oauth_start",
-    authorization_url: authorizationUrl
+    authorization_url: pending.url
   });
 
-  response.cookies.set(chatGptOAuthPendingCookie, encodeChatGptOAuthPendingState(pendingState), {
+  response.cookies.set(chatGptOAuthPendingCookie, encodeChatGptOAuthPendingLogin(pending), {
     httpOnly: true,
     maxAge: 10 * 60,
     path: "/",

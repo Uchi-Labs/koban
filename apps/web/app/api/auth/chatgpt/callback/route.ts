@@ -1,12 +1,14 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { AuthError, StateMismatchError } from "chatgpt-oauth";
+import { completeAuthorizationRedirect } from "chatgpt-oauth/web";
 import {
+  chatgptAuth,
+  chatgptSubject,
   chatGptOAuthPendingCookie,
-  exchangeChatGptOAuthCode,
   isChatGptOAuthEnabled,
-  isChatGptOAuthPendingStateExpired,
-  parseChatGptOAuthPendingState,
-  saveChatGptOAuthTokens
+  isChatGptOAuthPendingLoginExpired,
+  parseChatGptOAuthPendingLogin
 } from "@/lib/ai/chatgpt-oauth";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
 
@@ -27,27 +29,26 @@ export async function GET(request: NextRequest) {
 
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
-  const pending = parseChatGptOAuthPendingState(request.cookies.get(chatGptOAuthPendingCookie)?.value);
+  const pending = parseChatGptOAuthPendingLogin(request.cookies.get(chatGptOAuthPendingCookie)?.value);
 
   if (!code || !state || !pending) {
     return htmlResponse("ChatGPT sign-in callback was missing required state.", 400);
   }
 
-  if (isChatGptOAuthPendingStateExpired(pending) || pending.state !== state) {
+  if (isChatGptOAuthPendingLoginExpired(pending.createdAt) || pending.pending.state !== state) {
     return htmlResponse("ChatGPT sign-in state expired or did not match.", 400);
   }
 
   try {
-    const tokens = await exchangeChatGptOAuthCode({
-      code,
-      codeVerifier: pending.codeVerifier,
-      redirectUri: pending.redirectUri
-    });
-    await saveChatGptOAuthTokens(tokens);
+    await completeAuthorizationRedirect(chatgptAuth, chatgptSubject, request.nextUrl, pending.pending);
     const response = htmlResponse("ChatGPT sign-in is complete. Return to Settings.", 200);
     response.cookies.delete(chatGptOAuthPendingCookie);
     return response;
-  } catch {
+  } catch (exchangeError) {
+    if (exchangeError instanceof StateMismatchError || exchangeError instanceof AuthError) {
+      return htmlResponse("ChatGPT sign-in state expired or did not match.", 400);
+    }
+
     return htmlResponse("ChatGPT sign-in failed during token exchange.", 502);
   }
 }
