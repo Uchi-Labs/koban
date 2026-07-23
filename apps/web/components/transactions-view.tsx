@@ -1528,14 +1528,15 @@ function useTransactionsViewModel({
   }
 
   function handleRuleCreated({
+    category,
     categoryId,
     matchedTransactionIds
   }: {
+    category: Category;
     categoryId: string;
     matchedTransactionIds: string[];
     transactionsUpdated: number;
   }) {
-    const nextCategory = categoryById.get(categoryId);
     const ids = new Set(matchedTransactionIds);
 
     if (ids.size === 0) {
@@ -1544,7 +1545,7 @@ function useTransactionsViewModel({
 
     updateRows((currentRows) =>
       currentRows.map((row) =>
-        ids.has(row.id) ? { ...row, category: nextCategory ?? row.category, categoryId } : row
+        ids.has(row.id) ? { ...row, category, categoryId } : row
       )
     );
   }
@@ -2215,6 +2216,7 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
         </TabsContent>
       </Tabs>
       <NewRuleDialog
+        categories={model.categories}
         category={model.newRuleContext?.category ?? null}
         merchant={model.newRuleContext?.merchant ?? ""}
         onCreated={model.handleRuleCreated}

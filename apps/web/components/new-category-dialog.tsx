@@ -1,24 +1,26 @@
 "use client";
 
-import { Check, Sparkles } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import React, { useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
+import { RingColorPicker } from "@/components/ui/ring-color-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { hexToRgb, oklchToHex } from "@/lib/bloom-color";
-import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralCategoryEmoji } from "@/lib/category-style";
+import {
+  categoryColorPalette,
+  filterFinanceEmojiOptions,
+  inferCategoryEmoji,
+  neutralCategoryEmoji
+} from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-// The registry now persists any structurally valid CSS color (hex, rgb/hsl,
-// oklch/oklab — see isValidCssColor in lib/category-style.ts and
-// assertValidRegistryColorInput in lib/db/finance-db.ts), not just these 12
-// tokens. The strip stays the fast path for the common case; the Bloom picker
-// next to it is the "any color" affordance.
-const SWATCHES = [...categoryColorPalette];
-const DEFAULT_COLOR = SWATCHES[0];
+// The ring keeps the persisted palette on its outer edge; Bloom remains the
+// arbitrary-color affordance for hex and shades between those anchors.
+const DEFAULT_COLOR = categoryColorPalette[0];
 
 type CategoryKind = "regular" | "excluded";
 
@@ -28,9 +30,11 @@ interface NewCategoryState {
   color: string;
   emoji: string;
   emojiOpen: boolean;
+  emojiQuery: string;
   kind: CategoryKind;
   message: string;
   name: string;
+  ringColor?: string;
 }
 
 type NewCategoryAction =
@@ -43,9 +47,11 @@ const INITIAL_NEW_CATEGORY_STATE: NewCategoryState = {
   color: DEFAULT_COLOR,
   emoji: neutralCategoryEmoji,
   emojiOpen: false,
+  emojiQuery: "",
   kind: "regular",
   message: "",
-  name: ""
+  name: "",
+  ringColor: DEFAULT_COLOR
 };
 
 function newCategoryReducer(state: NewCategoryState, action: NewCategoryAction): NewCategoryState {
@@ -75,8 +81,9 @@ export function NewCategoryDialog({
   const reduce = useReducedMotion();
   const [state, dispatch] = React.useReducer(newCategoryReducer, INITIAL_NEW_CATEGORY_STATE);
   const emojiTouchedRef = useRef(false);
-  const { budget, busy, color, emoji, emojiOpen, kind, message, name } = state;
+  const { budget, busy, color, emoji, emojiOpen, emojiQuery, kind, message, name, ringColor } = state;
 
+  const filteredEmojiOptions = useMemo(() => filterFinanceEmojiOptions(emojiQuery), [emojiQuery]);
   const saveTextColor = useMemo(() => readableTextColor(color), [color]);
 
   function updateState(patch: Partial<NewCategoryState>) {
@@ -163,7 +170,10 @@ export function NewCategoryDialog({
 
   return (
     <Dialog onOpenChange={(next) => (next ? onOpenChange(true) : close())} open={open}>
-      <DialogContent className="sm:max-w-[26rem]" showCloseButton>
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto sm:max-w-[31rem]"
+        showCloseButton
+      >
         <form className="flex flex-col items-center gap-5" onSubmit={save}>
           <DialogTitle className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">New category</DialogTitle>
 
@@ -187,7 +197,7 @@ export function NewCategoryDialog({
             <button
               aria-label="Choose emoji"
               className="grid size-14 place-items-center rounded-2xl border border-border bg-muted/40 text-3xl transition-colors hover:bg-muted"
-              onClick={() => updateState({ emojiOpen: !emojiOpen })}
+              onClick={() => updateState({ emojiOpen: !emojiOpen, emojiQuery: "" })}
               type="button"
             >
               <span aria-hidden="true">{emoji}</span>
@@ -204,26 +214,44 @@ export function NewCategoryDialog({
                     initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.96)" }}
                     transition={{ duration: reduce ? 0.1 : 0.15, ease: EASE_OUT }}
                   >
+                    <label className="relative block border-b border-border p-2">
+                      <Search
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <input
+                        aria-label="Search emoji"
+                        autoFocus
+                        className="h-8 w-full rounded-xl bg-muted/60 pr-3 pl-8 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                        onChange={(event) => updateState({ emojiQuery: event.target.value })}
+                        placeholder="Search emoji"
+                        value={emojiQuery}
+                      />
+                    </label>
                     <ScrollArea
-                      className="max-h-56"
-                      viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-56 overscroll-contain"
+                      className="max-h-48"
+                      viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-48 overscroll-contain"
                     >
-                      <div className="grid grid-cols-6 gap-1 p-2">
-                        {financeEmojiOptions.map((option, index) => (
-                          <button
-                            aria-label={`Use ${option}`}
-                            className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted motion-reduce:transition-none sm:size-10"
-                            key={`${option}-${index}`}
-                            onClick={() => {
-                              emojiTouchedRef.current = true;
-                              updateState({ emoji: option, emojiOpen: false });
-                            }}
-                            type="button"
-                          >
-                            {option}
-                          </button>
-                        ))}
-                      </div>
+                      {filteredEmojiOptions.length > 0 ? (
+                        <div className="grid grid-cols-6 gap-1 p-2">
+                          {filteredEmojiOptions.map(({ emoji: option, keywords }) => (
+                            <button
+                              aria-label={`Use ${option}: ${keywords.join(", ")}`}
+                              className="grid size-11 place-items-center rounded-lg text-base transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none motion-reduce:transition-none sm:size-10"
+                              key={option}
+                              onClick={() => {
+                                emojiTouchedRef.current = true;
+                                updateState({ emoji: option, emojiOpen: false, emojiQuery: "" });
+                              }}
+                              type="button"
+                            >
+                              <span aria-hidden="true">{option}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="px-4 py-8 text-center text-sm text-muted-foreground">No emoji found.</p>
+                      )}
                     </ScrollArea>
                   </m.div>
                 ) : null}
@@ -263,38 +291,23 @@ export function NewCategoryDialog({
             <p className="text-xs text-muted-foreground">Excluded categories are left out of spending totals and budgets.</p>
           )}
 
-          <div className="flex w-full items-center gap-2">
-            <div
-              className="flex flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain"
-              onWheel={(event) => {
-                // Map the (dominant) vertical wheel axis onto horizontal scroll
-                // so a plain scrollwheel can move through the swatches.
-                const el = event.currentTarget;
-                if (el.scrollWidth <= el.clientWidth) return;
-                if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-                  el.scrollLeft += event.deltaY;
+          <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
+            <RingColorPicker
+              onChange={(nextColor) => {
+                if (nextColor) {
+                  updateState({ color: nextColor, ringColor: nextColor });
+                } else {
+                  updateState({ ringColor: undefined });
                 }
               }}
-            >
-              {SWATCHES.map((swatch) => {
-                const selected = swatch === color;
-                return (
-                  <button
-                    aria-label={`Use color ${swatch}`}
-                    aria-pressed={selected}
-                    className="grid h-11 w-5 shrink-0 flex-1 place-items-center rounded-full transition-transform [@media(hover:hover)_and_(pointer:fine)]:hover:scale-110 motion-reduce:transition-none sm:h-10"
-                    key={swatch}
-                    onClick={() => updateState({ color: swatch })}
-                    style={{ backgroundColor: swatch }}
-                    type="button"
-                  >
-                    {selected ? <Check className="size-3.5 text-white drop-shadow" strokeWidth={3} /> : null}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="h-5 w-px bg-border" />
-            <BloomColorPicker ariaLabel="Custom category color" onChange={(nextColor) => updateState({ color: nextColor })} value={color} />
+              size={260}
+              value={ringColor}
+            />
+            <BloomColorPicker
+              ariaLabel="Custom category color"
+              onChange={(nextColor) => updateState({ color: nextColor, ringColor: nextColor })}
+              value={color}
+            />
           </div>
 
           <button
