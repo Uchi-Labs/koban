@@ -16,7 +16,7 @@ import {
 import {
   chatGptCodexBaseUrl,
   chatGptOAuthTokensEnvKey,
-  getStoredChatGptOAuthTokens,
+  getStoredChatGptOAuthSession,
   isChatGptOAuthEnabled,
   parseChatGptOAuthTokens
 } from "@/lib/ai/chatgpt-oauth";
@@ -218,7 +218,7 @@ export async function getLlmEnrichmentStatusWithStorage(
   modelUseCase: LlmModelUseCase = "simple"
 ): Promise<LlmProviderStatus> {
   const chatGptOAuthConnected = isChatGptOAuthEnabled(env)
-    ? (await getStoredChatGptOAuthTokens(env)) !== undefined
+    ? (await getStoredChatGptOAuthSession(env)) !== null
     : false;
 
   return createLlmEnrichmentStatus(

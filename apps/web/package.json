@@ -18,7 +18,9 @@
   "dependencies": {
     "@ai-finances/schema": "workspace:*",
     "@ai-finances/sync-protocol": "workspace:*",
+    "@ai-sdk/openai": "^4.0.17",
     "@ai-sdk/openai-compatible": "3.0.5",
+    "chatgpt-oauth": "file:../../../../chatgpt-oauth/typescript",
     "@base-ui/react": "^1.6.0",
     "@better-auth/api-key": "^1.6.23",
     "@better-auth/passkey": "^1.6.23",

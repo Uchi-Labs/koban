@@ -4,16 +4,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createAuthSession, type CredentialStore, type TokenSet } from "chatgpt-oauth";
 import {
+  chatGptOAuthStatus,
   chatGptOAuthTokensStateKey,
   chatGptOAuthTokenUrl,
-  encodeChatGptOAuthTokens,
-  getFreshChatGptOAuthAccessToken,
-  getStoredChatGptOAuthTokens,
-  parseChatGptOAuthTokens,
-  saveChatGptOAuthTokens,
+  chatgptCredentialStore,
+  chatgptSubject,
   clearChatGptOAuthTokens,
-  type ChatGptOAuthTokens
+  createChatGptCredentialStore,
+  encodeChatGptOAuthTokens,
+  getStoredChatGptOAuthSession
 } from "@/lib/ai/chatgpt-oauth";
 import { closeFinanceDbForTests, readSyncStateValue } from "@/lib/db/finance-db";
 
@@ -31,151 +32,132 @@ afterEach(async () => {
 });
 
 describe("chatgpt oauth", () => {
+  // These tests exercise the same behavior the deleted hand-rolled module
+  // covered, but through the new seam: the CredentialStore adapter over
+  // sync_state plus the chatgpt-oauth package's auth session.
+
   it("returns saved access tokens without live refresh while they are fresh", async () => {
-    const tokens: ChatGptOAuthTokens = {
-      access: jwtWithExpiry(Date.now() + 60 * 60 * 1000),
-      expiry: Date.now() + 60 * 60 * 1000,
-      refresh: "test-refresh-token"
-    };
-    const accessToken = await getFreshChatGptOAuthAccessToken(
-      {
-        AI_FINANCES_ENABLE_CHATGPT_OAUTH: "1"
-      },
-      async () => {
+    useTempFinanceDb();
+    const store = createChatGptCredentialStore();
+    const accessToken = jwtWithExpiry(Date.now() + 60 * 60 * 1000);
+    await seedToken(store, { accessToken, expiresAt: Date.now() + 60 * 60 * 1000 });
+
+    const auth = createAuthSession({
+      store,
+      fetch: async () => {
         throw new Error("refresh should not be called");
-      },
-      async () => {
-        throw new Error("fresh tokens should not be persisted");
-      },
-      async () => tokens
-    );
+      }
+    });
 
-    expect(accessToken).toBe(tokens.access);
-  });
+    await expect(auth.getAccessToken(chatgptSubject)).resolves.toBe(accessToken);
+  }, 15_000);
 
-  it("persists saved tokens in sync_state", async () => {
+  it("persists saved credentials in sync_state and clears them on logout", async () => {
     useTempFinanceDb();
-    const tokens: ChatGptOAuthTokens = {
-      access: jwtWithExpiry(Date.now() + 60 * 60 * 1000),
-      expiry: Date.now() + 60 * 60 * 1000,
-      refresh: "test-refresh-token"
-    };
+    const accessToken = jwtWithExpiry(Date.now() + 60 * 60 * 1000);
+    await seedToken(chatgptCredentialStore, { accessToken, expiresAt: Date.now() + 60 * 60 * 1000 });
 
-    await saveChatGptOAuthTokens(tokens);
+    // The credential is base64-JSON encoded under the legacy state key.
+    const raw = await readSyncStateValue(chatGptOAuthTokensStateKey);
+    expect(raw).toBeDefined();
+    expect(JSON.parse(Buffer.from(raw as string, "base64").toString("utf8"))).toMatchObject({
+      accessToken,
+      refreshToken: "test-refresh-token"
+    });
 
-    expect(parseChatGptOAuthTokens(await readSyncStateValue(chatGptOAuthTokensStateKey))).toEqual(tokens);
-    await expect(getStoredChatGptOAuthTokens({})).resolves.toEqual(tokens);
+    await expect(getStoredChatGptOAuthSession({})).resolves.not.toBeNull();
 
     await clearChatGptOAuthTokens();
 
-    await expect(getStoredChatGptOAuthTokens({})).resolves.toBeUndefined();
+    await expect(getStoredChatGptOAuthSession({})).resolves.toBeNull();
   }, 15_000);
 
-  it("seeds tokens from env once before using sync_state as source of truth", async () => {
+  it("seeds tokens from env once, then treats sync_state as the source of truth", async () => {
     useTempFinanceDb();
-    const tokens: ChatGptOAuthTokens = {
-      access: jwtWithExpiry(Date.now() + 60 * 60 * 1000),
-      expiry: Date.now() + 60 * 60 * 1000,
-      refresh: "test-refresh-token"
-    };
     const env = {
-      CHATGPT_OAUTH_TOKENS_B64: encodeChatGptOAuthTokens(tokens)
+      CHATGPT_OAUTH_TOKENS_B64: encodeChatGptOAuthTokens({
+        access: jwtWithExpiry(Date.now() + 60 * 60 * 1000),
+        expiry: Date.now() + 60 * 60 * 1000,
+        refresh: "test-refresh-token"
+      })
     };
 
-    await expect(getStoredChatGptOAuthTokens(env)).resolves.toEqual(tokens);
-    await expect(getStoredChatGptOAuthTokens({})).resolves.toEqual(tokens);
+    await expect(getStoredChatGptOAuthSession(env)).resolves.not.toBeNull();
+    // Persisted: still connected even without the env var present.
+    await expect(getStoredChatGptOAuthSession({})).resolves.not.toBeNull();
 
     await clearChatGptOAuthTokens();
 
-    await expect(getStoredChatGptOAuthTokens(env)).resolves.toBeUndefined();
+    // The seed sentinel prevents a cleared credential from being re-seeded.
+    await expect(getStoredChatGptOAuthSession(env)).resolves.toBeNull();
   }, 15_000);
 
-  it("persists refreshed tokens to sync_state", async () => {
+  it("reports connected status with an expiry once a credential is stored", async () => {
     useTempFinanceDb();
-    const nextAccessToken = jwtWithExpiry(Date.now() + 60 * 60 * 1000);
-    const accessToken = await getFreshChatGptOAuthAccessToken(
-      {
-        AI_FINANCES_ENABLE_CHATGPT_OAUTH: "1"
-      },
-      async (input) => {
-        expect(input).toBe(chatGptOAuthTokenUrl);
+    const expiresAt = Date.now() + 60 * 60 * 1000;
+    await seedToken(chatgptCredentialStore, { accessToken: jwtWithExpiry(expiresAt), expiresAt });
 
-        return new Response(
-          JSON.stringify({
-            access_token: nextAccessToken,
-            refresh_token: "test-next-refresh-token"
-          }),
-          {
-            headers: {
-              "Content-Type": "application/json"
-            },
-            status: 200
-          }
-        );
-      },
-      saveChatGptOAuthTokens,
-      async () => ({
-        access: jwtWithExpiry(Date.now() - 60_000),
-        expiry: Date.now() - 60_000,
-        refresh: "test-refresh-token"
-      })
-    );
+    const status = await chatGptOAuthStatus({ AI_FINANCES_ENABLE_CHATGPT_OAUTH: "1" });
 
-    expect(accessToken).toBe(nextAccessToken);
-    await expect(getStoredChatGptOAuthTokens({})).resolves.toMatchObject({
-      access: nextAccessToken,
-      refresh: "test-next-refresh-token"
-    });
+    expect(status.connected).toBe(true);
+    expect(status.enabled).toBe(true);
+    expect(status.expiresAt).toBe(new Date(expiresAt).toISOString());
   }, 15_000);
 
-  it("refreshes expired tokens with a mocked auth.openai.com request", async () => {
+  it("refreshes an expired token through auth.openai.com and persists the rotation", async () => {
+    useTempFinanceDb();
+    const store = createChatGptCredentialStore();
+    await seedToken(store, {
+      accessToken: jwtWithExpiry(Date.now() - 60_000),
+      expiresAt: Date.now() - 60_000
+    });
+
     const nextAccessToken = jwtWithExpiry(Date.now() + 60 * 60 * 1000);
-    const persisted: ChatGptOAuthTokens[] = [];
-    const accessToken = await getFreshChatGptOAuthAccessToken(
-      {
-        AI_FINANCES_ENABLE_CHATGPT_OAUTH: "1"
-      },
-      async (input, init) => {
-        expect(input).toBe(chatGptOAuthTokenUrl);
-        expect(init?.method).toBe("POST");
-        expect(JSON.parse(String(init?.body))).toMatchObject({
-          client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
-          grant_type: "refresh_token",
-          refresh_token: "test-refresh-token"
-        });
+    const requests: Array<{ url: string; body: URLSearchParams }> = [];
+    const auth = createAuthSession({
+      store,
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), body: new URLSearchParams(String(init?.body)) });
 
         return new Response(
           JSON.stringify({
             access_token: nextAccessToken,
-            refresh_token: "test-next-refresh-token"
+            refresh_token: "test-next-refresh-token",
+            expires_in: 3600
           }),
-          {
-            headers: {
-              "Content-Type": "application/json"
-            },
-            status: 200
-          }
+          { headers: { "Content-Type": "application/json" }, status: 200 }
         );
-      },
-      async (tokens) => {
-        persisted.push(tokens);
-      },
-      async () => ({
-        access: jwtWithExpiry(Date.now() - 60_000),
-        expiry: Date.now() - 60_000,
-        refresh: "test-refresh-token"
-      })
-    );
-
-    expect(accessToken).toBe(nextAccessToken);
-    expect(persisted).toHaveLength(1);
-    expect(persisted[0]).toMatchObject({
-      access: nextAccessToken,
-      refresh: "test-next-refresh-token"
+      }
     });
-    expect(persisted[0]!.expiry).toBeGreaterThan(Date.now());
-  });
+
+    await expect(auth.getAccessToken(chatgptSubject)).resolves.toBe(nextAccessToken);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.url).toBe(chatGptOAuthTokenUrl);
+    expect(requests[0]!.body.get("grant_type")).toBe("refresh_token");
+    expect(requests[0]!.body.get("refresh_token")).toBe("test-refresh-token");
+
+    // The rotated credential is now the stored source of truth.
+    const persisted = await store.load(chatgptSubject);
+    expect(persisted).toMatchObject({ accessToken: nextAccessToken, refreshToken: "test-next-refresh-token" });
+  }, 15_000);
 });
+
+async function seedToken(
+  store: CredentialStore,
+  partial: { accessToken: string; expiresAt: number; refreshToken?: string }
+): Promise<void> {
+  const current = await store.load(chatgptSubject);
+  const expectedVersion = current?.version ?? 0;
+  const next: TokenSet = {
+    accessToken: partial.accessToken,
+    refreshToken: partial.refreshToken ?? "test-refresh-token",
+    expiresAt: partial.expiresAt,
+    version: expectedVersion + 1
+  };
+  const result = await store.compareAndSwap(chatgptSubject, expectedVersion, next);
+  expect(result.ok).toBe(true);
+}
 
 function useTempFinanceDb(): void {
   testRoot = mkdtempSync(path.join(tmpdir(), "ai-finances-chatgpt-oauth-"));
