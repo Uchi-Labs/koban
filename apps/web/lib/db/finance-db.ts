@@ -2051,6 +2051,7 @@ async function replaceSnapTradeInvestmentSnapshotNow(
     }
 
     await writeSyncState(db, {
+      last_synced_at: input.finishedAt,
       snaptrade_last_synced_at: input.finishedAt,
       snaptrade_connection_count: String(input.providerConnections.length),
       snaptrade_account_count: String(input.accounts.length),
@@ -2251,6 +2252,7 @@ async function replacePlaidLedgerSnapshotNow(input: PlaidLedgerSnapshotInput): P
     });
 
     await writeSyncState(db, {
+      last_synced_at: input.finishedAt,
       plaid_last_synced_at: input.finishedAt,
       plaid_connection_count: String(input.providerConnections.length),
       plaid_account_count: String(input.accounts.length),
@@ -2414,6 +2416,10 @@ async function replaceSimpleFinLedgerSnapshotNow(
       simplefin_last_errors: JSON.stringify(input.errors)
     };
 
+    if (input.successful) {
+      state.last_synced_at = input.finishedAt;
+    }
+
     if (input.successful && input.newestPostedAt !== undefined) {
       state.simplefin_newest_posted_at = String(input.newestPostedAt);
       state.simplefin_last_successful_synced_at = input.finishedAt;
@@ -2549,6 +2555,7 @@ async function ingestFinanceKitLedgerSnapshotNow(
     });
 
     await writeSyncState(db, {
+      last_synced_at: input.finishedAt,
       financekit_account_count: String(input.accounts.length),
       financekit_device_name: input.deviceName ?? "",
       financekit_last_ingested_at: input.finishedAt,
