@@ -54,8 +54,8 @@ importers:
         specifier: ^1.6.23
         version: 1.6.23(next@16.2.10(@babel/core@7.29.7)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(pg@8.22.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.9(@types/node@24.12.4)(jsdom@25.0.1)(vite@7.3.6(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)))
       chatgpt-oauth:
-        specifier: file:../../../../chatgpt-oauth/typescript
-        version: file:../../chatgpt-oauth/typescript(@ai-sdk/openai@4.0.17(zod@3.25.76))(react@19.2.6)
+        specifier: ^0.1.1
+        version: 0.1.1(@ai-sdk/openai@4.0.17(zod@3.25.76))(react@19.2.6)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1856,8 +1856,8 @@ packages:
     resolution: {integrity: sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA==}
     engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
 
-  chatgpt-oauth@file:../../chatgpt-oauth/typescript:
-    resolution: {directory: ../../chatgpt-oauth/typescript, type: directory}
+  chatgpt-oauth@0.1.1:
+    resolution: {integrity: sha512-XrEnjKgtROeWbty+2dQhTpnIo2aSBJR3caFLQVR0+sRAO6L397KOTBJhiry7sLjFf1NK38ikEeIqqBWCu8qfhw==}
     engines: {node: '>=20'}
     peerDependencies:
       '@ai-sdk/openai': '>=4'
@@ -5202,7 +5202,7 @@ snapshots:
 
   chalk@5.6.2: {}
 
-  chatgpt-oauth@file:../../chatgpt-oauth/typescript(@ai-sdk/openai@4.0.17(zod@3.25.76))(react@19.2.6):
+  chatgpt-oauth@0.1.1(@ai-sdk/openai@4.0.17(zod@3.25.76))(react@19.2.6):
     optionalDependencies:
       '@ai-sdk/openai': 4.0.17(zod@3.25.76)
       react: 19.2.6
