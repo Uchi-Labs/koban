@@ -2283,7 +2283,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           Press Command K to open the global command palette.
         </span>
         <InputGroup
-          className={cn("t-clear h-9 min-w-[14rem] flex-1 rounded-full border border-border/50 bg-input/35 sm:w-64 sm:flex-none lg:w-72", model.query && "has-value")}
+          className={cn("t-clear h-9 min-w-[14rem] flex-1 basis-full rounded-full border border-border/50 bg-input/35 sm:w-64 sm:flex-none sm:basis-auto lg:w-72", model.query && "has-value")}
           ref={searchClearRef}
         >
           <div className="t-clear-mirror px-8 text-sm text-foreground" aria-hidden="true">
