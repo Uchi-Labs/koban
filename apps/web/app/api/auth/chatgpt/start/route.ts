@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createAuthorizationRedirect } from "chatgpt-oauth/web";
 import {
   chatGptOAuthPendingCookie,
   chatgptAuth,
@@ -22,7 +21,7 @@ export async function POST(request: NextRequest) {
   }
 
   const redirectUri = new URL("/api/auth/chatgpt/callback", request.nextUrl.origin).toString();
-  const pending = await createAuthorizationRedirect(chatgptAuth, redirectUri);
+  const pending = await chatgptAuth.beginLogin(redirectUri);
   const response = NextResponse.json({
     object: "chatgpt_oauth_start",
     authorization_url: pending.url
