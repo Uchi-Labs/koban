@@ -7,6 +7,7 @@ import {
   isGoogleAuthEnabled,
   isHostedAuthMode
 } from "@/lib/auth";
+import { readWorkspaceEnv } from "@/lib/workspace-env";
 
 interface LoginPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -16,16 +17,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = searchParams ? await searchParams : {};
   const nextPath = firstParam(params.next) ?? "/";
   const invalid = firstParam(params.error) === "1";
-  const hosted = isHostedAuthMode();
-  const legacyToken = getConfiguredAuthToken();
-  const firstRun = hosted ? await isBetterAuthRegistrationOpen() : false;
+  const env = readWorkspaceEnv();
+  const hosted = isHostedAuthMode(env);
+  const legacyToken = getConfiguredAuthToken(env);
+  const firstRun = hosted ? await isBetterAuthRegistrationOpen(env) : false;
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-8 text-foreground">
       <div className="grid w-full max-w-sm gap-4">
         {hosted ? (
           <HostedLoginForm
-            googleEnabled={isGoogleAuthEnabled()}
+            googleEnabled={isGoogleAuthEnabled(env)}
             mode={firstRun ? "sign-up" : "sign-in"}
             nextPath={nextPath}
           />

@@ -6,10 +6,10 @@ import {
   constantTimeTokenEquals,
   getBearerToken,
   getConfiguredAuthToken,
-  hasBetterAuthSessionCookie,
   isHostedAuthMode,
   loginPath
 } from "@/lib/auth";
+import { readWorkspaceEnv } from "@/lib/workspace-env";
 
 const publicPaths = new Set([
   loginPath,
@@ -24,14 +24,15 @@ const publicPaths = new Set([
 ]);
 
 export async function proxy(request: NextRequest) {
-  const expectedToken = getConfiguredAuthToken();
+  const env = readWorkspaceEnv();
+  const expectedToken = getConfiguredAuthToken(env);
 
   if (isPublicRequest(request)) {
     return NextResponse.next();
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    const authResult = await authenticateApiRequest(request);
+    const authResult = await authenticateApiRequest(request, env);
 
     if (authResult.authenticated) {
       return NextResponse.next();
@@ -40,8 +41,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  if (isHostedAuthMode()) {
-    if (hasBetterAuthSessionCookie(request)) {
+  if (isHostedAuthMode(env)) {
+    const authResult = await authenticateApiRequest(request, env);
+
+    if (authResult.authenticated) {
       return NextResponse.next();
     }
 
