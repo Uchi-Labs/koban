@@ -308,28 +308,47 @@ async function withInclusionOverrides(ledger: Ledger): Promise<Ledger> {
 
 function createFinanceDataFromLedger(ledger: Ledger, categories: Category[]): FinanceData {
   const accountGroups = createAccountGroups(ledger.accounts);
-  const metricTransactions = filterTransactionsForIncludedAccounts(ledger.accounts, ledger.transactions);
-  const recurringItems = createRecurringItems(metricTransactions);
-  const dashboardSummary = createDashboardSummary({
+
+  // recurringItems and dashboardSummary are each a full O(n) pass over every
+  // transaction (recurring detection also groups and sorts per merchant), but
+  // most routes never read them -- /transactions, /review, /rules and /search
+  // only want accounts, categories and transactions. Computing them lazily,
+  // memoized per FinanceData object, keeps those routes off the work entirely
+  // while callers that do read the fields see no behaviour change.
+  const metricTransactions = memoize(() => filterTransactionsForIncludedAccounts(ledger.accounts, ledger.transactions));
+  const recurringItems = memoize(() => createRecurringItems(metricTransactions()));
+  const dashboardSummary = memoize(() => createDashboardSummary({
     accounts: ledger.accounts,
     accountGroups,
     categories,
-    transactions: metricTransactions,
-    recurringItems,
+    transactions: metricTransactions(),
+    recurringItems: recurringItems(),
     providerConnections: ledger.providerConnections,
     asOf: ledger.lastSyncedAt
-  });
+  }));
 
   return {
     source: "koban",
     accounts: ledger.accounts,
     accountGroups,
     categories,
-    dashboardSummary,
+    get dashboardSummary() {
+      return dashboardSummary();
+    },
     providerConnections: ledger.providerConnections,
-    recurringItems,
+    get recurringItems() {
+      return recurringItems();
+    },
     transactions: ledger.transactions,
     ledger
+  };
+}
+
+function memoize<T>(compute: () => T): () => T {
+  let cached: { value: T } | null = null;
+  return () => {
+    cached ??= { value: compute() };
+    return cached.value;
   };
 }
 
@@ -599,10 +618,14 @@ export function filterTransactionsForIncludedAccounts(accounts: Account[], trans
 }
 
 function getSummaryMonth(transactions: Transaction[]): string {
-  const latestDate = transactions
-    .map((transaction) => transaction.date)
-    .sort()
-    .at(-1);
+  // Single max scan: copying every date into a new array and sorting it is
+  // O(n log n) plus an n-length allocation to read one value.
+  let latestDate: string | undefined;
+  for (const transaction of transactions) {
+    if (latestDate === undefined || transaction.date > latestDate) {
+      latestDate = transaction.date;
+    }
+  }
 
   return (latestDate ?? new Date().toISOString().slice(0, 10)).slice(0, 7);
 }

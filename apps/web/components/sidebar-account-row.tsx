@@ -93,6 +93,7 @@ export function SidebarAccountRow({ account, href, active, dotColor }: {
         className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
         href={href}
         title={`${account.name} · right-click to rename`}
+        unstable_dynamicOnHover
       >
         <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
         <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>

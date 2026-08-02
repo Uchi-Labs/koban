@@ -8,7 +8,7 @@ import {
   scramblePositions
 } from "@/lib/demo-mode";
 import type { AccountBalanceSnapshot } from "@/lib/finance-data";
-import { readFinanceDbSnapshot, listInvestmentPositions } from "@/lib/db/finance-db";
+import { readPortfolioSnapshot, listInvestmentPositions } from "@/lib/db/finance-db";
 
 /** A point on a Liveline chart. `time` is unix seconds. */
 export interface PortfolioPoint {
@@ -264,12 +264,12 @@ export function computePortfolioChange(history: PortfolioPoint[]): PortfolioChan
 
 /** Assemble the full investments view model from finance-db read paths. */
 export async function getInvestmentsData(): Promise<InvestmentsData> {
-  const snapshot = await readFinanceDbSnapshot();
+  const snapshot = await readPortfolioSnapshot();
   const demoMode = await isDemoModeEnabled();
-  const rawAccounts = (snapshot?.accounts ?? []).filter((account) => account.type === "investment");
+  const rawAccounts = snapshot.accounts.filter((account) => account.type === "investment");
   const demoFactors = buildDemoFactors(rawAccounts);
   const accounts = demoMode ? scrambleAccounts(rawAccounts, demoFactors) : rawAccounts;
-  const rawBalanceSnapshots = snapshot?.balanceSnapshots ?? [];
+  const rawBalanceSnapshots = snapshot.balanceSnapshots;
   const balanceSnapshots = demoMode ? scrambleBalanceSnapshots(rawBalanceSnapshots, demoFactors) : rawBalanceSnapshots;
   const accountIds = accounts.map((account) => account.id);
   const rawPositions = accountIds.length > 0 ? await listInvestmentPositions(accountIds) : [];
@@ -343,7 +343,7 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
   return {
     totalMarketValue,
     currency,
-    asOf: snapshot?.lastSyncedAt ?? new Date().toISOString(),
+    asOf: snapshot.lastSyncedAt ?? new Date().toISOString(),
     change: computePortfolioChange(history),
     history,
     accounts: accountViews.sort((left, right) => Math.abs(right.balance) - Math.abs(left.balance)),

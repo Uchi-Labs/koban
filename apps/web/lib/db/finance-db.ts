@@ -4105,6 +4105,62 @@ export interface ConnectionInventory {
   transactionCountByConnection: Record<string, number>;
 }
 
+/* Provider connections on their own, for the per-provider setup-status readers.
+   Those only ever read snapshot.providerConnections, so going through
+   readFinanceDbSnapshot made each of them load and shape the entire
+   transactions table for a list that is typically a handful of rows. */
+export async function listProviderConnections(): Promise<ProviderConnection[]> {
+  if (!financeDbExists()) {
+    return [];
+  }
+
+  const db = await getFinanceDb();
+  const result = await db.query<ProviderConnectionRow>(
+    "SELECT * FROM provider_connections ORDER BY display_name, id"
+  );
+  return result.rows.map(providerConnectionFromRow);
+}
+
+/* Accounts alone, for callers that need full Account objects but no
+   transactions. Same ordering as readFinanceDbSnapshot. */
+export async function listAccounts(): Promise<Account[]> {
+  if (!financeDbExists()) {
+    return [];
+  }
+
+  const db = await getFinanceDb();
+  const result = await db.query<AccountRow>("SELECT * FROM accounts ORDER BY institution_name, name, id");
+  return result.rows.map(accountFromRow);
+}
+
+/* Accounts + balance history + last-sync marker, for the investments view model.
+   It reads no transactions, so readFinanceDbSnapshot was loading and shaping the
+   entire transactions table on every /investments render for nothing. */
+export async function readPortfolioSnapshot(): Promise<{
+  accounts: Account[];
+  balanceSnapshots: AccountBalanceSnapshot[];
+  lastSyncedAt?: string;
+}> {
+  if (!financeDbExists()) {
+    return { accounts: [], balanceSnapshots: [] };
+  }
+
+  const db = await getFinanceDb();
+  const [accounts, balanceSnapshots, lastSyncedAt] = await Promise.all([
+    db.query<AccountRow>("SELECT * FROM accounts ORDER BY institution_name, name, id"),
+    db.query<AccountBalanceSnapshotRow>(
+      "SELECT * FROM account_balance_snapshots ORDER BY captured_at DESC, id"
+    ),
+    readSyncStateValue("last_synced_at")
+  ]);
+
+  return {
+    accounts: accounts.rows.map(accountFromRow),
+    balanceSnapshots: balanceSnapshots.rows.map(accountBalanceSnapshotFromRow),
+    lastSyncedAt: lastSyncedAt ?? undefined
+  };
+}
+
 /* Accounts + per-connection transaction counts for the Settings connections
    list. Lighter than readFinanceDbSnapshot — never loads transaction rows. */
 export async function listConnectionInventory(): Promise<ConnectionInventory> {

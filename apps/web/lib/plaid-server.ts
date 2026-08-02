@@ -20,7 +20,7 @@ import {
 } from "plaid";
 import {
   listConnectionInventory,
-  readFinanceDbSnapshot,
+  listProviderConnections,
   readSyncStateValue,
   replacePlaidLedgerSnapshot,
   writeSyncStateValue
@@ -181,12 +181,12 @@ export const plaidItemsStateKey = "plaid_items_v1";
 
 export async function getPlaidSetupStatus(): Promise<PlaidSetupStatus> {
   const config = readPlaidConfig();
-  const [items, snapshot, inventory] = await Promise.all([
+  const [items, providerConnections, inventory] = await Promise.all([
     readStoredPlaidItems(),
-    readFinanceDbSnapshot(),
+    listProviderConnections(),
     listConnectionInventory()
   ]);
-  const plaidConnections = (snapshot?.providerConnections ?? []).filter((connection) => connection.provider === "plaid");
+  const plaidConnections = providerConnections.filter((connection) => connection.provider === "plaid");
   const localConnectionById = new Map(plaidConnections.map((connection) => [connection.id, connection]));
   const accountsByConnection = new Map<string, PlaidAccountSummary[]>();
   let storedAccountCount = 0;
