@@ -7,6 +7,7 @@ import {
   type PlayOptions,
   type SoundDefinition,
 } from "@web-kits/audio";
+import { triggerUiHaptic } from "@/lib/ui-haptics";
 
 const UI_SOUND_MUTED_STORAGE_KEY = "ai-finances:ui-sound-muted";
 
@@ -593,6 +594,11 @@ function jitter(): PlayOptions {
 }
 
 function playUiSound(name: UiSoundName, opts?: PlayOptions) {
+  // Haptics fire first and independently: they must not inherit audio's gates.
+  // A device with no AudioContext (or with sound muted) can still vibrate, and
+  // waiting on `readyPromise` would land the buzz after the tap it belongs to.
+  triggerUiHaptic(name);
+
   if (!userGestureSeen || !canAttemptAudio()) {
     return;
   }

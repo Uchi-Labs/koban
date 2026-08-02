@@ -9,6 +9,7 @@ import { NewCategoryDialog } from "@/components/new-category-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { filterCategories } from "@/lib/rule-match";
 import { SPRING_PANEL } from "@/lib/motion";
+import { runCommitRing } from "@/lib/transitions";
 import { cn } from "@/lib/utils";
 
 // Opacity/scale/y only — no `filter` or `[data-slot]` CSS transitions on this
@@ -89,8 +90,12 @@ export function CategoryPicker({
     active?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, filtered.length]);
 
+  // `origin` is the row the user actually acted on, so the confirmation ring blooms
+  // from there rather than from some fixed anchor. The popover unmounts on the next
+  // line, which is why the ring is imperative and body-mounted.
   const commit = React.useCallback(
-    (categoryId: string) => {
+    (categoryId: string, origin?: HTMLElement | null) => {
+      runCommitRing(origin);
       onSelect(categoryId);
       setOpen(false);
     },
@@ -108,7 +113,8 @@ export function CategoryPicker({
       const category = filtered[activeIndex];
       if (category) {
         event.preventDefault();
-        commit(category.id);
+        // Keyboard commits bloom from the highlighted row, matching the mouse path.
+        commit(category.id, listRef.current?.querySelector<HTMLElement>('[data-active="true"]'));
       }
     }
   }
@@ -180,7 +186,7 @@ export function CategoryPicker({
                       )}
                       data-active={isActive}
                       key={category.id}
-                      onClick={() => commit(category.id)}
+                      onClick={(event) => commit(category.id, event.currentTarget)}
                       onMouseMove={() => setActiveIndex(index)}
                       role="option"
                       type="button"
@@ -217,7 +223,7 @@ export function CategoryPicker({
               {excludeCategoryId ? (
                 <button
                   className="flex min-h-7 w-full cursor-default items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm text-muted-foreground outline-hidden transition-colors hover:bg-accent hover:text-foreground"
-                  onClick={() => commit(excludeCategoryId)}
+                  onClick={(event) => commit(excludeCategoryId, event.currentTarget)}
                   type="button"
                 >
                   <BanIcon aria-hidden="true" className="size-4" />

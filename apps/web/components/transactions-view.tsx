@@ -18,7 +18,6 @@ import {
   Plus,
   Search,
   Shapes,
-  Square,
   Tag,
   Target,
   X
@@ -31,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { CategoryPicker } from "@/components/ui/category-picker";
+import { VoiceWaveform } from "@/components/ui/voice-waveform";
 import { showCategoryChangedCard } from "@/components/category-changed-card";
 import { NewRuleDialog } from "@/components/new-rule-dialog";
 import { deriveRuleMatchValue } from "@/lib/rule-match";
@@ -3478,7 +3478,11 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
           type="button"
           variant="outline"
         >
-          {model.voiceRecording ? <Square className="size-3.5" /> : <Mic className="size-3.5" />}
+          {model.voiceRecording ? (
+            <VoiceWaveform bars={5} className="text-[--negative]" height={14} label="Listening" />
+          ) : (
+            <Mic className="size-3.5" />
+          )}
           {model.voiceRecording ? "Stop" : "Record"}
         </Button>
         {model.voiceDraft ? (
