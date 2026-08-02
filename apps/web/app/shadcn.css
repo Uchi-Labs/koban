@@ -586,9 +586,10 @@
   z-index: 2;
 }
 .t-clear-mirror { opacity: 0; }
-.t-clear.has-value .t-clear-mirror,
+/* Mirror only paints during the clear dissolve. It is a static div, so it cannot
+   scroll to follow the caret the way the native input does — leaving it on for
+   every value clipped long text and painted it under the inline-end addon. */
 .t-clear.is-clearing .t-clear-mirror { opacity: 1; }
-.t-clear.has-value > input,
 .t-clear.is-clearing > input {
   -webkit-text-fill-color: transparent;
 }

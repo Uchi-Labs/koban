@@ -5,8 +5,7 @@ import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "
 import { useRouter } from "next/navigation";
 import React, { useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
-import { RingColorPicker } from "@/components/ui/ring-color-picker";
+import { BlossomPicker } from "@/components/ui/blossom-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { hexToRgb, oklchToHex } from "@/lib/bloom-color";
 import {
@@ -200,7 +199,12 @@ export function NewCategoryDialog({
               onClick={() => updateState({ emojiOpen: !emojiOpen, emojiQuery: "" })}
               type="button"
             >
-              <span aria-hidden="true">{emoji}</span>
+              {/* `leading-none` + block: an inline span carries the font's line-height
+                  and baseline, which pushes the glyph off the button's optical centre
+                  even under place-items-center. */}
+              <span aria-hidden="true" className="block text-center leading-none">
+                {emoji}
+              </span>
             </button>
             <LazyMotion features={domAnimation}>
               <AnimatePresence initial={false}>
@@ -276,37 +280,34 @@ export function NewCategoryDialog({
           />
 
           {kind === "regular" ? (
-            <label className="flex items-baseline justify-center gap-1 text-2xl font-semibold tabular-nums">
-              <span className="text-muted-foreground">$</span>
-              <input
-                aria-label="Monthly budget"
-                className="w-24 bg-transparent text-center outline-hidden placeholder:text-muted-foreground/50"
-                inputMode="decimal"
-                onChange={(event) => updateState({ budget: event.target.value.replace(/[^0-9.]/g, "") })}
-                placeholder="0"
-                value={budget}
-              />
+            <label className="flex flex-col items-center gap-0.5">
+              <span className="flex items-baseline justify-center gap-1 text-2xl font-semibold tabular-nums">
+                <span className="text-muted-foreground">$</span>
+                <input
+                  aria-label="Monthly budget"
+                  // No placeholder: the input is centered, so a centered "0" glyph
+                  // renders in the exact spot the caret lands — the caret appears to
+                  // sit inside the zero. The visible label below carries the meaning.
+                  className="w-24 bg-transparent text-center outline-hidden"
+                  inputMode="decimal"
+                  onChange={(event) => updateState({ budget: event.target.value.replace(/[^0-9.]/g, "") })}
+                  value={budget}
+                />
+              </span>
+              <span className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">Monthly budget — optional</span>
             </label>
           ) : (
             <p className="text-xs text-muted-foreground">Excluded categories are left out of spending totals and budgets.</p>
           )}
 
-          <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
-            <RingColorPicker
-              onChange={(nextColor) => {
-                if (nextColor) {
-                  updateState({ color: nextColor, ringColor: nextColor });
-                } else {
-                  updateState({ ringColor: undefined });
-                }
-              }}
-              size={260}
-              value={ringColor}
-            />
-            <BloomColorPicker
-              ariaLabel="Custom category color"
+          {/* Single color control. The blossom reserves its own expanded footprint —
+              `.bcp-root` is sized to the collapsed core, so without it the open bloom
+              paints over the Save button. */}
+          <div className="flex w-full flex-col items-center justify-center">
+            <BlossomPicker
+              ariaLabel="Category color"
               onChange={(nextColor) => updateState({ color: nextColor, ringColor: nextColor })}
-              value={color}
+              value={ringColor}
             />
           </div>
 
