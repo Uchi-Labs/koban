@@ -93,11 +93,11 @@ function toneClassName(tone: "negative" | "neutral" | "positive") {
 export default async function AccountsPage() {
   const { accountGroups, accounts, dashboardSummary, ledger, transactions } = await getFinanceData();
   const balanceSnapshots = ledger?.balanceSnapshots ?? [];
-  const transactionsByAccountId = groupTransactionsByAccountId(transactions);
+  const transactionSummaryByAccountId = summarizeTransactionsByAccountId(transactions);
   const historyByAccountId = accountHistories(balanceSnapshots);
   const accountRows = accounts.map((account) => createAccountRow(
     account,
-    transactionsByAccountId.get(account.id) ?? [],
+    transactionSummaryByAccountId.get(account.id) ?? { count: 0 },
     historyByAccountId.get(account.id) ?? []
   ));
   const accountRowsByGroup = new Map(accountGroups.map((group) => [
@@ -333,8 +333,17 @@ function RowStat({ label, value }: { label: string; value: string }) {
 
 const ROW_HISTORY_WINDOW_DAYS = 90;
 
-function createAccountRow(account: Account, accountTransactions: Transaction[], history: PortfolioPoint[]) {
-  const latestTransaction = accountTransactions[0];
+interface AccountTransactionSummary {
+  count: number;
+  latest?: Transaction;
+}
+
+function createAccountRow(
+  account: Account,
+  transactionSummary: AccountTransactionSummary,
+  history: PortfolioPoint[]
+) {
+  const latestTransaction = transactionSummary.latest;
 
   return {
     account,
@@ -345,21 +354,32 @@ function createAccountRow(account: Account, accountTransactions: Transaction[], 
     history: recentHistory(history, ROW_HISTORY_WINDOW_DAYS),
     latestTransaction,
     netWorthContribution: getAccountNetWorthContribution(account),
-    transactionCount: accountTransactions.length
+    transactionCount: transactionSummary.count
   };
 }
 
-function groupTransactionsByAccountId(transactions: Transaction[]): Map<string, Transaction[]> {
-  const transactionsByAccountId = new Map<string, Transaction[]>();
+/**
+ * A row shows only its newest transaction and how many it has. The previous
+ * version bucketed every transaction per account and sorted each bucket by date
+ * just to read element 0, which is an O(n log n) sort per account whose result
+ * was discarded. A single pass tracking the running max gives the same row.
+ */
+function summarizeTransactionsByAccountId(transactions: Transaction[]): Map<string, AccountTransactionSummary> {
+  const summaryByAccountId = new Map<string, AccountTransactionSummary>();
   for (const transaction of transactions) {
-    const accountTransactions = transactionsByAccountId.get(transaction.accountId) ?? [];
-    accountTransactions.push(transaction);
-    transactionsByAccountId.set(transaction.accountId, accountTransactions);
+    const summary = summaryByAccountId.get(transaction.accountId);
+    if (!summary) {
+      summaryByAccountId.set(transaction.accountId, { count: 1, latest: transaction });
+      continue;
+    }
+    summary.count += 1;
+    // Strictly greater keeps the first transaction seen at the newest date,
+    // matching what a stable descending sort put at index 0.
+    if (summary.latest === undefined || transaction.date > summary.latest.date) {
+      summary.latest = transaction;
+    }
   }
-  for (const accountTransactions of transactionsByAccountId.values()) {
-    accountTransactions.sort((left, right) => right.date.localeCompare(left.date));
-  }
-  return transactionsByAccountId;
+  return summaryByAccountId;
 }
 
 function recentHistory(history: PortfolioPoint[], days: number): PortfolioPoint[] {
