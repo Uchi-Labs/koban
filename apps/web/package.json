@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "sync:due": "node scripts/sync-due.mjs",
     "auth:migrate": "node scripts/migrate-better-auth.mjs",
+    "demo:seed": "tsx scripts/seed-demo.ts",
     "migrate:postgres": "node scripts/migrate-to-postgres.mjs",
     "sync:now": "node scripts/sync-due.mjs --run-now",
     "sync:watch": "node scripts/sync-due.mjs --watch"
@@ -69,6 +70,7 @@
     "jsdom": "^25.0.1",
     "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2",
+    "tsx": "^4.23.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",
     "vitest": "^4.1.9"
