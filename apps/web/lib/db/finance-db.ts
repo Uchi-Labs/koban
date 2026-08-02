@@ -4357,7 +4357,9 @@ export async function generateEnrichmentSuggestionsWithLlm(
     };
   }
 
-  return enqueueDbWrite(async () => {
+  // PHASE 1 — pair matching (a real write) plus every input the model needs.
+  // Queued, because runInternalTransferPairMatchingNow mutates.
+  const readPhase = await enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const cappedLimit = boundedInteger(limit, 100, 100);
     const pairMatcher = await runInternalTransferPairMatchingNow(db);
@@ -4420,12 +4422,41 @@ export async function generateEnrichmentSuggestionsWithLlm(
         l.created_at DESC`
     );
     const llmEvidenceByTransactionId = groupLlmEvidenceByTransactionId(llmEvidenceRows.rows);
-    const llmRun = await dependencies.generateLlmEnrichmentSuggestions({
-      evidenceByTransactionId: llmEvidenceByTransactionId,
+
+    return {
+      cappedLimit,
+      evidenceByTransactionId,
       existingRules,
-      limit: Math.min(cappedLimit, 50),
+      llmEvidenceByTransactionId,
+      pairMatcher,
       transactions
-    });
+    };
+  });
+
+  // PHASE 2 — the model call, deliberately OUTSIDE the write queue.
+  //
+  // This used to sit inside the enqueueDbWrite closure above, which meant a
+  // provider that was slow (or never answered) held the app's single serialized
+  // write lock for its whole duration. Every category change, note, tag colour
+  // and rule edit queued behind an advisory background job. Nothing here writes,
+  // so nothing here needs the lock.
+  const llmRun = await dependencies.generateLlmEnrichmentSuggestions({
+    evidenceByTransactionId: readPhase.llmEvidenceByTransactionId,
+    existingRules: readPhase.existingRules,
+    limit: Math.min(readPhase.cappedLimit, 50),
+    transactions: readPhase.transactions
+  });
+
+  // PHASE 3 — persist the proposals.
+  //
+  // Other writes can land between phases, so `transactions` is a snapshot rather
+  // than a live read. That is fine for this job specifically: it emits *pending
+  // suggestions* for the user to review, never direct mutations, and
+  // upsertEnrichmentSuggestion is idempotent — a stale input yields a proposal
+  // the next run supersedes, not a bad write.
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const { cappedLimit, evidenceByTransactionId, existingRules, pairMatcher, transactions } = readPhase;
     const localCandidates = buildLocalEnrichmentSuggestionInputs({
       evidenceByTransactionId,
       existingRules,
@@ -5100,14 +5131,63 @@ export async function deleteSyncStateValue(key: string): Promise<void> {
   });
 }
 
+// Ceiling for a single queued write. The queue is strictly serial, so ONE
+// operation that never settles blocks every future write in the process — the
+// observed symptom is savage and silent: category changes, notes, rules and tag
+// colours all hang forever while reads stay fast (they are cache-served), with
+// no Postgres activity and no error anywhere. Only a restart clears it.
+//
+// The bound is deliberately far above real work (a full ledger replace of ~6.4k
+// transactions lands in seconds) so it can only ever trip on a genuine hang,
+// never on slow-but-progressing work.
+const DB_WRITE_TIMEOUT_MS = 90_000;
+
+class DbWriteTimeoutError extends Error {
+  constructor(enqueuedAt: string | undefined) {
+    super(
+      `Database write exceeded ${DB_WRITE_TIMEOUT_MS}ms and was abandoned so the write queue could advance.` +
+        (enqueuedAt ? `\nEnqueued from:\n${enqueuedAt}` : "")
+    );
+    this.name = "DbWriteTimeoutError";
+  }
+}
+
 function enqueueDbWrite<T>(operation: () => Promise<T>): Promise<T> {
   const state = getFinanceDbState();
+  // Captured at enqueue time: when a write hangs, the ONLY thing worth knowing is
+  // which call site owns it, and by the time the timeout fires the stack is gone.
+  const enqueuedAt = new Error("db write enqueued").stack;
+
   // Every write invalidates the read caches — the queue is the only mutation
   // path, so this guarantees no page ever renders pre-write ledger data.
-  const scopedOperation = () =>
-    runInDbWriteScope(operation).finally(() => {
+  const scopedOperation = () => {
+    const run = runInDbWriteScope(operation).finally(() => {
       invalidateShellDataCache();
     });
+
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const error = new DbWriteTimeoutError(enqueuedAt);
+        console.error(`[finance-db] ${error.message}`);
+        reject(error);
+      }, DB_WRITE_TIMEOUT_MS);
+
+      // Do not hold the event loop open just to police a write.
+      timer.unref?.();
+
+      run.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  };
+
   const nextOperation = state.writeQueue.then(scopedOperation, scopedOperation);
   state.writeQueue = nextOperation.then(
     () => undefined,

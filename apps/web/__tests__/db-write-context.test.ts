@@ -72,8 +72,11 @@ describe("Postgres DB write scope routing", () => {
     await driver.query("SELECT legacy_transaction");
     await driver.exec("ROLLBACK");
 
+    // Second argument is a captured stack: this state routes every query in the
+    // process onto one client, so the warning is useless without the call site.
     expect(warning).toHaveBeenCalledWith(
-      "[pg-driver] BEGIN outside the DB write queue; falling back to legacy shared-client routing."
+      "[pg-driver] BEGIN outside the DB write queue; falling back to legacy shared-client routing.",
+      expect.stringContaining("BEGIN outside write scope")
     );
     expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "SELECT legacy_transaction", "ROLLBACK"]);
     expect(poolQuery).not.toHaveBeenCalledWith("SELECT legacy_transaction", undefined);

@@ -6,10 +6,26 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   readonly dialect = "postgres" as const;
 
   private transactionClient: PoolClient | null = null;
-  // Transactions opened outside the write queue (none known today) keep the
-  // legacy route-everything-to-the-client behavior so we never strand their
-  // statements on the pool.
+  // Transactions opened outside the write queue keep the legacy
+  // route-everything-to-the-client behaviour so we never strand their statements
+  // on the pool. This is a blunt instrument: while it is set, EVERY query in the
+  // process rides one client, so a transaction that never commits takes all
+  // writes down with it. It fired in practice when a duplicated
+  // AsyncLocalStorage made queued writes look un-queued (see db-write-context.ts)
+  // — hence the watchdog below, which bounds the blast radius rather than
+  // trusting that this state is always exited cleanly.
   private transactionOutsideWriteScope = false;
+  private transactionWatchdog: ReturnType<typeof setTimeout> | null = null;
+
+  // A transaction opened outside the write queue captures every query in the
+  // process, so it gets the tight bound. A queued one only blocks other writes
+  // and can legitimately be long (a full ledger replace writes thousands of
+  // rows), so it gets headroom — but it is still bounded, because "in the write
+  // queue" is no guarantee of reaching COMMIT: an error path that skips the
+  // finally, or an abandoned promise, strands the client just the same and every
+  // later write routes onto it forever.
+  private static readonly OUTSIDE_SCOPE_TRANSACTION_TIMEOUT_MS = 30_000;
+  private static readonly QUEUED_TRANSACTION_TIMEOUT_MS = 120_000;
 
   constructor(private readonly pool: Pool) {}
 
@@ -18,6 +34,7 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   }
 
   async close(): Promise<void> {
+    this.clearTransactionWatchdog();
     const client = this.transactionClient;
     this.transactionClient = null;
     this.transactionOutsideWriteScope = false;
@@ -58,6 +75,57 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
     return this.transactionOutsideWriteScope || isInDbWriteScope();
   }
 
+  /**
+   * Bound how long ANY transaction can hold the shared client.
+   *
+   * `transactionClient` is a single process-wide slot. If its owner never
+   * reaches COMMIT/ROLLBACK — an abandoned promise, a provider call with no
+   * timeout, an error path that skips the finally — the slot stays occupied and
+   * every later write is routed onto a client whose transaction will never end.
+   * The symptom is brutal and silent: writes hang forever with zero Postgres
+   * activity to show for it, reads stay fast because they are cache-served, and
+   * only a server restart clears it.
+   *
+   * A rollback is always safe (it is the absence of a partial commit), so the
+   * worst case here is one lost transaction, logged, instead of a dead process.
+   */
+  private armTransactionWatchdog(client: PoolClient, outsideWriteScope: boolean): void {
+    this.clearTransactionWatchdog();
+
+    const timeoutMs = outsideWriteScope
+      ? PgFinanceDbDriver.OUTSIDE_SCOPE_TRANSACTION_TIMEOUT_MS
+      : PgFinanceDbDriver.QUEUED_TRANSACTION_TIMEOUT_MS;
+
+    this.transactionWatchdog = setTimeout(() => {
+      if (this.transactionClient !== client) {
+        return;
+      }
+
+      console.error(
+        `[pg-driver] Transaction (${outsideWriteScope ? "outside" : "inside"} the write queue) exceeded ${timeoutMs}ms; rolling back and releasing so writes are not wedged.`
+      );
+
+      this.transactionWatchdog = null;
+      this.transactionClient = null;
+      this.transactionOutsideWriteScope = false;
+
+      void client
+        .query("ROLLBACK")
+        .catch(() => undefined)
+        .finally(() => client.release());
+    }, timeoutMs);
+
+    // Never hold the event loop open for a watchdog.
+    this.transactionWatchdog.unref?.();
+  }
+
+  private clearTransactionWatchdog(): void {
+    if (this.transactionWatchdog) {
+      clearTimeout(this.transactionWatchdog);
+      this.transactionWatchdog = null;
+    }
+  }
+
   private async execStatement(sql: string): Promise<void> {
     const transactionCommand = sql.trim().toUpperCase();
 
@@ -72,8 +140,15 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
         this.transactionClient = client;
         this.transactionOutsideWriteScope = !isInDbWriteScope();
         if (this.transactionOutsideWriteScope) {
-          console.warn("[pg-driver] BEGIN outside the DB write queue; falling back to legacy shared-client routing.");
+          // Carry a stack: this state captures every query in the process, so
+          // when it shows up the owning call site is the only thing worth knowing.
+          console.warn(
+            "[pg-driver] BEGIN outside the DB write queue; falling back to legacy shared-client routing.",
+            new Error("BEGIN outside write scope").stack
+          );
         }
+
+        this.armTransactionWatchdog(client, this.transactionOutsideWriteScope);
       } catch (error) {
         client.release();
         throw error;
@@ -92,6 +167,7 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
       try {
         await client.query(sql);
       } finally {
+        this.clearTransactionWatchdog();
         this.transactionClient = null;
         this.transactionOutsideWriteScope = false;
         client.release();
