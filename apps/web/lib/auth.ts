@@ -5,10 +5,10 @@ import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins";
-import { getSessionCookie } from "better-auth/cookies";
 import { Pool } from "pg";
 import type { NextRequest } from "next/server";
 import { evaluatePasswordSignInMfaPolicy } from "@/lib/mfa-policy";
+import { readWorkspaceEnv } from "@/lib/workspace-env";
 
 export const authCookieName = "af_session";
 export const loginPath = "/login";
@@ -16,6 +16,7 @@ export const betterAuthBasePath = "/api/better-auth";
 
 const bearerPattern = /^Bearer\s+(.+)$/i;
 const encoder = new TextEncoder();
+type AuthEnvironment = Readonly<Record<string, string | undefined>>;
 type BetterAuthRuntime = {
   api: {
     getSession(options: { headers: Headers }): Promise<unknown>;
@@ -25,22 +26,24 @@ type BetterAuthRuntime = {
 
 let betterAuthInstance: BetterAuthRuntime | null = null;
 let betterAuthPool: Pool | null = null;
+let betterAuthConfigKey: string | null = null;
+let betterAuthTestOverride = false;
 
 interface ApiAuthResult {
   authenticated: boolean;
   method?: "api_key" | "better_auth_session" | "legacy" | "open";
 }
 
-export function getConfiguredAuthToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+export function getConfiguredAuthToken(env: AuthEnvironment = readWorkspaceEnv()): string | undefined {
   const token = env.AI_FINANCES_AUTH_TOKEN?.trim();
   return token && token.length > 0 ? token : undefined;
 }
 
-export function isHostedAuthMode(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isHostedAuthMode(env: AuthEnvironment = readWorkspaceEnv()): boolean {
   return Boolean(env.DATABASE_URL?.trim());
 }
 
-export function isGoogleAuthEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isGoogleAuthEnabled(env: AuthEnvironment = readWorkspaceEnv()): boolean {
   return Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim());
 }
 
@@ -73,13 +76,9 @@ export function constantTimeTokenEquals(candidate: string | undefined, expected:
   return mismatch === 0;
 }
 
-export function hasBetterAuthSessionCookie(request: Request | NextRequest): boolean {
-  return Boolean(getSessionCookie(request));
-}
-
 export async function authenticateApiRequest(
   request: Request | NextRequest,
-  env: NodeJS.ProcessEnv = process.env
+  env: AuthEnvironment = readWorkspaceEnv()
 ): Promise<ApiAuthResult> {
   const expectedToken = getConfiguredAuthToken(env);
   const bearerToken = getBearerToken(request.headers.get("authorization"));
@@ -100,9 +99,18 @@ export async function authenticateApiRequest(
     return { authenticated: false };
   }
 
-  const session = await getBetterAuth().api.getSession({
-    headers: request.headers
-  });
+  let session: unknown;
+  try {
+    session = await getBetterAuth(env).api.getSession({
+      headers: request.headers
+    });
+  } catch (error) {
+    if (isBetterAuthCredentialError(error)) {
+      return { authenticated: false };
+    }
+
+    throw error;
+  }
 
   if (session) {
     return {
@@ -114,35 +122,52 @@ export async function authenticateApiRequest(
   return { authenticated: false };
 }
 
-export function getBetterAuth(): BetterAuthRuntime {
-  if (betterAuthInstance) {
+export function getBetterAuth(env: AuthEnvironment = readWorkspaceEnv()): BetterAuthRuntime {
+  if (betterAuthInstance && betterAuthTestOverride) {
     return betterAuthInstance;
   }
 
-  const databaseUrl = process.env.DATABASE_URL?.trim();
+  const databaseUrl = env.DATABASE_URL?.trim();
   if (!databaseUrl) {
     throw new Error("better-auth is disabled because DATABASE_URL is not set.");
   }
 
-  const secret = process.env.BETTER_AUTH_SECRET?.trim();
+  const secret = env.BETTER_AUTH_SECRET?.trim();
   if (!secret) {
     throw new Error("BETTER_AUTH_SECRET is required when DATABASE_URL is set.");
   }
 
+  const googleClientId = env.GOOGLE_CLIENT_ID?.trim();
+  const googleClientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+  const baseUrl = env.BETTER_AUTH_URL?.trim();
+  const configKey = JSON.stringify([
+    databaseUrl,
+    secret,
+    baseUrl ?? "",
+    googleClientId ?? "",
+    googleClientSecret ?? ""
+  ]);
+
+  if (betterAuthInstance) {
+    if (betterAuthConfigKey !== configKey) {
+      throw new Error("better-auth configuration changed after initialization; restart the server to apply it.");
+    }
+
+    return betterAuthInstance;
+  }
+
   betterAuthPool = new Pool({ connectionString: databaseUrl });
-  const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
 
   const auth = betterAuth({
     appName: "Koban",
     basePath: betterAuthBasePath,
-    baseURL: process.env.BETTER_AUTH_URL?.trim() || undefined,
+    baseURL: baseUrl || undefined,
     database: betterAuthPool,
     databaseHooks: {
       user: {
         create: {
           before: async (user) => {
-            if (!(await isBetterAuthRegistrationOpen())) {
+            if (!(await isBetterAuthRegistrationOpen(env))) {
               throw new APIError("FORBIDDEN", {
                 message: "Registration is closed for this Koban instance."
               });
@@ -157,7 +182,7 @@ export function getBetterAuth(): BetterAuthRuntime {
       enabled: true
     },
     plugins: [
-      passkey(getPasskeyOptions()),
+      passkey(getPasskeyOptions(env)),
       twoFactor({
         allowPasswordless: true,
         issuer: "Koban"
@@ -185,11 +210,12 @@ export function getBetterAuth(): BetterAuthRuntime {
   });
 
   betterAuthInstance = auth;
+  betterAuthConfigKey = configKey;
   return auth;
 }
 
-function getPasskeyOptions(): PasskeyOptions {
-  const baseUrl = process.env.BETTER_AUTH_URL?.trim();
+function getPasskeyOptions(env: AuthEnvironment): PasskeyOptions {
+  const baseUrl = env.BETTER_AUTH_URL?.trim();
   if (!baseUrl) {
     return {
       rpName: "Koban"
@@ -272,27 +298,42 @@ function passwordSignInMfaPolicyPlugin(): BetterAuthPlugin {
   };
 }
 
-export async function isBetterAuthRegistrationOpen(): Promise<boolean> {
-  if (!isHostedAuthMode()) {
+export async function isBetterAuthRegistrationOpen(env: AuthEnvironment = readWorkspaceEnv()): Promise<boolean> {
+  if (!isHostedAuthMode(env)) {
     return false;
   }
 
-  const result = await getBetterAuthPool().query<{ count: string }>('SELECT COUNT(*)::int AS count FROM "user"');
+  const result = await getBetterAuthPool(env).query<{ count: string }>('SELECT COUNT(*)::int AS count FROM "user"');
   return canCreateBetterAuthUser(Number.parseInt(result.rows[0]?.count ?? "0", 10));
 }
 
 export function setBetterAuthForTests(auth: BetterAuthRuntime | null): void {
   betterAuthInstance = auth;
+  betterAuthConfigKey = null;
+  betterAuthTestOverride = auth !== null;
+  if (!auth) {
+    betterAuthPool = null;
+  }
 }
 
-function getBetterAuthPool(): Pool {
-  getBetterAuth();
+function getBetterAuthPool(env: AuthEnvironment = readWorkspaceEnv()): Pool {
+  getBetterAuth(env);
 
   if (!betterAuthPool) {
     throw new Error("better-auth pool was not initialized.");
   }
 
   return betterAuthPool;
+}
+
+function isBetterAuthCredentialError(error: unknown): boolean {
+  if (!(error instanceof Error) || (error.name !== "APIError" && !(error instanceof APIError))) {
+    return false;
+  }
+
+  const statusCode = "statusCode" in error ? error.statusCode : undefined;
+  const status = "status" in error ? error.status : undefined;
+  return statusCode === 401 || statusCode === 403 || status === "UNAUTHORIZED" || status === "FORBIDDEN";
 }
 
 function readCookieValue(cookieHeaderOrValue: string | null | undefined, name: string): string | undefined {
