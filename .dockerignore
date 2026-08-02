@@ -16,3 +16,9 @@ node_modules
 playwright-report
 screenshots
 *.tsbuildinfo
+
+# Git-ignored working directories. These never belong in a build context, and
+# .agent/ in particular holds extracted personal finance evidence (Amazon order
+# history, handoff notes) that must not leave the machine.
+.agent/
+.claude/
