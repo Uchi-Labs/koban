@@ -10,6 +10,76 @@ export function forceReflow(element: HTMLElement | SVGElement | null | undefined
   void element.getBoundingClientRect();
 }
 
+/**
+ * Expanding-ring confirmation burst, fired from the element the user acted on.
+ *
+ * Adapted from Amicro's `spring-ring-expand` / `haptic-ring`
+ * (https://amicro.vercel.app). Theirs are decorative components that loop forever;
+ * this is a one-shot acknowledgement, so it's imperative WAAPI rather than a mounted
+ * React component — a commit shouldn't cost a re-render, and the popover it fires from
+ * unmounts immediately afterwards (a React-owned ring would be torn down mid-animation).
+ *
+ * The ring inherits the origin's computed colour, so committing a mint category
+ * blooms mint and a red one blooms red.
+ */
+export function runCommitRing(origin: HTMLElement | null | undefined) {
+  if (typeof window === "undefined" || !origin) {
+    return;
+  }
+
+  if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+
+  if (typeof origin.animate !== "function") {
+    return;
+  }
+
+  const rect = origin.getBoundingClientRect();
+
+  if (rect.width === 0 && rect.height === 0) {
+    return;
+  }
+
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  // Big enough to clear the row it came from, small enough not to read as a page flash.
+  const size = Math.min(120, Math.max(rect.height * 1.6, 34));
+  const color = getComputedStyle(origin).color || "currentColor";
+
+  for (const delay of [0, 110]) {
+    const ring = document.createElement("span");
+
+    ring.setAttribute("aria-hidden", "true");
+    Object.assign(ring.style, {
+      border: `2px solid ${color}`,
+      borderRadius: "9999px",
+      height: `${size}px`,
+      left: `${centerX}px`,
+      pointerEvents: "none",
+      position: "fixed",
+      top: `${centerY}px`,
+      transform: "translate(-50%, -50%) scale(0.25)",
+      width: `${size}px`,
+      zIndex: "60"
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    document.body.append(ring);
+
+    const animation = ring.animate(
+      [
+        { offset: 0, opacity: 0.85, transform: "translate(-50%, -50%) scale(0.25)" },
+        { offset: 1, opacity: 0, transform: "translate(-50%, -50%) scale(1.55)" }
+      ],
+      { delay, duration: 520, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" }
+    );
+
+    const cleanup = () => ring.remove();
+    animation.addEventListener("finish", cleanup);
+    animation.addEventListener("cancel", cleanup);
+  }
+}
+
 function cssDurationMs(name: string, fallback: number) {
   if (typeof window === "undefined") {
     return fallback;
