@@ -11,7 +11,8 @@ import {
 import {
   deleteSyncStateValue,
   listInvestmentPositions,
-  readFinanceDbSnapshot,
+  listAccounts,
+  listProviderConnections,
   readSyncStateValue,
   replaceSnapTradeInvestmentSnapshot,
   upsertAccountBalanceSnapshots,
@@ -107,14 +108,13 @@ export async function getSnapTradeSetupStatus(): Promise<SnapTradeSetupStatus> {
   const env = readWorkspaceEnv();
   const config = readSnapTradeConfig(env);
   const storedUser = await readStoredSnapTradeUser();
-  const localSnapshot = await readFinanceDbSnapshot();
-  const localConnections = (localSnapshot?.providerConnections ?? []).filter(
-    (connection) => connection.provider === "snaptrade"
-  );
+  // Connections and accounts only: this status read never looks at transactions,
+  // so going through readFinanceDbSnapshot loaded and shaped the whole
+  // transactions table for nothing.
+  const [providerConnections, allAccounts] = await Promise.all([listProviderConnections(), listAccounts()]);
+  const localConnections = providerConnections.filter((connection) => connection.provider === "snaptrade");
   const localConnectionIds = new Set(localConnections.map((connection) => connection.id));
-  const localAccounts = (localSnapshot?.accounts ?? []).filter((account) =>
-    localConnectionIds.has(account.providerConnectionId)
-  );
+  const localAccounts = allAccounts.filter((account) => localConnectionIds.has(account.providerConnectionId));
   const positions = await listInvestmentPositions(localAccounts.map((account) => account.id));
   const accountsByConnection = groupAccountsByConnection(localAccounts);
   const localConnectionById = new Map(localConnections.map((connection) => [connection.id, connection]));

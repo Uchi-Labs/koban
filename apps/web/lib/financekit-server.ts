@@ -5,7 +5,7 @@ import { normalizeProviderCurrencyCode } from "@/lib/currency";
 import {
   ingestFinanceKitLedgerSnapshot,
   listConnectionInventory,
-  readFinanceDbSnapshot,
+  listProviderConnections,
   readSyncStateValue,
   recordAppSyncRun
 } from "@/lib/db/finance-db";
@@ -94,12 +94,12 @@ type ParseResult<T> =
     };
 
 export async function getFinanceKitSetupStatus(): Promise<FinanceKitSetupStatus> {
-  const [snapshot, inventory, lastIngestedAt] = await Promise.all([
-    readFinanceDbSnapshot(),
+  const [providerConnections, inventory, lastIngestedAt] = await Promise.all([
+    listProviderConnections(),
     listConnectionInventory(),
     readSyncStateValue(financeKitLastIngestedStateKey)
   ]);
-  const financeKitConnections = (snapshot?.providerConnections ?? []).filter(
+  const financeKitConnections = providerConnections.filter(
     (connection) => connection.provider === "financekit"
   );
   const financeKitConnectionIds = new Set(financeKitConnections.map((connection) => connection.id));

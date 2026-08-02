@@ -17,7 +17,11 @@ export interface FinanceInsight {
 
 export function deriveInsights(transactions: Transaction[], categories: Category[]): FinanceInsight[] {
   const spending = transactions.filter(isSpendingTransaction);
-  const anchor = spending.map((transaction) => transaction.date).sort().at(-1);
+  // Single max scan instead of copy-and-sort: the anchor is just the latest date.
+  let anchor: string | undefined;
+  for (const transaction of spending) {
+    if (anchor === undefined || transaction.date > anchor) anchor = transaction.date;
+  }
   if (!anchor) return [];
 
   const categoryById = new Map(categories.map((category) => [category.id, category]));
@@ -69,20 +73,29 @@ export function detectUnusualCharges(
   anchor: string
 ): FinanceInsight[] {
   const anchorMs = dayMs(anchor);
-  const sorted = [...transactions].sort((a, b) => b.date.localeCompare(a.date));
-  return sorted.flatMap((transaction) => {
+
+  // Merchant and category histories are grouped once up front. The previous
+  // shape re-scanned every transaction (and re-ran normalize() on each) for
+  // every candidate in the 30-day window, which is O(candidates x total) regex
+  // work -- ~3M normalize() calls on a 10k-transaction ledger. Grouping is
+  // O(total) and each candidate then does O(1) lookups against pre-sorted
+  // amounts, with the candidate's own row excluded by index (see excluding()).
+  const merchantGroups = groupAmounts(transactions, (row) => normalize(row.merchantName));
+  const categoryGroups = groupAmounts(transactions, (row) => row.categoryId);
+
+  const candidates = transactions.filter((transaction) => {
     const age = Math.floor((anchorMs - dayMs(transaction.date)) / 86_400_000);
-    if (age < 0 || age > 30) return [];
+    return age >= 0 && age <= 30;
+  });
+  candidates.sort((a, b) => b.date.localeCompare(a.date));
+
+  return candidates.flatMap((transaction) => {
     const amount = Math.abs(transaction.amount);
-    const merchantHistory = transactions
-      .filter((row) => row.id !== transaction.id && normalize(row.merchantName) === normalize(transaction.merchantName))
-      .map((row) => Math.abs(row.amount));
-    const categoryHistory = transactions
-      .filter((row) => row.id !== transaction.id && row.categoryId === transaction.categoryId)
-      .map((row) => Math.abs(row.amount));
-    const merchantUnusual = merchantHistory.length >= 3 && amount > percentile(merchantHistory, 0.95);
-    const medianAmount = median(categoryHistory);
-    const categoryUnusual = categoryHistory.length >= 3 && medianAmount > 0 && amount > medianAmount * 3;
+    const merchantHistory = excluding(merchantGroups.get(normalize(transaction.merchantName)), transaction.id);
+    const categoryHistory = excluding(categoryGroups.get(transaction.categoryId), transaction.id);
+    const merchantUnusual = merchantHistory.size >= 3 && amount > merchantHistory.percentile(0.95);
+    const medianAmount = categoryHistory.median();
+    const categoryUnusual = categoryHistory.size >= 3 && medianAmount > 0 && amount > medianAmount * 3;
     if (!merchantUnusual && !categoryUnusual) return [];
     const categoryName = categoryById.get(transaction.categoryId)?.name ?? "its category";
     return [{
@@ -159,17 +172,60 @@ export function detectBudgetTrajectory(transactions: Transaction[], categories: 
   });
 }
 
-function percentile(values: number[], quantile: number): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.max(0, Math.ceil(quantile * sorted.length) - 1);
-  return sorted[index] ?? 0;
+/** Absolute amounts for one grouping key, sorted ascending, indexed by row id. */
+interface AmountGroup {
+  amounts: number[];
+  indexById: Map<string, number>;
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2 : sorted[middle] ?? 0;
+/** One pass over the ledger; the key function runs once per row, not once per row per candidate. */
+function groupAmounts(transactions: Transaction[], keyOf: (row: Transaction) => string): Map<string, AmountGroup> {
+  const buckets = new Map<string, { amount: number; id: string }[]>();
+  for (const row of transactions) {
+    const key = keyOf(row);
+    const bucket = buckets.get(key);
+    const entry = { amount: Math.abs(row.amount), id: row.id };
+    if (bucket) bucket.push(entry);
+    else buckets.set(key, [entry]);
+  }
+
+  const groups = new Map<string, AmountGroup>();
+  for (const [key, bucket] of buckets) {
+    bucket.sort((left, right) => left.amount - right.amount);
+    const indexById = new Map<string, number>();
+    const amounts = new Array<number>(bucket.length);
+    for (let index = 0; index < bucket.length; index += 1) {
+      const entry = bucket[index]!;
+      amounts[index] = entry.amount;
+      indexById.set(entry.id, index);
+    }
+    groups.set(key, { amounts, indexById });
+  }
+  return groups;
+}
+
+/**
+ * A read-only view of a group with one row (the candidate itself) removed, without
+ * copying the array: reads at or past the hole shift by one. Percentile and median
+ * use the same index arithmetic as the array-copying versions they replaced.
+ */
+function excluding(group: AmountGroup | undefined, excludedId: string) {
+  const amounts = group?.amounts ?? [];
+  const hole = group?.indexById.get(excludedId) ?? -1;
+  const size = hole >= 0 ? amounts.length - 1 : amounts.length;
+  const at = (index: number): number | undefined => amounts[hole >= 0 && index >= hole ? index + 1 : index];
+
+  return {
+    median(): number {
+      if (size === 0) return 0;
+      const middle = Math.floor(size / 2);
+      return size % 2 === 0 ? ((at(middle - 1) ?? 0) + (at(middle) ?? 0)) / 2 : at(middle) ?? 0;
+    },
+    percentile(quantile: number): number {
+      return at(Math.max(0, Math.ceil(quantile * size) - 1)) ?? 0;
+    },
+    size
+  };
 }
 
 function dayMs(date: string): number { return Date.parse(`${date}T12:00:00Z`); }

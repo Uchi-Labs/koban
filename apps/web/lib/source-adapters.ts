@@ -581,6 +581,11 @@ export function syncSourceAdaptersEffect(
     const ids = sourceIds?.length ? sourceIds : sourceAdapterDefinitions.map((adapter) => adapter.id);
     const results = yield* Effect.forEach(ids, (sourceId) => syncSourceAdapterEffect(sourceId), { concurrency: 2 });
 
+    // A sync is the one in-app action that can change whether an adapter is
+    // installed or authenticated, so drop the probe caches rather than let the
+    // next Settings render report pre-sync state.
+    invalidateSourceAdapterProbes();
+
     return {
       data: results,
       object: "source_sync_run_list",
@@ -3060,9 +3065,39 @@ async function runJsonCommand(binary: string, args: string[], timeout: number): 
   }
 }
 
-async function checkAdapterAuthState(
-  adapter: SourceAdapterDefinition
-): Promise<{ errorMessage?: string; status?: ExternalSourceStatus } | undefined> {
+type AdapterAuthState = { errorMessage?: string; status?: ExternalSourceStatus } | undefined;
+
+// Every installed adapter's auth probe is a child-process spawn with a 5s
+// ceiling, and they all run on each Settings render. Auth state does change (a
+// user runs `gog auth login` in a terminal and comes back), so the window here
+// is deliberately short: long enough to stop a re-render from re-spawning five
+// CLIs, short enough that a fresh login shows up on the next look. The connect
+// and refresh flows call invalidateSourceAdapterProbes() so a change made
+// through the app is never waited on.
+const adapterAuthStateTtlMs = 15_000;
+const adapterAuthStateCache = new Map<string, { expiresAt: number; value: Promise<AdapterAuthState> }>();
+
+export function invalidateSourceAdapterProbes(): void {
+  adapterAuthStateCache.clear();
+  commandExistsCache.clear();
+}
+
+async function checkAdapterAuthState(adapter: SourceAdapterDefinition): Promise<AdapterAuthState> {
+  if (!adapter.authCheckArgs) {
+    return undefined;
+  }
+
+  const cached = adapterAuthStateCache.get(adapter.id);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const value = runAdapterAuthCheck(adapter);
+  adapterAuthStateCache.set(adapter.id, { expiresAt: Date.now() + adapterAuthStateTtlMs, value });
+  return value;
+}
+
+async function runAdapterAuthCheck(adapter: SourceAdapterDefinition): Promise<AdapterAuthState> {
   if (!adapter.authCheckArgs) {
     return undefined;
   }
@@ -3752,11 +3787,23 @@ function stableId(value: string): string {
   return createHash("sha1").update(value).digest("hex").slice(0, 24);
 }
 
+// `sh -lc` sources the login profile on every call, so the five adapter probes
+// on a Settings render cost five full shell startups. Whether a CLI is on PATH
+// changes only when the user installs one, so the answer is cached briefly:
+// long enough that navigating to Settings twice in a row spawns nothing, short
+// enough that a fresh install shows up without restarting the server.
+const commandExistsTtlMs = 60_000;
+const commandExistsCache = new Map<string, { expiresAt: number; value: Promise<boolean> }>();
+
 async function commandExists(command: string): Promise<boolean> {
-  try {
-    await execFileAsync("sh", ["-lc", `command -v ${command}`], { timeout: 3000 });
-    return true;
-  } catch {
-    return false;
+  const cached = commandExistsCache.get(command);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
+
+  const value = execFileAsync("sh", ["-lc", `command -v ${command}`], { timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
+  commandExistsCache.set(command, { expiresAt: Date.now() + commandExistsTtlMs, value });
+  return value;
 }

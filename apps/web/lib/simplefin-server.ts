@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Account, AccountType, ProviderConnection, Transaction } from "@ai-finances/schema";
 import {
   listConnectionInventory,
-  readFinanceDbSnapshot,
+  listProviderConnections,
   readSyncStateValue,
   replaceSimpleFinLedgerSnapshot
 } from "@/lib/db/finance-db";
@@ -146,12 +146,12 @@ const millisecondsPerDay = 86_400_000;
 
 export async function getSimpleFinSetupStatus(): Promise<SimpleFinSetupStatus> {
   const config = readSimpleFinConfig();
-  const [snapshot, inventory, storedErrors] = await Promise.all([
-    readFinanceDbSnapshot(),
+  const [providerConnections, inventory, storedErrors] = await Promise.all([
+    listProviderConnections(),
     listConnectionInventory(),
     readStoredSimpleFinErrors()
   ]);
-  const simpleFinConnections = (snapshot?.providerConnections ?? []).filter(
+  const simpleFinConnections = providerConnections.filter(
     (connection) => connection.provider === "simplefin"
   );
   const connectionIds = new Set(simpleFinConnections.map((connection) => connection.id));
