@@ -623,7 +623,7 @@ function AppSidebarSections({
                         className={cn(item.label === "Transactions" && "relative overflow-visible group-data-[collapsible=icon]:overflow-hidden")}
                         data-sound-hover=""
                         isActive={active}
-                        render={<Link href={item.href} />}
+                        render={<Link href={item.href} unstable_dynamicOnHover />}
                         tooltip={item.label}
                       >
                         <Icon />
