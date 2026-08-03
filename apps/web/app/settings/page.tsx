@@ -1,3 +1,4 @@
+import { AppearanceSettingsPanel } from "@/components/appearance-settings-panel";
 import { ApiTokensPanel } from "@/components/api-tokens-panel";
 import { AiProviderPanel } from "@/components/sync-everything-panel";
 import { ConnectionsSettings } from "@/components/connections-settings";
@@ -307,6 +308,7 @@ export default async function SettingsPage() {
 
         <TabsContent value="data" className="flex flex-col gap-5">
           <DemoModePanel initialEnabled={demoModeEnabled} />
+          <AppearanceSettingsPanel />
           <SoundSettingsPanel />
           <LocalDataPanel initialTransactionCount={financeData.transactions.length} />
         </TabsContent>

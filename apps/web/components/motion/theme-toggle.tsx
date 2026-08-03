@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
 import { ActionSwapIcon } from "@/components/ui/action-swap";
 import { cn } from "@/lib/utils";
 
-export type ThemeVariant = "rectangle" | "circle" | "circle-blur";
+export type ThemeVariant = "rectangle" | "circle" | "circle-blur" | "fade";
 
 export type RectStart =
   | "top-left"
@@ -64,6 +64,21 @@ html[data-beui-vt="circle-blur"]::view-transition-new(root) {
   from { clip-path: circle(0% at var(--beui-vt-origin, 50% 100%)); filter: blur(8px); }
   to   { clip-path: circle(150% at var(--beui-vt-origin, 50% 100%)); filter: blur(0px); }
 }
+/* Straight cross-fade: both snapshots share the frame and trade opacity, so the
+   palette dissolves in place instead of being wiped in from an edge. The
+   explicit pair is needed because the browser default cross-fades on its own
+   timing, and normal blending keeps the two layers from compositing into a
+   bright flash mid-transition. */
+html[data-beui-vt="fade"]::view-transition-old(root) {
+  mix-blend-mode: normal;
+  animation: beui-fade-out 260ms var(--ease-smooth-out) forwards;
+}
+html[data-beui-vt="fade"]::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation: beui-fade-in 260ms var(--ease-smooth-out);
+}
+@keyframes beui-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes beui-fade-in  { from { opacity: 0; } to { opacity: 1; } }
 `;
 
 const RECT_FROM: Record<RectStart, string> = {
@@ -119,7 +134,10 @@ export function useThemeToggle({
 
     const root = document.documentElement;
 
-    if (variant === "rectangle") {
+    if (variant === "fade") {
+      // No clip-path origin to set — a cross-fade has no direction.
+      root.dataset.beuiVt = "fade";
+    } else if (variant === "rectangle") {
       root.style.setProperty("--beui-vt-from", RECT_FROM[start]);
       root.dataset.beuiVt = "rect";
     } else {
