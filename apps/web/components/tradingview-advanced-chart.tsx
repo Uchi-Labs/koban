@@ -37,7 +37,12 @@ export function TradingViewAdvancedChart({
       autosize: true,
       calendar: false,
       hide_side_toolbar: true,
-      hide_top_toolbar: false,
+      // Two time controls read as a bug. The top toolbar sets the CANDLE INTERVAL
+      // (1m/30m/1h/D — "D" means one bar per day, not "show one day"), while the
+      // bottom row sets the VISIBLE RANGE (1D…All). For "how is this holding
+      // doing" only the range matters, and having both on screen made picking
+      // "D" look like it returned ten months. Keep the range row, drop the rest.
+      hide_top_toolbar: true,
       hide_volume: false,
       interval: "D",
       locale: "en",
@@ -67,10 +72,15 @@ export function TradingViewAdvancedChart({
   }
 
   return (
+    // No `resize-y`: the widget sizes itself once from the container it mounts
+    // into (autosize), and dragging the CSS resize handle afterwards grew the
+    // box without the embedded iframe following, leaving the chart drawn in the
+    // top strip with dead space beneath it. A fixed container height keeps the
+    // widget and its frame the same size.
     <div
-      className="tradingview-widget-container resize-y overflow-hidden rounded-xl border border-border"
+      className="tradingview-widget-container overflow-hidden rounded-xl border border-border"
       ref={containerRef}
-      style={{ height, maxHeight: 720, minHeight: 228 }}
+      style={{ height }}
     />
   );
 }

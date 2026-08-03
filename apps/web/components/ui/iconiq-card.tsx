@@ -55,10 +55,10 @@ const CARD_SHADOW_HOVER =
   "var(--ic-card-hover-shadow)";
 
 const cardInteractiveSurfaceClassName =
-  "shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none before:transition-opacity before:duration-250 before:motion-reduce:transition-none hover:border-foreground/11 hover:bg-card hover:before:opacity-100 focus-within:border-foreground/11 focus-within:bg-card focus-within:before:opacity-100";
+  "shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color] duration-140 ease-[var(--ease-smooth-out)] motion-reduce:transition-none before:transition-opacity before:duration-250 before:motion-reduce:transition-none hover:border-foreground/11 hover:bg-card hover:before:opacity-100 focus-within:border-foreground/11 focus-within:bg-card focus-within:before:opacity-100";
 
 const cardCssHoverMotionClassName =
-  "transition-[transform,background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] [@media(hover:hover)_and_(pointer:fine)]:hover:-translate-y-[5px] [@media(hover:hover)_and_(pointer:fine)]:hover:scale-[1.006] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--ic-card-hover-shadow)] focus-within:-translate-y-[5px] focus-within:scale-[1.006] focus-within:shadow-[var(--ic-card-hover-shadow)] motion-reduce:transform-none motion-reduce:transition-none motion-reduce:focus-within:transform-none motion-reduce:focus-within:shadow-none";
+  "transition-[transform,background-color,border-color,box-shadow] duration-140 ease-[var(--ease-smooth-out)] [@media(hover:hover)_and_(pointer:fine)]:hover:-translate-y-[5px] [@media(hover:hover)_and_(pointer:fine)]:hover:scale-[1.006] [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-[var(--ic-card-hover-shadow)] focus-within:-translate-y-[5px] focus-within:scale-[1.006] focus-within:shadow-[var(--ic-card-hover-shadow)] motion-reduce:transform-none motion-reduce:transition-none motion-reduce:focus-within:transform-none motion-reduce:focus-within:shadow-none";
 
 type MotionSafeDivProps = Omit<
   React.HTMLAttributes<HTMLDivElement>,
