@@ -132,8 +132,16 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
         if (Math.abs(wheel.x) > Math.abs(wheel.y) && Math.abs(wheel.x) > 115) {
           wheel.fired = true;
           void advance(wheel.x > 0 ? "accept" : "skip", wheel.x > 0 ? suggestedId : undefined);
-        } else if (wheel.y < -115) { wheel.fired = true; setPickerOpen(true); }
-        else if (wheel.y > 115) { wheel.fired = true; void advance("review"); }
+        } else if (Math.abs(wheel.y) > 115) {
+          // Vertical scroll always skips, in either direction. It used to steer
+          // the card the way a drag does — up opened the category picker, down
+          // marked as-is — but a trackpad flick is a "move past this" gesture,
+          // not a considered choice, and landing in a category picker from an
+          // idle scroll reads as the app misfiring. Category and As-is stay on
+          // the buttons and the K / arrow keys, where the intent is explicit.
+          wheel.fired = true;
+          void advance("skip");
+        }
         setWheelPull(wheel.fired ? null : { x: wheel.x, y: wheel.y });
       }
       wheel.timer = setTimeout(() => {
@@ -279,7 +287,10 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
           <Button disabled={!current || busy} onClick={() => void advance("accept", suggestedId)} type="button"><ArrowRight className="size-4" /><span className="hidden sm:inline">Accept</span></Button>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span className="hidden sm:inline">J skip · K category · Enter accept · U undo</span>
+          {/* The wheel gesture had no affordance at all — nothing on screen said
+              the card was scrollable, so the only way to discover it was to
+              trigger it by accident. */}
+          <span className="hidden sm:inline">Scroll or drag to skip · J skip · K category · Enter accept · U undo</span>
           <Button disabled={history.length === 0 || busy} onClick={() => void undo()} size="sm" type="button" variant="ghost"><RotateCcw className="size-3.5" />Undo</Button>
         </div>
         {message ? <p aria-live="polite" className="mt-2 text-center text-xs text-[var(--negative)]">{message}</p> : null}

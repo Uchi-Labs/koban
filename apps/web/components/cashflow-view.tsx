@@ -347,8 +347,12 @@ function CashflowCard({
   const currencySymbol = currency === "USD" ? "$" : `${currency} `;
   const figureNegative = figure < 0;
 
+  // Deliberately not `interactive`: these are chart panels, not clickable cards.
+  // The hover lift and scale made the plotted bars drift under the cursor while
+  // you were reading them, and there is no card-level click target to justify it
+  // — "View more" is its own link.
   return (
-    <IconiqCard className="gap-4 rounded-xl border-border/60 bg-card/95 py-4 shadow-[var(--ic-card-rest-shadow)]" interactive>
+    <IconiqCard className="gap-4 rounded-xl border-border/60 bg-card/95 py-4 shadow-[var(--ic-card-rest-shadow)]">
       <IconiqCardContent className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-base font-medium text-foreground">{title}</h2>
