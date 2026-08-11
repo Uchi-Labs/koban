@@ -638,11 +638,18 @@ function groupAccountsByConnection(accounts: Account[]): Map<string, SnapTradeCo
   return result;
 }
 
-function createSnapTradeBalanceSnapshot(account: Account, syncedAt: string): AccountBalanceSnapshot {
+export function createSnapTradeBalanceSnapshot(account: Account, syncedAt: string): AccountBalanceSnapshot {
+  const asOfDate = syncedAt.slice(0, 10);
+
   return {
-    id: `${account.id}_${syncedAt.replace(/[^0-9a-z]/gi, "")}`,
+    // Keyed on the day, not the sync instant, so the ~48 syncs a day upsert over
+    // one row per account instead of appending ~48 near-identical ones. The
+    // balance chart keys its series on capturedAt, so a timestamped id turned
+    // every sync into another point on the same day. capturedAt still records
+    // when the surviving row was last written.
+    id: `${account.id}_${asOfDate.replace(/-/g, "")}`,
     accountId: account.id,
-    asOfDate: syncedAt.slice(0, 10),
+    asOfDate,
     capturedAt: syncedAt,
     ledgerBalance: account.currentBalance,
     currency: account.currency,
@@ -697,16 +704,18 @@ export async function backfillSnapTradeBalanceHistory({
         userId: user.userId,
         userSecret: user.userSecret
       });
-      const accountSnapshots = mapSnapTradeBalanceHistory({
+      const mapped = mapSnapTradeBalanceHistory({
         accountId,
         currency: response.data?.currency,
         history: response.data?.history
       });
+      const accountSnapshots = dropLeadingZeroBalanceHistory(mapped);
+      const droppedDays = mapped.length - accountSnapshots.length;
 
-      if (isAllZeroBalanceHistory(accountSnapshots)) {
+      if (accountSnapshots.length === 0) {
         console.warn(
           `SnapTrade balance backfill: account ${accountId} returned an all-zero history ` +
-            `(${accountSnapshots.length} day(s)); provider returned no usable estimate, skipping ingestion.`
+            `(${mapped.length} day(s)); provider returned no usable estimate, skipping ingestion.`
         );
         perAccount.push({
           accountId,
@@ -714,6 +723,13 @@ export async function backfillSnapTradeBalanceHistory({
           error: "provider returned no usable estimate (all-zero balance history)"
         });
         continue;
+      }
+
+      if (droppedDays > 0) {
+        console.warn(
+          `SnapTrade balance backfill: account ${accountId} dropped ${droppedDays} leading zero day(s) ` +
+            `before its first reported balance on ${accountSnapshots[0].asOfDate}.`
+        );
       }
 
       snapshots.push(...accountSnapshots);
@@ -796,17 +812,33 @@ export function mapSnapTradeBalanceHistory({
 }
 
 /**
- * True when a mapped balance history has at least one point and every point is
- * exactly zero. SnapTrade returns a flat all-zero series for some account
- * types (observed on RSU/ESPP-style accounts) when it cannot produce a
- * historical estimate at all — that means "cannot estimate", not "worth
- * zero", so callers should treat it as no usable data rather than ingest it.
- * A history that is zero on some dates but not others is left untouched:
- * partial zeros are plausible real values (e.g. a newly opened or emptied
- * account) and are not evidence of a provider limitation.
+ * Return a mapped balance history in date order with its leading run of zeros
+ * removed.
+ *
+ * SnapTrade estimates a daily series stretching back a year for every account,
+ * but a broker only has data from the day it started reporting. For the days
+ * before that SnapTrade returns 0.00, which means "no estimate available", not
+ * "the account held nothing". Observed on Interactive Brokers: 366 of 375
+ * returned days were one solid run of zeros ending the day before the first
+ * real value, which charts as a year-long flat line at zero.
+ *
+ * Only the leading run goes. Zeros after the first real value are kept, because
+ * an account that was genuinely emptied reads zero for real and that is worth
+ * charting. An all-zero series trims to nothing, which is the same outcome the
+ * previous all-or-nothing guard produced for the RSU/ESPP-style accounts
+ * SnapTrade cannot estimate at all.
+ *
+ * A genuinely new account funded some days after it opened loses those real
+ * leading zeros too. That is deliberate: the two cases are indistinguishable in
+ * the response, and a flat zero prefix adds nothing to a balance chart either
+ * way. Sorting happens here rather than in the mapper so the mapper keeps
+ * returning points in provider order.
  */
-function isAllZeroBalanceHistory(history: AccountBalanceSnapshot[]): boolean {
-  return history.length > 0 && history.every((snapshot) => snapshot.ledgerBalance === 0);
+export function dropLeadingZeroBalanceHistory(history: AccountBalanceSnapshot[]): AccountBalanceSnapshot[] {
+  const chronological = [...history].sort((left, right) => left.asOfDate.localeCompare(right.asOfDate));
+  const firstReported = chronological.findIndex((snapshot) => snapshot.ledgerBalance !== 0);
+
+  return firstReported === -1 ? [] : chronological.slice(firstReported);
 }
 
 function isSnapTradeBalanceHistoryDisabled(error: unknown): boolean {
