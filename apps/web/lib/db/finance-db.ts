@@ -86,7 +86,7 @@ export interface SemanticSearchResult {
   transaction?: Transaction;
 }
 
-interface TransactionOverlayRow {
+export interface TransactionOverlayRow {
   id: string;
   category_id: string;
   reviewed: boolean;
@@ -2131,7 +2131,13 @@ async function upsertAccountBalanceSnapshotsNow(snapshots: AccountBalanceSnapsho
 
 async function replacePlaidLedgerSnapshotNow(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
   const db = await getFinanceDb();
-  const existingOverlays = await readTransactionOverlays(db);
+  // Snapshot is taken before BEGIN, so it cannot see the ON DELETE SET NULL that
+  // firing deletes below will apply to pair pointers. Repoint the pairs at the
+  // posted ids up front rather than letting the merge write dead pending ids back.
+  const existingOverlays = remapOverlayPairsAcrossPendingPosted(
+    await readTransactionOverlays(db),
+    input.transactions
+  );
   const removedTransactionIds = [...new Set(input.removedTransactionIds)];
   const erroredConnectionIds = input.providerConnections
     .filter((connection) => connection.status === "error")
@@ -5680,6 +5686,18 @@ async function runMigrations(db: FinanceDb): Promise<void> {
   await clearDanglingTransactionPairs(db);
 
   if (db.dialect === "postgres") {
+    // Both constraints are DEFERRABLE INITIALLY DEFERRED on purpose. An ingest
+    // transaction snapshots user overlays into memory before BEGIN, then deletes
+    // superseded rows (a pending transaction replaced by its posted version).
+    // `ON DELETE SET NULL` nulls the surviving partner's pointer in the database
+    // while the in-memory snapshot still holds the dead id, so the overlay merge
+    // writes that dead id straight back. Checked per-statement, that is a hard
+    // 23503 and the whole sync rolls back; checked at COMMIT, the
+    // `clearDanglingTransactionPairs` call every ingest path already makes just
+    // before COMMIT has scrubbed the pointer first and the check passes.
+    //
+    // Legacy deployments created these as NOT DEFERRABLE, so re-create them when
+    // pg_constraint still reports condeferrable = false.
     await db.exec(`
       DO $$
       BEGIN
@@ -5690,7 +5708,19 @@ async function runMigrations(db: FinanceDb): Promise<void> {
           ADD CONSTRAINT transactions_financial_goal_fk
           FOREIGN KEY (financial_goal_id)
           REFERENCES financial_goals(id)
-          ON DELETE SET NULL;
+          ON DELETE SET NULL
+          DEFERRABLE INITIALLY DEFERRED;
+        ELSIF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'transactions_financial_goal_fk' AND condeferrable
+        ) THEN
+          ALTER TABLE transactions DROP CONSTRAINT transactions_financial_goal_fk;
+          ALTER TABLE transactions
+          ADD CONSTRAINT transactions_financial_goal_fk
+          FOREIGN KEY (financial_goal_id)
+          REFERENCES financial_goals(id)
+          ON DELETE SET NULL
+          DEFERRABLE INITIALLY DEFERRED;
         END IF;
 
         IF NOT EXISTS (
@@ -5700,7 +5730,19 @@ async function runMigrations(db: FinanceDb): Promise<void> {
           ADD CONSTRAINT transactions_paired_transaction_fk
           FOREIGN KEY (paired_transaction_id)
           REFERENCES transactions(id)
-          ON DELETE SET NULL;
+          ON DELETE SET NULL
+          DEFERRABLE INITIALLY DEFERRED;
+        ELSIF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'transactions_paired_transaction_fk' AND condeferrable
+        ) THEN
+          ALTER TABLE transactions DROP CONSTRAINT transactions_paired_transaction_fk;
+          ALTER TABLE transactions
+          ADD CONSTRAINT transactions_paired_transaction_fk
+          FOREIGN KEY (paired_transaction_id)
+          REFERENCES transactions(id)
+          ON DELETE SET NULL
+          DEFERRABLE INITIALLY DEFERRED;
         END IF;
       END $$;
     `);
@@ -5987,6 +6029,51 @@ async function readTransactionOverlays(db: FinanceDb): Promise<Map<string, Trans
     "SELECT id, category_id, reviewed, tags, notes, financial_goal_id, paired_transaction_id FROM transactions"
   );
   return new Map(rows.rows.map((row) => [row.id, row]));
+}
+
+/**
+ * Follow hard-linked transfer pairs across a pending-to-posted rename.
+ *
+ * A provider replaces a pending transaction with a posted one carrying a new id,
+ * and ingest deletes the pending row. Any counterpart still pointing at the
+ * pending id would be left dangling, so `clearDanglingTransactionPairs` nulls it
+ * and the user's confirmed pair is silently severed. Repointing the overlay at
+ * the posted id keeps the link intact, which is what the pair overlay is for.
+ *
+ * Returns a new map; the input is left untouched.
+ */
+export function remapOverlayPairsAcrossPendingPosted(
+  overlays: Map<string, TransactionOverlayRow>,
+  transactions: readonly { id: string; pendingTransactionId?: string }[]
+): Map<string, TransactionOverlayRow> {
+  const pendingToPosted = new Map<string, string>();
+
+  for (const transaction of transactions) {
+    if (transaction.pendingTransactionId && transaction.pendingTransactionId !== transaction.id) {
+      pendingToPosted.set(transaction.pendingTransactionId, transaction.id);
+    }
+  }
+
+  if (pendingToPosted.size === 0) {
+    return overlays;
+  }
+
+  const remapped = new Map<string, TransactionOverlayRow>();
+
+  for (const [id, overlay] of overlays) {
+    const pairedWith = overlay.paired_transaction_id;
+    const postedId = pairedWith === null || pairedWith === undefined ? undefined : pendingToPosted.get(pairedWith);
+    // A pair pointing at itself post-rename is not a pair; drop it rather than
+    // writing a self-reference the matcher would have to undo later.
+    remapped.set(
+      id,
+      postedId === undefined
+        ? overlay
+        : { ...overlay, paired_transaction_id: postedId === id ? null : postedId }
+    );
+  }
+
+  return remapped;
 }
 
 async function readTransactionsByIds(db: FinanceDb, ids: string[]): Promise<Map<string, Transaction>> {
