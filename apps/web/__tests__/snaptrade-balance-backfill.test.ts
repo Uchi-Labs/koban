@@ -15,6 +15,8 @@ import {
 import {
   accountIdForSnapTrade,
   backfillSnapTradeBalanceHistory,
+  createSnapTradeBalanceSnapshot,
+  dropLeadingZeroBalanceHistory,
   mapSnapTradeAccountToDomain,
   mapSnapTradeBalanceHistory,
   providerConnectionIdForSnapTrade,
@@ -253,7 +255,7 @@ describe("backfillSnapTradeBalanceHistory", () => {
     expect(rows.filter((row) => row.source === snapTradeBalanceBackfillSource)).toHaveLength(2);
   }, 15_000);
 
-  it("skips ingestion for an account whose entire balance history is zero, but keeps a partially-zero one", async () => {
+  it("skips an all-zero account, trims an account's leading zeros, and keeps zeros it reports after funding", async () => {
     useTempDb();
     const account = seedAccount();
     const providerConnectionId = providerConnectionIdForSnapTrade("auth-fidelity-1");
@@ -267,23 +269,31 @@ describe("backfillSnapTradeBalanceHistory", () => {
       providerConnectionId,
       syncedAt
     });
-    // A genuinely new/emptied account can be legitimately zero on *some* but
-    // not all days — that series is real and must be kept as-is.
-    const partialZeroAccount = mapSnapTradeAccountToDomain({
-      account: createSnapTradeAccount({ id: "snap-partial-zero", totalAmount: 50 }),
+    // The Interactive Brokers shape: SnapTrade pads the year before the broker
+    // started reporting with zeros. That prefix is "no estimate", not history.
+    const leadingZeroAccount = mapSnapTradeAccountToDomain({
+      account: createSnapTradeAccount({ id: "snap-leading-zero", totalAmount: 50 }),
+      providerConnectionId,
+      syncedAt
+    });
+    // An account emptied after it was funded really is worth zero on those
+    // later days, and those points must survive.
+    const emptiedAccount = mapSnapTradeAccountToDomain({
+      account: createSnapTradeAccount({ id: "snap-emptied", totalAmount: 0 }),
       providerConnectionId,
       syncedAt
     });
 
-    if (!allZeroAccount || !partialZeroAccount) {
+    if (!allZeroAccount || !leadingZeroAccount || !emptiedAccount) {
       throw new Error("expected mapped SnapTrade accounts");
     }
 
     const allZeroAccountId = allZeroAccount.id;
-    const partialZeroAccountId = partialZeroAccount.id;
+    const leadingZeroAccountId = leadingZeroAccount.id;
+    const emptiedAccountId = emptiedAccount.id;
 
     await replaceSnapTradeInvestmentSnapshot(
-      snapshotInput(account, [], [account, allZeroAccount, partialZeroAccount])
+      snapshotInput(account, [], [account, allZeroAccount, leadingZeroAccount, emptiedAccount])
     );
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
@@ -304,7 +314,7 @@ describe("backfillSnapTradeBalanceHistory", () => {
             };
           }
 
-          if (accountId === "snap-partial-zero") {
+          if (accountId === "snap-leading-zero") {
             return {
               status: 200,
               data: {
@@ -313,6 +323,20 @@ describe("backfillSnapTradeBalanceHistory", () => {
                   { date: "2026-07-06", total_value: "50.00" },
                   { date: "2026-07-05", total_value: "0.00" },
                   { date: "2026-07-04", total_value: "0.00" }
+                ]
+              }
+            };
+          }
+
+          if (accountId === "snap-emptied") {
+            return {
+              status: 200,
+              data: {
+                currency: "USD",
+                history: [
+                  { date: "2026-07-06", total_value: "0.00" },
+                  { date: "2026-07-05", total_value: "0.00" },
+                  { date: "2026-07-04", total_value: "42.00" }
                 ]
               }
             };
@@ -333,16 +357,18 @@ describe("backfillSnapTradeBalanceHistory", () => {
       accounts: [
         { accountId: account.id, snapTradeAccountId: "snap-account-1" },
         { accountId: allZeroAccountId, snapTradeAccountId: "snap-all-zero" },
-        { accountId: partialZeroAccountId, snapTradeAccountId: "snap-partial-zero" }
+        { accountId: leadingZeroAccountId, snapTradeAccountId: "snap-leading-zero" },
+        { accountId: emptiedAccountId, snapTradeAccountId: "snap-emptied" }
       ],
       client,
       user
     });
 
-    expect(result.attemptedAccounts).toBe(3);
+    expect(result.attemptedAccounts).toBe(4);
     expect(result.disabled).toBe(false);
-    // Healthy (1) + partial-zero (3) = 4; all-zero contributes 0.
-    expect(result.pointsWritten).toBe(4);
+    // Healthy (1) + leading-zero trimmed to (1) + emptied kept whole (3) = 5;
+    // all-zero contributes 0.
+    expect(result.pointsWritten).toBe(5);
     expect(result.perAccount).toEqual([
       { accountId: account.id, points: 1 },
       {
@@ -350,17 +376,147 @@ describe("backfillSnapTradeBalanceHistory", () => {
         points: 0,
         error: "provider returned no usable estimate (all-zero balance history)"
       },
-      { accountId: partialZeroAccountId, points: 3 }
+      { accountId: leadingZeroAccountId, points: 1 },
+      { accountId: emptiedAccountId, points: 3 }
     ]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("all-zero history"));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("dropped 2 leading zero day(s) before its first reported balance on 2026-07-06")
+    );
 
     const rows = (await readFinanceDbSnapshot())?.balanceSnapshots ?? [];
     const backfillRows = rows.filter((row) => row.source === snapTradeBalanceBackfillSource);
+
     expect(backfillRows.some((row) => row.accountId === allZeroAccountId)).toBe(false);
-    expect(backfillRows.filter((row) => row.accountId === partialZeroAccountId)).toHaveLength(3);
+
+    // Only the funded day survived for the leading-zero account.
     expect(
-      backfillRows.filter((row) => row.accountId === partialZeroAccountId && row.ledgerBalance === 0)
-    ).toHaveLength(2);
+      backfillRows.filter((row) => row.accountId === leadingZeroAccountId).map((row) => row.asOfDate)
+    ).toEqual(["2026-07-06"]);
+
+    // The emptied account keeps its post-funding zeros: 42 on the 4th, then 0.
+    expect(
+      backfillRows
+        .filter((row) => row.accountId === emptiedAccountId)
+        .sort((left, right) => left.asOfDate.localeCompare(right.asOfDate))
+        .map((row) => [row.asOfDate, row.ledgerBalance])
+    ).toEqual([
+      ["2026-07-04", 42],
+      ["2026-07-05", 0],
+      ["2026-07-06", 0]
+    ]);
+  }, 15_000);
+});
+
+describe("dropLeadingZeroBalanceHistory", () => {
+  it("drops the leading zero run and returns the rest in date order", () => {
+    // Deliberately supplied newest-first, the order SnapTrade actually returns.
+    const trimmed = dropLeadingZeroBalanceHistory(
+      mapSnapTradeBalanceHistory({
+        accountId: "snaptrade_acct_ibkr",
+        currency: "USD",
+        history: [
+          { date: "2026-08-04", total_value: "1690.00" },
+          { date: "2026-08-03", total_value: "1683.90" },
+          { date: "2026-08-02", total_value: "0.00" },
+          { date: "2026-08-01", total_value: "0.00" }
+        ]
+      })
+    );
+
+    expect(trimmed.map((snapshot) => [snapshot.asOfDate, snapshot.ledgerBalance])).toEqual([
+      ["2026-08-03", 1683.9],
+      ["2026-08-04", 1690]
+    ]);
+  });
+
+  it("keeps zeros that appear after the first reported balance", () => {
+    const trimmed = dropLeadingZeroBalanceHistory(
+      mapSnapTradeBalanceHistory({
+        accountId: "snaptrade_acct_emptied",
+        currency: "USD",
+        history: [
+          { date: "2026-08-01", total_value: "0.00" },
+          { date: "2026-08-02", total_value: "500.00" },
+          { date: "2026-08-03", total_value: "0.00" },
+          { date: "2026-08-04", total_value: "0.00" }
+        ]
+      })
+    );
+
+    expect(trimmed.map((snapshot) => [snapshot.asOfDate, snapshot.ledgerBalance])).toEqual([
+      ["2026-08-02", 500],
+      ["2026-08-03", 0],
+      ["2026-08-04", 0]
+    ]);
+  });
+
+  it("returns nothing for an all-zero or empty history", () => {
+    expect(
+      dropLeadingZeroBalanceHistory(
+        mapSnapTradeBalanceHistory({
+          accountId: "snaptrade_acct_rsu",
+          currency: "USD",
+          history: [
+            { date: "2026-08-01", total_value: "0.00" },
+            { date: "2026-08-02", total_value: "0.00" }
+          ]
+        })
+      )
+    ).toEqual([]);
+    expect(dropLeadingZeroBalanceHistory([])).toEqual([]);
+  });
+
+  it("does not mutate the history it was given", () => {
+    const history = mapSnapTradeBalanceHistory({
+      accountId: "snaptrade_acct_ibkr",
+      currency: "USD",
+      history: [
+        { date: "2026-08-04", total_value: "1690.00" },
+        { date: "2026-08-03", total_value: "0.00" }
+      ]
+    });
+
+    dropLeadingZeroBalanceHistory(history);
+
+    expect(history.map((snapshot) => snapshot.asOfDate)).toEqual(["2026-08-04", "2026-08-03"]);
+  });
+});
+
+describe("createSnapTradeBalanceSnapshot", () => {
+  it("keys the live snapshot on the day so repeat syncs upsert instead of appending", async () => {
+    useTempDb();
+    const account = seedAccount();
+    await replaceSnapTradeInvestmentSnapshot(snapshotInput(account, []));
+
+    // Two syncs a few hours apart on the same day, which is what the ~30 minute
+    // scheduler actually does roughly 48 times over.
+    const morning = createSnapTradeBalanceSnapshot({ ...account, currentBalance: 100 }, "2026-07-06T09:00:00.000Z");
+    const evening = createSnapTradeBalanceSnapshot({ ...account, currentBalance: 175.5 }, "2026-07-06T21:30:00.000Z");
+    const nextDay = createSnapTradeBalanceSnapshot({ ...account, currentBalance: 180 }, "2026-07-07T09:00:00.000Z");
+
+    expect(morning.id).toBe(`${account.id}_20260706`);
+    expect(evening.id).toBe(morning.id);
+    expect(nextDay.id).toBe(`${account.id}_20260707`);
+
+    // The backfill for the same day uses a different key, so the two sources
+    // never overwrite each other.
+    expect(morning.id).not.toBe(`${account.id}_backfill_20260706`);
+
+    await upsertAccountBalanceSnapshots([morning]);
+    await upsertAccountBalanceSnapshots([evening]);
+    await upsertAccountBalanceSnapshots([nextDay]);
+
+    const liveRows = ((await readFinanceDbSnapshot())?.balanceSnapshots ?? [])
+      .filter((row) => row.source === "snaptrade")
+      .sort((left, right) => left.asOfDate.localeCompare(right.asOfDate));
+
+    // Three writes, two days, two rows: the second write of the 6th replaced
+    // the first rather than adding a point to the balance chart.
+    expect(liveRows.map((row) => [row.asOfDate, row.ledgerBalance, row.capturedAt])).toEqual([
+      ["2026-07-06", 175.5, "2026-07-06T21:30:00.000Z"],
+      ["2026-07-07", 180, "2026-07-07T09:00:00.000Z"]
+    ]);
   }, 15_000);
 });
 
