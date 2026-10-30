@@ -54,6 +54,7 @@ describe("chatgpt oauth", () => {
 
   it("persists saved credentials in sync_state and clears them on logout", async () => {
     useTempFinanceDb();
+    enableChatGptOAuth();
     const accessToken = jwtWithExpiry(Date.now() + 60 * 60 * 1000);
     await seedToken(chatgptCredentialStore, { accessToken, expiresAt: Date.now() + 60 * 60 * 1000 });
 
@@ -74,6 +75,7 @@ describe("chatgpt oauth", () => {
 
   it("seeds tokens from env once, then treats sync_state as the source of truth", async () => {
     useTempFinanceDb();
+    enableChatGptOAuth();
     const env = {
       CHATGPT_OAUTH_TOKENS_B64: encodeChatGptOAuthTokens({
         access: jwtWithExpiry(Date.now() + 60 * 60 * 1000),
@@ -94,6 +96,7 @@ describe("chatgpt oauth", () => {
 
   it("reports connected status with an expiry once a credential is stored", async () => {
     useTempFinanceDb();
+    enableChatGptOAuth();
     const expiresAt = Date.now() + 60 * 60 * 1000;
     await seedToken(chatgptCredentialStore, { accessToken: jwtWithExpiry(expiresAt), expiresAt });
 
@@ -102,6 +105,37 @@ describe("chatgpt oauth", () => {
     expect(status.connected).toBe(true);
     expect(status.enabled).toBe(true);
     expect(status.expiresAt).toBe(new Date(expiresAt).toISOString());
+  }, 15_000);
+
+  it("reports a disabled integration as not connected rather than raising", async () => {
+    useTempFinanceDb();
+    const expiresAt = Date.now() + 60 * 60 * 1000;
+    await seedToken(chatgptCredentialStore, { accessToken: jwtWithExpiry(expiresAt), expiresAt });
+
+    // A credential is stored, but the kill switch is off. The package raises
+    // DisabledError from the read; the settings page still has to render.
+    await expect(getStoredChatGptOAuthSession({})).resolves.toBeNull();
+
+    const status = await chatGptOAuthStatus({});
+
+    expect(status.connected).toBe(false);
+    expect(status.enabled).toBe(false);
+    expect(status.expiresAt).toBeUndefined();
+  }, 15_000);
+
+  it("does not seed credentials while the integration is disabled", async () => {
+    useTempFinanceDb();
+    const expiry = Date.now() + 60 * 60 * 1000;
+    const env = {
+      CHATGPT_OAUTH_TOKENS_B64: encodeChatGptOAuthTokens({
+        access: jwtWithExpiry(expiry),
+        expiry,
+        refresh: "test-refresh-token"
+      })
+    };
+
+    await expect(getStoredChatGptOAuthSession(env)).resolves.toBeNull();
+    await expect(readSyncStateValue(chatGptOAuthTokensStateKey)).resolves.toBeUndefined();
   }, 15_000);
 
   it("refreshes an expired token through auth.openai.com and persists the rotation", async () => {
@@ -165,6 +199,16 @@ function useTempFinanceDb(): void {
   // Point CODEX_HOME at the empty temp dir so the ~/.codex/auth.json import
   // fallback is a deterministic no-op regardless of the host machine.
   process.env.CODEX_HOME = testRoot;
+}
+
+/**
+ * vitest.setup.ts strips this flag from every test so nothing rides the
+ * developer's own .env, and the package refuses to read a credential while it
+ * is off. Any test about a stored credential has to turn the integration on
+ * first; afterEach clears it again.
+ */
+function enableChatGptOAuth(): void {
+  process.env.AI_FINANCES_ENABLE_CHATGPT_OAUTH = "1";
 }
 
 function jwtWithExpiry(expiryMs: number): string {

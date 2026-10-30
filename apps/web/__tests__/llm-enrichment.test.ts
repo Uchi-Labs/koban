@@ -387,6 +387,32 @@ describe("llm enrichment", () => {
     });
   });
 
+  it("accepts the ledger's own categories when the context supplies them", () => {
+    const context = {
+      ...createContext(),
+      categories: [
+        { archived: false, color: "#000", emoji: "🍜", icon: "circle", id: "cat_custom_restaurants", name: "Restaurants" },
+        { archived: true, color: "#000", emoji: "📦", icon: "circle", id: "cat_custom_retired", name: "Retired" }
+      ]
+    } as LlmEnrichmentContext;
+    const suggestion = (categoryId: string) => ({
+      action: "set_category",
+      category_id: categoryId,
+      confidence: 0.9,
+      reason: "The merchant is a restaurant according to the description.",
+      transaction_id: "txn_openai"
+    });
+
+    const result = validateLlmEnrichmentPayload(
+      { suggestions: [suggestion("cat_custom_restaurants"), suggestion("cat_custom_retired"), suggestion("cat_software")] },
+      context,
+      "llm:claude_subscription:haiku"
+    );
+
+    expect(result.suggestions.map((entry) => entry.categoryId)).toEqual(["cat_custom_restaurants"]);
+    expect(result.rejected).toBe(2);
+  });
+
   it("accepts only actionable model suggestions that reference known local objects", () => {
     const context = createContext();
     const result = validateLlmEnrichmentPayload(

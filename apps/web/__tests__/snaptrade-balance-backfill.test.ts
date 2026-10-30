@@ -108,6 +108,32 @@ describe("mapSnapTradeBalanceHistory", () => {
 });
 
 describe("upsertAccountBalanceSnapshots", () => {
+  it("writes a multi-year history in batches, spanning more rows than one queued write allows", async () => {
+    useTempDb();
+    const account = seedAccount();
+    await replaceSnapTradeInvestmentSnapshot(snapshotInput(account, []));
+
+    // Three years of daily points, which is the shape that used to send one
+    // INSERT per row through a single queued write and blow the write timeout.
+    const history = Array.from({ length: 1_100 }, (_, index) => {
+      const day = new Date(Date.UTC(2023, 0, 1) + index * 86_400_000);
+      return { date: day.toISOString().slice(0, 10), total_value: String(10_000 + index) };
+    });
+    const backfill = mapSnapTradeBalanceHistory({ accountId: account.id, currency: "USD", history });
+    expect(backfill).toHaveLength(1_100);
+
+    const written = await upsertAccountBalanceSnapshots(backfill);
+    expect(written).toBe(1_100);
+
+    const snapshot = await readFinanceDbSnapshot();
+    expect(snapshot?.balanceSnapshots ?? []).toHaveLength(1_100);
+
+    // Idempotent across the chunk boundary, not just within one chunk.
+    expect(await upsertAccountBalanceSnapshots(backfill)).toBe(1_100);
+    const again = await readFinanceDbSnapshot();
+    expect(again?.balanceSnapshots ?? []).toHaveLength(1_100);
+  });
+
   it("adds backfill rows idempotently and preserves live intraday captures", async () => {
     useTempDb();
     const account = seedAccount();

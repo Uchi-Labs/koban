@@ -271,6 +271,47 @@ describe("source adapter normalization", () => {
     });
   });
 
+  it("normalizes gog Gmail thread summaries", () => {
+    const items = normalizeGmailMessages([
+      {
+        date: "2026-09-08 10:12",
+        from: "Honda Service <service@example.com>",
+        id: "thread_1",
+        internalDateIso: "2026-09-08T14:12:00Z",
+        labels: ["INBOX"],
+        messageCount: 1,
+        subject: "Your service invoice"
+      }
+    ]);
+
+    expect(items[0]).toMatchObject({
+      externalId: "thread_1",
+      occurredAt: "2026-09-08T14:12:00.000Z",
+      summary: "From: Honda Service <service@example.com>",
+      title: "Your service invoice"
+    });
+  });
+
+  it("unwraps the Outlook CLI's results envelope", () => {
+    const items = normalizeOutlookMessages({
+      meta: { source: "live" },
+      results: {
+        value: [
+          {
+            bodyPreview: "Your order has shipped",
+            from: { emailAddress: { address: "orders@example.com", name: "Example Store" } },
+            id: "message_wrapped",
+            receivedDateTime: "2026-09-20T10:00:00Z",
+            subject: "Order shipped"
+          }
+        ]
+      }
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ externalId: "message_wrapped", title: "Order shipped" });
+  });
+
   it("normalizes Outlook message lists without storing full mail bodies", () => {
     const items = normalizeOutlookMessages({
       value: [

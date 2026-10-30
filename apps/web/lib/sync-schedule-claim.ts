@@ -32,9 +32,18 @@ export async function withSyncScheduleClaimHeartbeat<T>(
     }, loseOwnership);
   }, claimHeartbeatIntervalMs);
   timer.unref?.();
+  const operationRun = Promise.resolve().then(() => operation(controller.signal));
 
   try {
-    return await Promise.race([operation(controller.signal), ownershipLost]);
+    return await Promise.race([operationRun, ownershipLost]);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      // The claim is already gone, but the coordinator must retain process-local
+      // ownership until the aborted operation actually settles. Otherwise the
+      // next tick can overlap work that has not cooperatively stopped yet.
+      await operationRun.catch(() => undefined);
+    }
+    throw error;
   } finally {
     clearInterval(timer);
   }

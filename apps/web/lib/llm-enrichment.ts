@@ -1,4 +1,5 @@
 import type {
+  Category,
   EnrichmentSuggestionAction,
   ExternalSourceStatus,
   Transaction,
@@ -20,13 +21,19 @@ import {
   isChatGptOAuthEnabled,
   parseChatGptOAuthTokens
 } from "@/lib/ai/chatgpt-oauth";
+import {
+  claudeSubscriptionBaseUrl,
+  claudeSubscriptionMinTimeoutMs,
+  isClaudeSubscriptionFallbackEnabled,
+  selectClaudeSubscriptionModel
+} from "@/lib/ai/claude-subscription";
 import { appCategories } from "@/lib/categories";
 import { isReviewActionableTransaction } from "@/lib/transaction-classification";
 import { validateTransactionRuleCreateBody } from "@/lib/transaction-rule-input";
 import { readWorkspaceEnv, type WorkspaceEnv } from "@/lib/workspace-env";
 
-export type LlmProviderName = "none" | "ollama" | "openai_compatible";
-export type LlmCredentialSource = "none" | "openai_api_key" | "chatgpt_oauth" | "ollama" | "local";
+export type LlmProviderName = "none" | "ollama" | "openai_compatible" | "claude_subscription";
+export type LlmCredentialSource = "none" | "openai_api_key" | "chatgpt_oauth" | "claude_subscription" | "ollama" | "local";
 export type LlmModelUseCase = "default" | "reasoning" | "simple";
 
 export interface LlmProviderStatus {
@@ -36,10 +43,16 @@ export interface LlmProviderStatus {
   configured: boolean;
   credentialSource?: LlmCredentialSource;
   errorMessage?: string;
+  fallback?: LlmFallbackStatus;
   model?: string;
   provider: LlmProviderName;
   status: ExternalSourceStatus;
   timeoutMs: number;
+}
+
+export interface LlmFallbackStatus {
+  model: string;
+  provider: "claude_subscription";
 }
 
 export interface LlmEvidenceSummary {
@@ -51,6 +64,7 @@ export interface LlmEvidenceSummary {
 }
 
 export interface LlmEnrichmentContext {
+  categories?: Category[];
   evidenceByTransactionId: Map<string, LlmEvidenceSummary[]>;
   existingRules: TransactionRule[];
   limit: number;
@@ -130,13 +144,30 @@ const allowedRuleFields = new Set<TransactionRuleMatchField>([
   "merchant_or_description"
 ]);
 const allowedRuleOperators = new Set<TransactionRuleMatchOperator>(["contains", "equals", "regex"]);
-const allowedCategoryIds = new Set(appCategories.map((category) => category.id));
-const categoryIdByLookup = new Map(
-  appCategories.flatMap((category) => [
-    [normalizeLookupValue(category.id), category.id],
-    [normalizeLookupValue(category.name), category.id]
-  ])
-);
+interface CategoryCatalog {
+  ids: Set<string>;
+  idByLookup: Map<string, string>;
+  list: Array<Pick<Category, "id" | "name">>;
+}
+
+// The ledger's live categories (built-ins plus user-created ones) when the
+// caller loaded them; the built-in set otherwise.
+function buildCategoryCatalog(categories: Category[] | undefined): CategoryCatalog {
+  const source = (categories && categories.length > 0 ? categories : appCategories).filter(
+    (category) => !category.archived
+  );
+
+  return {
+    ids: new Set(source.map((category) => category.id)),
+    idByLookup: new Map(
+      source.flatMap((category) => [
+        [normalizeLookupValue(category.id), category.id],
+        [normalizeLookupValue(category.name), category.id]
+      ])
+    ),
+    list: source.map((category) => ({ id: category.id, name: category.name }))
+  };
+}
 const defaultTimeoutMs = 20_000;
 const maxLlmTransactions = 30;
 export const untrustedDataOpenTag = "<untrusted-data>";
@@ -161,12 +192,6 @@ const enrichmentSuggestionSchema = z
   })
   .strict()
   .superRefine((suggestion, context) => {
-    if ((suggestion.action === "set_category" || suggestion.action === "create_rule") && !allowedCategoryIds.has(suggestion.category_id)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "category_id must reference a known category"
-      });
-    }
 
     if (suggestion.action === "add_tags" && suggestion.tags.length === 0) {
       context.addIssue({
@@ -234,6 +259,23 @@ function createLlmEnrichmentStatus(
   chatGptOAuthConnected: boolean
 ): LlmProviderStatus {
   const configuredProvider = normalizeProvider(env.AI_FINANCES_LLM_PROVIDER);
+
+  // An explicit Claude subscription choice wins over an OpenAI key or a
+  // connected ChatGPT session, which otherwise take over the provider.
+  if (configuredProvider === "claude_subscription") {
+    return {
+      baseUrl: claudeSubscriptionBaseUrl,
+      chatGptOAuthConnected,
+      chatGptOAuthEnabled: isChatGptOAuthEnabled(env),
+      configured: true,
+      credentialSource: "claude_subscription",
+      model: selectClaudeSubscriptionModel(env, modelUseCase),
+      provider: configuredProvider,
+      status: "stale",
+      timeoutMs: Math.max(parseTimeoutMs(env.AI_FINANCES_LLM_TIMEOUT_MS), claudeSubscriptionMinTimeoutMs)
+    };
+  }
+
   const explicitOpenAiKey = openAiCompatibleApiKey(env);
   const chatGptOAuthEnabled = isChatGptOAuthEnabled(env);
   const provider =
@@ -251,7 +293,7 @@ function createLlmEnrichmentStatus(
     return {
       ...baseStatus,
       configured: false,
-      errorMessage: "No LLM provider configured. Set AI_FINANCES_LLM_PROVIDER to ollama or openai_compatible.",
+      errorMessage: "No LLM provider configured. Set AI_FINANCES_LLM_PROVIDER to ollama, openai_compatible, or claude_subscription.",
       credentialSource: "local",
       provider,
       status: "not_configured"
@@ -300,6 +342,14 @@ function createLlmEnrichmentStatus(
     baseUrl: sanitizeUrl(baseUrl),
     configured: true,
     credentialSource,
+    ...(isClaudeSubscriptionFallbackEnabled(env)
+      ? {
+          fallback: {
+            model: selectClaudeSubscriptionModel(env, modelUseCase),
+            provider: "claude_subscription" as const
+          }
+        }
+      : {}),
     model,
     provider,
     status: "stale"
@@ -386,6 +436,7 @@ export async function generateLlmEnrichmentSuggestions(
   }
 
   let payload: unknown;
+  let servedSource = source;
   try {
     const result = await client.generateObject({
       env,
@@ -397,6 +448,9 @@ export async function generateLlmEnrichmentSuggestions(
       schemaName: "finance_enrichment_suggestions"
     });
     payload = result.object;
+    if (result.servedBy) {
+      servedSource = `llm:${result.servedBy.provider}:${result.servedBy.model}`;
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "LLM enrichment failed.";
     const errorProvider = isAiLlmOutputError(error) ? markProviderConnected(provider) : markProviderErrored(provider, errorMessage);
@@ -410,12 +464,12 @@ export async function generateLlmEnrichmentSuggestions(
   const connectedProvider = markProviderConnected(provider);
 
   try {
-    const validation = validateLlmEnrichmentPayload(payload, context, source);
+    const validation = validateLlmEnrichmentPayload(payload, context, servedSource);
 
     return {
       completed: true,
       provider: connectedProvider,
-      source,
+      source: servedSource,
       suggestions: validation.suggestions,
       suggestionsAccepted: validation.suggestions.length,
       suggestionsRejected: validation.rejected,
@@ -426,7 +480,7 @@ export async function generateLlmEnrichmentSuggestions(
     return {
       ...emptyRun(connectedProvider),
       errorMessage,
-      source
+      source: servedSource
     };
   }
 }
@@ -503,11 +557,13 @@ export function validateLlmEnrichmentPayload(
   const records = extractSuggestionRecords(parsed);
   const transactionIds = new Set(context.transactions.map((transaction) => transaction.id));
   const existingRulePatterns = new Set(context.existingRules.map((rule) => normalizeRulePattern(rule.pattern)));
+  const categoryCatalog = buildCategoryCatalog(context.categories);
   const suggestions: LlmSuggestionInput[] = [];
   let rejected = 0;
 
   for (const record of records) {
     const suggestion = normalizeLlmSuggestion(record, {
+      categoryCatalog,
       existingRulePatterns,
       source,
       transactionIds
@@ -601,10 +657,7 @@ function buildPromptPayload(context: LlmEnrichmentContext): PromptPayload {
   const untrustedBudget = createUntrustedPromptTextBudget(llmEnrichmentUntrustedSectionMaxChars);
 
   return {
-    categories: appCategories.map((category) => ({
-      id: category.id,
-      name: category.name
-    })),
+    categories: buildCategoryCatalog(context.categories).list,
     existing_rules: context.existingRules.slice(0, 80).map((rule) => ({
       category_id: rule.categoryId,
       match_field: rule.matchField,
@@ -691,6 +744,7 @@ function selectCandidateTransactions(transactions: Transaction[]): Transaction[]
 function normalizeLlmSuggestion(
   record: Record<string, unknown>,
   context: {
+    categoryCatalog: CategoryCatalog;
     existingRulePatterns: Set<string>;
     source: string;
     transactionIds: Set<string>;
@@ -714,11 +768,11 @@ function normalizeLlmSuggestion(
     return null;
   }
 
-  const categoryId = readCategoryId(record);
+  const categoryId = readCategoryId(record, context.categoryCatalog);
   const tags = normalizeTags(readStringArray(record, ["tags"]));
   const markReviewed = readBoolean(record, ["mark_reviewed", "markReviewed"]) ?? action === "mark_reviewed";
 
-  if ((action === "set_category" || action === "create_rule") && (!categoryId || !allowedCategoryIds.has(categoryId))) {
+  if ((action === "set_category" || action === "create_rule") && (!categoryId || !context.categoryCatalog.ids.has(categoryId))) {
     return null;
   }
 
@@ -775,7 +829,7 @@ function normalizeLlmSuggestion(
       pattern: rulePattern,
       tags
     },
-    allowedCategoryIds
+    context.categoryCatalog.ids
   );
 
   if (!ruleValidation.ok) {
@@ -882,15 +936,15 @@ function readAction(record: Record<string, unknown>): EnrichmentSuggestionAction
   return action && allowedActions.has(action) ? action : undefined;
 }
 
-function readCategoryId(record: Record<string, unknown>): string | undefined {
+function readCategoryId(record: Record<string, unknown>, catalog: CategoryCatalog): string | undefined {
   const categoryId = readString(record, ["category_id", "categoryId", "category.id"]);
 
-  if (categoryId && allowedCategoryIds.has(categoryId)) {
+  if (categoryId && catalog.ids.has(categoryId)) {
     return categoryId;
   }
 
   const categoryLookup = normalizeLookupValue(readString(record, ["category", "category_name", "categoryName", "category.name"]));
-  return categoryLookup ? categoryIdByLookup.get(categoryLookup) : undefined;
+  return categoryLookup ? catalog.idByLookup.get(categoryLookup) : undefined;
 }
 
 function readRuleField(record: Record<string, unknown>): TransactionRuleMatchField | undefined {
@@ -1019,7 +1073,7 @@ function normalizeConfidence(value: number): number | undefined {
 }
 
 function normalizeProvider(value: string | undefined): LlmProviderName {
-  if (value === "ollama" || value === "openai_compatible") {
+  if (value === "ollama" || value === "openai_compatible" || value === "claude_subscription") {
     return value;
   }
 

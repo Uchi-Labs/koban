@@ -1,9 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
 
+async function expectOneVisiblePage(page: Page, testId: string) {
+  const visiblePage = page.locator(`[data-testid="${testId}"]:visible`);
+  await expect(visiblePage).toHaveCount(1);
+  await expect(visiblePage).toBeVisible();
+}
+
 test("dashboard renders Plaid-backed cards", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  await expectOneVisiblePage(page, "dashboard-page");
   await expect(page.getByRole("heading", { name: "Monthly spending" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Top categories" })).toBeVisible();
   await expect(page.getByText("Transactions to review")).toBeVisible();
@@ -66,8 +72,22 @@ test("transactions fit at 390px without horizontal body scroll", async ({ page }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/transactions");
 
-  await expect(page.getByTestId("transactions-page")).toBeVisible();
+  await expectOneVisiblePage(page, "transactions-page");
   await expect(page.getByTestId("transaction-row").first()).toBeVisible();
+
+  const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
+  expect(scrollWidth).toBeLessThanOrEqual(391);
+});
+
+// The recurring calendar's day tooltip is centred on its cell, so on the last
+// column it extended ~18px past a 390px viewport and gave the whole document a
+// horizontal scrollbar. Nothing covered /recurrings at phone width, so it went
+// unnoticed; this pins it.
+test("recurrings calendar fits at 390px without horizontal body scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/recurrings");
+
+  await expectOneVisiblePage(page, "recurrings-page");
 
   const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
   expect(scrollWidth).toBeLessThanOrEqual(391);
@@ -77,7 +97,7 @@ test("investments holdings table fits at 390px without horizontal body scroll", 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/investments");
 
-  await expect(page.getByTestId("investments-page")).toBeVisible();
+  await expectOneVisiblePage(page, "investments-page");
   await expect(page.getByRole("heading", { name: "Holdings" })).toBeVisible();
 
   const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
@@ -88,7 +108,7 @@ test("dashboard cards fit at 390px without horizontal body scroll", async ({ pag
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
-  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  await expectOneVisiblePage(page, "dashboard-page");
   await expect(page.getByRole("heading", { name: "Monthly spending" })).toBeVisible();
 
   const scrollWidth = await page.evaluate(() => Math.max(document.body.scrollWidth, document.documentElement.scrollWidth));
@@ -98,7 +118,7 @@ test("dashboard cards fit at 390px without horizontal body scroll", async ({ pag
 test("transactions filter and inspector work", async ({ page }) => {
   await page.goto("/transactions");
 
-  await expect(page.getByTestId("transactions-page")).toBeVisible();
+  await expectOneVisiblePage(page, "transactions-page");
   const rows = page.getByTestId("transaction-row");
   await expect(rows.first()).toBeVisible();
   const merchant = "E2E Grocer Market";
@@ -136,6 +156,8 @@ test("settings shows provider setup without crashing", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Instacart groceries" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Airbnb travel context" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Outlook email" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Shop orders" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "iCloud Mail" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sync installed sources" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sync source" }).first()).toBeVisible();
   await expect(page.getByText("Import JSON/JSONL/CSV/EML/MBOX/ICS/ZIP").first()).toBeVisible();
@@ -171,12 +193,14 @@ test("settings shows provider setup without crashing", async ({ page }) => {
   expect(response.ok()).toBe(true);
   const payload = (await response.json()) as {
     data?: Array<{
+      id?: string;
       cache?: { record_count?: number; status?: string };
       setup?: { commands?: unknown[]; missing?: string[]; next_action?: string; ready?: boolean };
       storage?: { evidence_link_count?: number; source_item_count?: number };
     }>;
   };
-  expect(payload.data?.length).toBe(5);
+  expect(payload.data?.length).toBe(7);
+  expect(payload.data?.some((adapter) => adapter.id === "source_shop_orders")).toBe(true);
   expect(payload.data?.some((adapter) => adapter.cache?.status === "empty" && adapter.cache.record_count === 0)).toBe(true);
   expect(payload.data?.every((adapter) => typeof adapter.setup?.ready === "boolean")).toBe(true);
   expect(payload.data?.some((adapter) => adapter.setup?.ready === false && adapter.setup.next_action)).toBe(true);
@@ -446,7 +470,7 @@ test("mutating APIs reject malformed JSON with deliberate 400 errors", async ({ 
 
 test("left-nav finance pages render real ledger views", async ({ page }) => {
   await page.goto("/accounts");
-  await expect(page.getByTestId("accounts-page")).toBeVisible();
+  await expectOneVisiblePage(page, "accounts-page");
   await expect(page.getByRole("heading", { name: "Balance by account" })).toBeVisible();
   await expect(page.getByLabel("Account totals")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent account activity" })).toBeVisible();
@@ -455,7 +479,7 @@ test("left-nav finance pages render real ledger views", async ({ page }) => {
   await expect(page.getByLabel("Active transaction filters")).toContainText("Account:");
 
   await page.goto("/categories");
-  await expect(page.getByTestId("categories-page")).toBeVisible();
+  await expectOneVisiblePage(page, "categories-page");
   // "Category rollups" / "Spending by category" headings no longer exist after the Copilot-style
   // two-pane rebuild; assert the workbench's real regions instead: a "Regular Categories" tree
   // (left) and a "Category detail" pane (right).
@@ -475,7 +499,7 @@ test("left-nav finance pages render real ledger views", async ({ page }) => {
   await expect(page.getByRole("heading", { name: categoryName, exact: true })).toBeVisible();
 
   await page.goto("/investments");
-  await expect(page.getByTestId("investments-page")).toBeVisible();
+  await expectOneVisiblePage(page, "investments-page");
   await expect(page.getByRole("heading", { name: "Investment accounts", exact: true })).toBeVisible();
   await expect(page.getByLabel("Investment totals")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Synced investment accounts" })).toBeVisible();
@@ -490,7 +514,7 @@ test("left-nav finance pages render real ledger views", async ({ page }) => {
   }
 
   await page.goto("/recurrings");
-  await expect(page.getByTestId("recurrings-page")).toBeVisible();
+  await expectOneVisiblePage(page, "recurrings-page");
   await expect(page.getByRole("heading", { name: "Recurring candidates" })).toBeVisible();
   await expect(page.getByLabel("Recurring totals")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Detected recurring charges" })).toBeVisible();
@@ -659,7 +683,7 @@ test("rules page lists local transaction rules surface", async ({ page }) => {
 test("semantic search returns local finance results", async ({ page }) => {
   await page.goto("/search?q=E2E%20Grocer");
 
-  await expect(page.getByTestId("semantic-search-page")).toBeVisible();
+  await expectOneVisiblePage(page, "semantic-search-page");
   await expect(page.getByRole("heading", { name: "Semantic finance search" })).toBeVisible();
   await expect(page.getByTestId("semantic-search-result").first()).toBeVisible();
 
@@ -673,7 +697,7 @@ test("semantic search returns local finance results", async ({ page }) => {
 
 test("Dollarwise-inspired review, insights, and category management flows render in both themes", async ({ page }) => {
   await page.goto("/review");
-  await expect(page.getByTestId("review-page")).toBeVisible();
+  await expectOneVisiblePage(page, "review-page");
   await expect(page.getByRole("heading", { name: "Review Transactions" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Accept/ })).toBeEnabled();
   await setTheme(page, "light");
@@ -687,14 +711,14 @@ test("Dollarwise-inspired review, insights, and category management flows render
   await expect(page.getByRole("heading", { name: "E2E Grocer Market" })).toBeVisible();
 
   await page.goto("/insights");
-  await expect(page.getByTestId("insights-page")).toBeVisible();
+  await expectOneVisiblePage(page, "insights-page");
   await setTheme(page, "light");
   await page.screenshot({ fullPage: true, path: "test-results/insights-light.png" });
   await setTheme(page, "dark");
   await page.screenshot({ fullPage: true, path: "test-results/insights-dark.png" });
 
   await page.goto("/categories");
-  await expect(page.getByTestId("categories-page")).toBeVisible();
+  await expectOneVisiblePage(page, "categories-page");
   await expect(page.getByLabel("System category").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Show archived" })).toBeVisible();
   await setTheme(page, "light");
@@ -722,7 +746,7 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   };
 
   await page.goto("/");
-  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  await expectOneVisiblePage(page, "dashboard-page");
   const before = await readConversations();
   await page.getByTestId("new-chat-button").click();
   await expect(page.getByTestId("agent-panel")).toBeVisible();
@@ -814,4 +838,49 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   expect(sourceStatusPayload.answer).toContain("no Gmail, Amazon, Instacart, Airbnb, or Outlook records have been imported yet");
   expect(sourceStatusPayload.metrics?.some((metric) => metric.label === "Source items")).toBe(true);
   expect(sourceStatusPayload.evidence).toEqual([]);
+});
+
+test("a switch shows its accent fill when on, in both palettes", async ({ context, page }) => {
+  for (const theme of ["light", "dark"] as const) {
+    await context.clearCookies();
+    await context.addCookies([
+      { name: "koban_theme", url: "http://127.0.0.1:3008", value: theme },
+      { name: "koban_ui", url: "http://127.0.0.1:3008", value: "quiet" }
+    ]);
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "Data" }).click();
+
+    const track = page.locator('[data-slot="switch"][data-checked]').first();
+    await expect(track).toBeVisible();
+
+    // Resolve the tokens through real elements: `getPropertyValue` hands back
+    // the authored value (hex, oklch), which never string-matches the rgb()
+    // that `backgroundColor` computes to. Poll because the track carries
+    // `transition-colors` and reads as a blend while that runs.
+    const paint = () =>
+      track.evaluate((node) => {
+        const probe = (token: string) => {
+          const element = document.createElement("span");
+          element.style.backgroundColor = `var(${token})`;
+          node.append(element);
+          const value = getComputedStyle(element).backgroundColor;
+          element.remove();
+          return value;
+        };
+
+        return {
+          accent: probe("--primary"),
+          ground: probe("--background"),
+          track: getComputedStyle(node).backgroundColor
+        };
+      });
+
+    // The off state wears `bg-input`, so any rule matching that class by
+    // substring silently repaints the on state too and the toggle stops
+    // reading as on. Assert the fill, not just that a rule exists.
+    await expect.poll(async () => {
+      const now = await paint();
+      return now.track === now.accent && now.track !== now.ground;
+    }).toBe(true);
+  }
 });
