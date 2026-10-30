@@ -4,13 +4,13 @@ import { Globe } from "lucide-react";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import * as React from "react";
 
+import { iconProxyUrl } from "@/lib/merchant-domain";
 import { SPRING_FAVICON_SWAP } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 const componentThemeClassName = "iconiq-theme";
 
 const WWW_PREFIX_RE = /^www\./;
-const GOOGLE_FAVICON_RE = /google\.com\/s2\/favicons/;
 
 type FaviconResolveStatus = "idle" | "loading" | "success" | "error";
 
@@ -30,27 +30,36 @@ function extractDomain(input: string): string | null {
   }
 }
 
-function getFaviconCandidates(domain: string, size = 64): string[] {
-  const origin = `https://${domain}`;
-
-  return [
-    `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(origin)}&sz=${size}`,
-    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`,
-    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
-  ];
+/**
+ * One same-origin candidate, not the three third-party URLs this used to try.
+ *
+ * The browser must never request a brand icon from google/ddg directly: the set
+ * of domains it asks for is the user's list of banks and merchants, and it
+ * leaves from their own IP (SEC-03). /api/v1/icons fetches server-side and owns
+ * the upstream fallback chain, so the retry ladder that used to live here now
+ * lives there, where it is invisible to any third party.
+ */
+function getFaviconCandidates(domain: string, _size = 64): string[] {
+  return [iconProxyUrl(domain)];
 }
 
 function getFaviconUrl(domain: string, size = 64): string {
-  const [primary, ...fallbacks] = getFaviconCandidates(domain, size);
-  return (
-    primary ??
-    fallbacks[0] ??
-    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`
-  );
+  return getFaviconCandidates(domain, size)[0] ?? iconProxyUrl(domain);
 }
 
+/**
+ * Detects the provider's generic globe, which comes back at 16x16 when it has
+ * no real mark for the domain, so the caller can show its own initial instead.
+ *
+ * The URL test that used to gate this matched the google.com host directly.
+ * Icons are now proxied through this origin, so that pattern can never match
+ * and the check would silently pass every placeholder through. The size test is
+ * what actually identifies the placeholder, and it works whoever served it: a
+ * genuine mark is requested at 64px, so anything at 16px or under is a stand-in
+ * (or the 1x1 pixel the proxy returns when every upstream failed).
+ */
 function isLikelyDefaultFavicon(url: string, image: HTMLImageElement): boolean {
-  if (!GOOGLE_FAVICON_RE.test(url)) return false;
+  if (!url) return false;
   return image.naturalWidth <= 16 && image.naturalHeight <= 16;
 }
 

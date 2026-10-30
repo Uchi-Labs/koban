@@ -78,6 +78,7 @@ function redirectToLogin(request: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
+    "/api/:path*",
     "/((?!_next/static|_next/image|.*\\..*).*)"
   ]
 };

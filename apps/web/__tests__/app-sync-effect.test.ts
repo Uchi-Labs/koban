@@ -2,7 +2,7 @@
 
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { runSyncStepEffect } from "@/lib/app-sync-service";
+import { promiseSyncStepEffect, runSyncStepEffect } from "@/lib/app-sync-service";
 import { SourceRefreshError } from "@/lib/effect/sync-errors";
 
 describe("app sync Effect steps", () => {
@@ -18,5 +18,38 @@ describe("app sync Effect steps", () => {
       error: "Source refresh timed out.",
       status: "error"
     });
+  });
+
+  it("does not overlap Promise-backed retries while an interrupted write unwinds", async () => {
+    let activeAttempts = 0;
+    let maximumActiveAttempts = 0;
+    let attempts = 0;
+    const step = promiseSyncStepEffect(
+      async (signal) => {
+        attempts += 1;
+        activeAttempts += 1;
+        maximumActiveAttempts = Math.max(maximumActiveAttempts, activeAttempts);
+        await new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => setTimeout(resolve, 100), { once: true });
+        });
+        activeAttempts -= 1;
+        throw signal.reason;
+      },
+      (error) => new SourceRefreshError({ cause: error, message: "write interrupted" })
+    );
+
+    const result = await Effect.runPromise(
+      runSyncStepEffect(step, {
+        retry: true,
+        timeout: "5 millis",
+        timeoutError: () => new SourceRefreshError({ message: "Source refresh timed out." })
+      })
+    );
+    expect(result).toEqual({
+      error: "Source refresh timed out.",
+      status: "error"
+    });
+    expect(attempts).toBe(3);
+    expect(maximumActiveAttempts).toBe(1);
   });
 });

@@ -48,6 +48,7 @@ export interface AppSyncOptions {
   enrichmentLimit?: number;
   includePlaid?: boolean;
   includeSimpleFin?: boolean;
+  includeSnapTrade?: boolean;
   signal?: AbortSignal;
   sourceIds?: string[];
 }
@@ -160,7 +161,7 @@ function runAppSyncEffect(options: AppSyncOptions = {}) {
     // slowest provider instead of the sum.
     const [snapTradeRaw, plaidRaw, simpleFinRaw] = yield* Effect.all(
       [
-        isSnapTradeConfigured()
+        options.includeSnapTrade !== false && isSnapTradeConfigured()
           ? runSyncStepEffect(syncSnapTradeDataEffect(), {
               timeout: "2 minutes",
               timeoutError: () => new SnapTradeSyncError({ message: "SnapTrade sync timed out." })
@@ -328,13 +329,24 @@ export function runSyncStepEffect<T, E extends SyncPipelineError>(
   );
 }
 
-function promiseSyncStepEffect<T, E extends SyncPipelineError>(
-  task: () => Promise<T>,
+export function promiseSyncStepEffect<T, E extends SyncPipelineError>(
+  task: (signal: AbortSignal) => Promise<T>,
   mapError: (error: unknown) => E
 ): Effect.Effect<T, E, never> {
-  return Effect.tryPromise({
-    try: task,
-    catch: mapError
+  return Effect.async<T, E>((resume, signal) => {
+    const operation = Promise.resolve().then(() => task(signal));
+    operation.then(
+      (value) => resume(Effect.succeed(value)),
+      (error: unknown) => resume(Effect.fail(mapError(error)))
+    );
+
+    // Effect.tryPromise aborts its signal on interruption but does not wait for
+    // the Promise to settle. Waiting in the async canceler keeps timeout retries
+    // behind the operation they interrupted.
+    return Effect.promise(() => operation.then(
+      () => undefined,
+      () => undefined
+    ));
   });
 }
 

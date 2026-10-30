@@ -91,7 +91,80 @@ export function merchantBrandColor(merchant: string): string | null {
   return knownMerchant(merchant, directDomain)?.accentColor ?? null;
 }
 
-/** Institution names never resolve to third-party favicon requests. */
-export function institutionDomain(_institution: string): string | null {
-  return null;
+/**
+ * Banks and brokerages, resolved the same way merchants are.
+ *
+ * These were deliberately absent while favicons were fetched straight from
+ * google/ddg by the browser, because the request set leaked the user's whole
+ * banking roster to a third party from their own IP (SEC-03). They are safe
+ * again now that /api/v1/icons serves every favicon from this origin: the
+ * browser only ever talks to us. See app/api/v1/icons/[domain]/route.ts.
+ *
+ * Ordered so that a co-brand card matches its issuer before a generic word in
+ * its name can match something else.
+ */
+const KNOWN_INSTITUTION_DOMAINS: Array<{ domain: string; pattern: RegExp }> = [
+  { domain: "americanexpress.com", pattern: /\b(?:american ?express|amex)\b/i },
+  { domain: "bny.com", pattern: /\bbny\b|\bbank ?of ?new ?york\b/i },
+  { domain: "coinbase.com", pattern: /\bcoinbase\b/i },
+  { domain: "discover.com", pattern: /\bdiscover\b/i },
+  { domain: "fidelity.com", pattern: /\bfidelity\b/i },
+  { domain: "interactivebrokers.com", pattern: /\binteractive ?brokers\b|\bibkr\b/i },
+  { domain: "schwab.com", pattern: /\bschwab\b/i },
+  { domain: "sofi.com", pattern: /\bsofi\b/i },
+  // Chase last of the issuers: "Prime Visa" and "Sapphire" are Chase products
+  // whose names do not contain the word, so they are matched explicitly.
+  { domain: "chase.com", pattern: /\bchase\b|\bsapphire\b|\bprime ?visa\b|\bfreedom ?(?:unlimited|flex)\b/i },
+  { domain: "ally.com", pattern: /\bally\b/i },
+  { domain: "bankofamerica.com", pattern: /\bbank ?of ?america\b|\bbofa\b/i },
+  { domain: "capitalone.com", pattern: /\bcapital ?one\b/i },
+  { domain: "citi.com", pattern: /\bcitibank\b|\bciti\b/i },
+  { domain: "robinhood.com", pattern: /\brobinhood\b/i },
+  { domain: "usbank.com", pattern: /\bu\.?s\.? ?bank\b/i },
+  { domain: "vanguard.com", pattern: /\bvanguard\b/i },
+  { domain: "wellsfargo.com", pattern: /\bwells ?fargo\b/i }
+];
+
+/**
+ * The URL the browser is given for a brand icon.
+ *
+ * Lives here rather than in the badge component because it is the point where
+ * the SEC-03 guarantee is actually made: whatever this returns is what the
+ * browser requests. Keeping it beside the allowlist means the guarantee and its
+ * limits are reviewed together, and lets a plain unit test assert it without
+ * importing a client component.
+ */
+export function iconProxyUrl(domain: string): string {
+  return `/api/v1/icons/${encodeURIComponent(domain)}`;
+}
+
+/**
+ * Returns a real institution domain only for confidently known institutions.
+ *
+ * Unmatched institutions return null and keep the tinted fallback icon in
+ * account-favicon-badge.tsx rather than borrowing some other brand's logo.
+ */
+export function institutionDomain(institution: string): string | null {
+  const normalized = normalizeMerchant(institution);
+
+  return KNOWN_INSTITUTION_DOMAINS.find(({ pattern }) => pattern.test(normalized))?.domain ?? null;
+}
+
+/**
+ * Every domain the icon proxy will fetch. The route refuses anything else, so
+ * an authenticated caller cannot turn it into a general-purpose image fetcher.
+ *
+ * A merchant whose domain came out of free text (the DOMAIN_IN_TEXT branch of
+ * merchantDomain) is deliberately NOT in here. Such a merchant keeps its brand
+ * colour and simply falls back to its letter avatar until someone adds it to
+ * KNOWN_MERCHANT_DOMAINS, which is the honest outcome: we only serve a logo we
+ * have actually vetted.
+ */
+export function isIconDomainAllowed(domain: string): boolean {
+  const normalized = domain.trim().toLowerCase().replace(/^www\./, "");
+
+  return (
+    KNOWN_MERCHANT_DOMAINS.some((entry) => entry.domain === normalized) ||
+    KNOWN_INSTITUTION_DOMAINS.some((entry) => entry.domain === normalized)
+  );
 }

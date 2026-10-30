@@ -4,9 +4,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { proxy as middleware } from "../proxy";
+import { config, proxy as middleware } from "../proxy";
 import { POST as resetLocalData } from "@/app/api/v1/local-data/reset/route";
 import { authCookieName, canCreateBetterAuthUser, setBetterAuthForTests } from "@/lib/auth";
 
@@ -31,6 +32,20 @@ afterEach(() => {
 });
 
 describe("auth middleware", () => {
+  it.each(["/api/v1/icons/chase.com", "/api/v1/transactions/plaid.example"])(
+    "matches and authenticates dotted API path %s",
+    async (url) => {
+      process.env.AI_FINANCES_AUTH_TOKEN = testToken;
+      expect(unstable_doesMiddlewareMatch({ config, url })).toBe(true);
+      expect((await middleware(createRequest(url))).status).toBe(401);
+    }
+  );
+
+  it("keeps static assets outside the auth matcher", () => {
+    expect(unstable_doesMiddlewareMatch({ config, url: "/_next/static/app.js" })).toBe(false);
+    expect(unstable_doesMiddlewareMatch({ config, url: "/icons/icon-192.png" })).toBe(false);
+  });
+
   it("passes through when hosted auth is not configured", async () => {
     const response = await middleware(createRequest("/api/v1/transactions"));
 

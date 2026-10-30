@@ -906,6 +906,62 @@ describe("finance db", () => {
     });
   }, 15_000);
 
+  it("filters source items by date range, amount, kind, words and mailbox profile", async () => {
+    useTempDb();
+    await ensureExternalSourceCatalog(
+      ["source_gmail__personal", "source_gmail__work", "source_gmailer"].map((id) => ({
+        command: "gog",
+        displayName: id,
+        id,
+        kind: "gmail",
+        status: "stale" as const
+      }))
+    );
+    const item = (
+      sourceId: string,
+      externalId: string,
+      occurredAt: string,
+      title: string,
+      amount?: number,
+      kind: Parameters<typeof recordSourceSyncRun>[0]["items"][number]["kind"] = "email"
+    ) => ({
+      amount,
+      currency: "USD",
+      externalId,
+      id: `src_${externalId}`,
+      kind,
+      occurredAt,
+      sourceId,
+      summary: "From: Honda Service",
+      title
+    });
+    const record = (sourceId: string, items: ReturnType<typeof item>[]) => recordSourceSyncRun({
+      finishedAt: "2026-09-25T00:00:01.000Z",
+      items,
+      runStatus: "succeeded",
+      sourceId,
+      sourceStatus: "connected",
+      startedAt: "2026-09-25T00:00:00.000Z"
+    });
+    await record("source_gmail__personal", [
+      item("source_gmail__personal", "honda", "2026-09-08T14:12:00.000Z", "Service invoice", 564.6),
+      item("source_gmail__personal", "early", "2026-08-01T10:00:00.000Z", "Service invoice", 90),
+      item("source_gmail__personal", "percent", "2026-09-09T10:00:00.000Z", "100% off coupon")
+    ]);
+    await record("source_gmail__work", [item("source_gmail__work", "work", "2026-09-10T23:59:00.000Z", "Order shipped", undefined, "order")]);
+    await record("source_gmailer", [item("source_gmailer", "other", "2026-09-08T12:00:00.000Z", "Service invoice")]);
+
+    const ids = async (filters: Parameters<typeof listSourceItems>[0]) =>
+      (await listSourceItems(filters)).map((entry) => entry.externalId).sort();
+
+    expect(await ids({ sourceId: "source_gmail" })).toEqual(["early", "honda", "percent", "work"]);
+    expect(await ids({ from: "2026-09-01", sourceId: "source_gmail", to: "2026-09-10" })).toEqual(["honda", "percent", "work"]);
+    expect(await ids({ amount: -564.6 })).toEqual(["honda"]);
+    expect(await ids({ query: "honda invoice", sourceId: "source_gmail" })).toEqual(["early", "honda"]);
+    expect(await ids({ kind: "order" })).toEqual(["work"]);
+    expect(await ids({ query: "100%" })).toEqual(["percent"]);
+  }, 15_000);
+
   it("records external source sync runs and source items", async () => {
     useTempDb();
     await ensureExternalSourceCatalog([

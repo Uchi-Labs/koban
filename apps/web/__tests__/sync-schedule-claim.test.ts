@@ -37,4 +37,33 @@ describe("sync schedule claim heartbeat", () => {
     expect(operationSignal?.aborted).toBe(true);
     expect(mocks.refreshAppSyncScheduleClaim).toHaveBeenCalledWith("whole_app", "runner-a");
   });
+
+  it("waits for aborted work to settle before releasing process-local ownership", async () => {
+    vi.useFakeTimers();
+    mocks.refreshAppSyncScheduleClaim.mockResolvedValue(false);
+    let settleOperation: (() => void) | undefined;
+    const operationSettled = new Promise<void>((resolve) => {
+      settleOperation = resolve;
+    });
+    const result = withSyncScheduleClaimHeartbeat("whole_app", "runner-a", async (signal) => {
+      await new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      await operationSettled;
+      return "stopped";
+    });
+    const rejection = expect(result).rejects.toThrow("claim was lost");
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    let released = false;
+    void result.catch(() => {
+      released = true;
+    });
+    await Promise.resolve();
+    expect(released).toBe(false);
+
+    settleOperation?.();
+    await rejection;
+    expect(released).toBe(true);
+  });
 });

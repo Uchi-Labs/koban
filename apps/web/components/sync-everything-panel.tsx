@@ -851,7 +851,7 @@ interface AiProviderView {
   chatgpt_oauth_connected?: boolean;
   chatgpt_oauth_enabled?: boolean;
   configured: boolean;
-  credential_source?: "none" | "openai_api_key" | "chatgpt_oauth" | "ollama" | "local";
+  credential_source?: "none" | "openai_api_key" | "chatgpt_oauth" | "claude_subscription" | "ollama" | "local";
   embedding: {
     dimensions: number;
     model: string;
@@ -882,8 +882,10 @@ interface AiProviderCheckResponse {
 }
 
 interface ChatGptOAuthStartResponse {
-  authorization_url?: string;
   error?: string;
+  expires_at?: string;
+  user_code?: string;
+  verification_url?: string;
 }
 
 interface ChatGptOAuthStatusResponse {
@@ -903,6 +905,8 @@ export function AiProviderPanel({ initialProvider }: { initialProvider: AiProvid
   const [busy, setBusy] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthPolling, setOauthPolling] = useState(false);
+  /** Device-flow user code, shown until sign-in completes or the attempt ends. */
+  const [chatGptDeviceCode, setChatGptDeviceCode] = useState("");
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
 
@@ -959,12 +963,17 @@ export function AiProviderPanel({ initialProvider }: { initialProvider: AiProvid
       const response = await fetch("/api/auth/chatgpt/start", { method: "POST" });
       const body = (await response.json()) as ChatGptOAuthStartResponse;
 
-      if (!response.ok || !body.authorization_url) {
+      if (!response.ok || !body.user_code || !body.verification_url) {
         throw new Error(body.error ?? "Unable to start ChatGPT sign-in.");
       }
 
-      window.open(body.authorization_url, "_blank", "noopener,noreferrer");
-      setMessage("Complete ChatGPT sign-in in the browser tab.");
+      // The device flow cannot hand the code over in the URL, so the user
+      // carries it across themselves. Keep it on screen for the whole poll:
+      // the tab opens on the verification page, and this message is the only
+      // place the code exists.
+      setChatGptDeviceCode(body.user_code);
+      window.open(body.verification_url, "_blank", "noopener,noreferrer");
+      setMessage(`Enter code ${body.user_code} in the ChatGPT tab to finish signing in.`);
       void pollChatGptOAuthStatus();
     } catch (caughtError) {
       setIsError(true);
@@ -985,15 +994,18 @@ export function AiProviderPanel({ initialProvider }: { initialProvider: AiProvid
         if (status.connected) {
           await refreshProviderStatus();
           setIsError(false);
+          setChatGptDeviceCode("");
           setMessage("ChatGPT sign-in connected.");
           return;
         }
       }
 
       setIsError(true);
+      setChatGptDeviceCode("");
       setMessage("ChatGPT sign-in was not completed.");
     } catch (caughtError) {
       setIsError(true);
+      setChatGptDeviceCode("");
       setMessage(caughtError instanceof Error ? caughtError.message : "Unable to confirm ChatGPT sign-in.");
     } finally {
       setOauthPolling(false);
@@ -1163,6 +1175,15 @@ export function AiProviderPanel({ initialProvider }: { initialProvider: AiProvid
             : "Local hash embeddings keep transaction and source text on this device."}
         </p>
 
+        {chatGptDeviceCode ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Enter this code at ChatGPT to finish signing in</span>
+            <code className="w-fit rounded-md border bg-muted px-3 py-1.5 font-mono text-lg tracking-[0.2em] tabular-nums">
+              {chatGptDeviceCode}
+            </code>
+          </div>
+        ) : null}
+
         {message ? (
           <p className={cn("text-sm", isError ? "text-destructive" : "text-muted-foreground")}>{message}</p>
         ) : null}
@@ -1189,6 +1210,10 @@ function aiProviderLabel(provider: AiProviderView["provider"]): string {
     return "OpenAI-compatible";
   }
 
+  if (provider === "claude_subscription") {
+    return "Claude subscription";
+  }
+
   return "Local enrichment fallback";
 }
 
@@ -1199,6 +1224,10 @@ function credentialSourceLabel(source: AiProviderView["credential_source"]): str
 
   if (source === "chatgpt_oauth") {
     return "ChatGPT OAuth";
+  }
+
+  if (source === "claude_subscription") {
+    return "Claude Code CLI";
   }
 
   if (source === "ollama") {

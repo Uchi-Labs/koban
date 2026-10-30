@@ -32,6 +32,9 @@ jobs:
       - name: Unit tests
         run: pnpm --dir apps/web test
 
+      - name: Standalone CLI and MCP tests
+        run: node --test packages/agent-interface/src/catalog.test.js packages/agent-interface/test/*.test.js
+
       - name: Copilot import tests
         run: pnpm test:copilot-import
 

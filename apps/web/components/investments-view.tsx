@@ -642,7 +642,7 @@ function HoldingDetailRow({
               </div>
 
               <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">Price & performance</div>
-              <TradingViewAdvancedChart height={420} symbol={holding.tradingViewSymbol} theme={theme} />
+              <TradingViewAdvancedChart height={620} symbol={holding.tradingViewSymbol} theme={theme} />
               <div className="mt-2 text-xs text-muted-foreground">{holding.accountName}</div>
             </div>
           </div>

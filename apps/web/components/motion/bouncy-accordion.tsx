@@ -133,7 +133,13 @@ function BouncyAccordionRow({
     <m.div
       initial={false}
       animate={{ marginTop: separatedFromPrevious ? 12 : 0 }}
-      transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+      /* Applied instantly, never sprung. This offset separates an open row from
+         its neighbour, and any gap above a row necessarily moves that row --
+         so springing it glided the row's own title down and overshot, which
+         read as the label wobbling on click. The gap still appears; it just
+         arrives with the click instead of animating the text into place. The
+         panel below keeps its spring, which is the motion worth seeing. */
+      transition={{ duration: 0 }}
     >
       <m.div
         data-state={open ? "open" : "closed"}

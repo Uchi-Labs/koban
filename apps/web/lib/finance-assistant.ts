@@ -846,7 +846,12 @@ async function refineAssistantResponseWithLlm({
       {
         detail: completion.provider.model,
         label: "LLM",
-        value: completion.provider.provider === "ollama" ? "Ollama" : "OpenAI-compatible"
+        value:
+          completion.provider.provider === "ollama"
+            ? "Ollama"
+            : completion.provider.provider === "claude_subscription"
+              ? "Claude subscription"
+              : "OpenAI-compatible"
       }
     ].slice(0, 6),
     mode: "llm_finance_agent"
