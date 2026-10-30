@@ -9,10 +9,21 @@ import {
 } from "ai";
 import type { z } from "zod";
 import { createChatGptLanguageModel } from "@/lib/ai/chatgpt-oauth";
-import type { LlmChatMessage, LlmProviderStatus } from "@/lib/llm-enrichment";
+import {
+  claudeSubscriptionMinTimeoutMs,
+  createClaudeSubscriptionLanguageModel
+} from "@/lib/ai/claude-subscription";
+import type { LlmChatMessage, LlmFallbackStatus, LlmProviderStatus } from "@/lib/llm-enrichment";
 import type { WorkspaceEnv } from "@/lib/workspace-env";
 
 type FetchLike = typeof fetch;
+
+interface ModelCall {
+  model: LanguageModel;
+  sampling: { temperature?: number };
+  servedBy?: LlmFallbackStatus;
+  timeoutMs: number;
+}
 
 export interface LlmTextGenerationInput {
   allowLengthFinish?: boolean;
@@ -46,6 +57,7 @@ export interface LlmTextStreamResult {
 export interface LlmObjectGenerationResult<TObject> {
   finishReason: FinishReason;
   object: TObject;
+  servedBy?: LlmFallbackStatus;
 }
 
 export interface LlmGenerationClient {
@@ -78,26 +90,29 @@ export const aiSdkLlmClient: LlmGenerationClient = {
     schemaName
   }: LlmObjectGenerationInput<TSchema>) {
     try {
-      const result = await generateObject({
-        abortSignal: AbortSignal.timeout(provider.timeoutMs),
-        allowSystemInMessages: true,
-        maxOutputTokens,
-        maxRetries: 0,
-        messages,
-        model: await buildConfiguredLanguageModel(provider, env, fetcher),
-        schema,
-        schemaName,
-        ...samplingOptions(provider)
+      return await withSubscriptionFallback(provider, env, fetcher, async ({ model, sampling, servedBy, timeoutMs }) => {
+        const result = await generateObject({
+          abortSignal: AbortSignal.timeout(timeoutMs),
+          allowSystemInMessages: true,
+          maxOutputTokens,
+          maxRetries: 0,
+          messages,
+          model,
+          schema,
+          schemaName,
+          ...sampling
+        });
+
+        if (result.finishReason === "length") {
+          throw new AiLlmOutputError("LLM provider stopped before returning complete JSON.");
+        }
+
+        return {
+          finishReason: result.finishReason,
+          object: result.object,
+          ...(servedBy ? { servedBy } : {})
+        };
       });
-
-      if (result.finishReason === "length") {
-        throw new AiLlmOutputError("LLM provider stopped before returning complete JSON.");
-      }
-
-      return {
-        finishReason: result.finishReason,
-        object: result.object
-      };
     } catch (error) {
       if (NoObjectGeneratedError.isInstance(error)) {
         throw new AiLlmOutputError(error.message);
@@ -115,28 +130,30 @@ export const aiSdkLlmClient: LlmGenerationClient = {
     messages,
     provider
   }: LlmTextGenerationInput) {
-    const result = await generateText({
-      allowSystemInMessages: true,
-      maxOutputTokens,
-      maxRetries: 0,
-      messages,
-      model: await buildConfiguredLanguageModel(provider, env, fetcher),
-      timeout: { totalMs: provider.timeoutMs },
-      ...samplingOptions(provider)
+    return withSubscriptionFallback(provider, env, fetcher, async ({ model, sampling, timeoutMs }) => {
+      const result = await generateText({
+        allowSystemInMessages: true,
+        maxOutputTokens,
+        maxRetries: 0,
+        messages,
+        model,
+        timeout: { totalMs: timeoutMs },
+        ...sampling
+      });
+
+      if (result.finishReason === "length" && !allowLengthFinish) {
+        throw new AiLlmOutputError("LLM provider stopped before returning complete response.");
+      }
+
+      if (result.text.trim().length === 0) {
+        throw new AiLlmOutputError("LLM provider returned no message content.");
+      }
+
+      return {
+        finishReason: result.finishReason,
+        text: result.text
+      };
     });
-
-    if (result.finishReason === "length" && !allowLengthFinish) {
-      throw new AiLlmOutputError("LLM provider stopped before returning complete response.");
-    }
-
-    if (result.text.trim().length === 0) {
-      throw new AiLlmOutputError("LLM provider returned no message content.");
-    }
-
-    return {
-      finishReason: result.finishReason,
-      text: result.text
-    };
   },
 
   async streamText({
@@ -165,11 +182,48 @@ export const aiSdkLlmClient: LlmGenerationClient = {
   }
 };
 
+// Provider failures (usage limits, auth, network) on the primary model retry
+// once on the Claude subscription when configured. Output errors do not: the
+// primary answered, and a second model would only mask a prompt problem.
+async function withSubscriptionFallback<T>(
+  provider: LlmProviderStatus,
+  env: WorkspaceEnv,
+  fetcher: FetchLike | undefined,
+  run: (call: ModelCall) => Promise<T>
+): Promise<T> {
+  try {
+    return await run({
+      model: await buildConfiguredLanguageModel(provider, env, fetcher),
+      sampling: samplingOptions(provider),
+      timeoutMs: provider.timeoutMs
+    });
+  } catch (error) {
+    if (!provider.fallback || isAiLlmOutputError(error)) {
+      throw error;
+    }
+
+    return run({
+      model: createClaudeSubscriptionLanguageModel(provider.fallback.model, env),
+      sampling: {},
+      servedBy: provider.fallback,
+      timeoutMs: Math.max(provider.timeoutMs, claudeSubscriptionMinTimeoutMs)
+    });
+  }
+}
+
 function buildConfiguredLanguageModel(
   provider: LlmProviderStatus,
   env: WorkspaceEnv,
   fetcher?: FetchLike
 ): Promise<LanguageModel> {
+  if (provider.credentialSource === "claude_subscription") {
+    if (!provider.model) {
+      throw new Error(provider.errorMessage ?? "No LLM model is configured.");
+    }
+
+    return Promise.resolve(createClaudeSubscriptionLanguageModel(provider.model, env));
+  }
+
   if (provider.credentialSource === "chatgpt_oauth") {
     if (!provider.model) {
       throw new Error(provider.errorMessage ?? "No LLM model is configured.");
@@ -201,6 +255,10 @@ function buildConfiguredLanguageModel(
 }
 
 function samplingOptions(provider: LlmProviderStatus): { temperature?: number } {
+  if (provider.credentialSource === "claude_subscription") {
+    return {};
+  }
+
   return provider.model && usesCompletionTokenParameter(provider.model) ? {} : { temperature: 0.1 };
 }
 

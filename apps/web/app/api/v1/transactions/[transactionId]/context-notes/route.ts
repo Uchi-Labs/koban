@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readJsonObject } from "@/lib/api-request";
 import { createTransactionContextNote } from "@/lib/db/finance-db";
-import { updateStoredTransactionInDb } from "@/lib/finance-data";
+import { getFinanceData, updateStoredTransactionInDb } from "@/lib/finance-data";
 
 export const runtime = "nodejs";
 
@@ -13,7 +13,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tra
     return parsed.response;
   }
 
-  const body = parsed.body as { body?: unknown };
+  const body = parsed.body as { body?: unknown; preserve_notes?: unknown };
+  if (body.preserve_notes !== undefined && typeof body.preserve_notes !== "boolean") {
+    return NextResponse.json({ error: "preserve_notes must be a boolean." }, { status: 400 });
+  }
   const noteBody = typeof body.body === "string" ? body.body.trim() : "";
 
   if (noteBody.length === 0) {
@@ -21,9 +24,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tra
   }
 
   const decodedTransactionId = decodeURIComponent(transactionId);
-  const transaction = await updateStoredTransactionInDb(decodedTransactionId, {
-    notes: noteBody
-  });
+  const transaction = body.preserve_notes === true
+    ? (await getFinanceData()).transactions.find((item) => item.id === decodedTransactionId)
+    : await updateStoredTransactionInDb(decodedTransactionId, { notes: noteBody });
 
   if (!transaction) {
     return NextResponse.json({ error: "Transaction not found in the local ledger." }, { status: 404 });

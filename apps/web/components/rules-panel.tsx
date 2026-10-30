@@ -67,7 +67,7 @@ export interface EnrichmentProviderView {
   configured: boolean;
   errorMessage?: string;
   model?: string;
-  provider: "none" | "ollama" | "openai_compatible";
+  provider: "none" | "ollama" | "openai_compatible" | "claude_subscription";
   status: "not_configured" | "connected" | "syncing" | "stale" | "error";
   timeoutMs: number;
 }
@@ -1207,6 +1207,8 @@ function providerLabel(provider: EnrichmentProviderView): string {
       return "Ollama";
     case "openai_compatible":
       return "OpenAI-compatible";
+    case "claude_subscription":
+      return "Claude subscription";
     case "none":
       return "Local only";
   }

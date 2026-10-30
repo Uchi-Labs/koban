@@ -1,16 +1,5 @@
-import { AppearanceSettingsPanel } from "@/components/appearance-settings-panel";
-import { ApiTokensPanel } from "@/components/api-tokens-panel";
-import { AiProviderPanel } from "@/components/sync-everything-panel";
-import { ConnectionsSettings } from "@/components/connections-settings";
-import { DemoModePanel } from "@/components/demo-mode-panel";
-import Link from "next/link";
-import { LocalDataPanel } from "@/components/local-data-panel";
-import { SecuritySettingsPanel } from "@/components/security-settings-panel";
-import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
-import { SoundSettingsPanel } from "@/components/sound-settings-panel";
-import { SyncEverythingPanel } from "@/components/sync-everything-panel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ThemeToggle } from "@/components/motion/theme-toggle";
+import { cookies } from "next/headers";
+import { SettingsView } from "@/components/settings-view";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import { isDemoModeEnabled } from "@/lib/demo-mode";
@@ -26,6 +15,9 @@ import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
 import { isHostedAuthMode } from "@/lib/auth";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
 import { getFinanceData } from "@/lib/finance-data";
+import { ACCENT_COOKIE, parseAccent } from "@/lib/accent-color";
+import { FONT_CHOICE_COOKIE, parseFontChoice } from "@/lib/font-choice";
+import { MONEY_COLORS_COOKIE, parseMoneyColors } from "@/lib/money-colors";
 import { getPlaidSetupStatus } from "@/lib/plaid-server";
 import { getSourceAdapterDiagnostics, summarizeSourceReadiness } from "@/lib/source-adapters";
 import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/source-preview";
@@ -35,6 +27,10 @@ import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
 
 export default async function SettingsPage() {
   const demoModeEnabled = await isDemoModeEnabled();
+  const cookieStore = await cookies();
+  const moneyColors = parseMoneyColors(cookieStore.get(MONEY_COLORS_COOKIE)?.value);
+  const fontChoice = parseFontChoice(cookieStore.get(FONT_CHOICE_COOKIE)?.value);
+  const accent = parseAccent(cookieStore.get(ACCENT_COOKIE)?.value);
   const [
     financeData,
     snapTradeStatus,
@@ -255,71 +251,27 @@ export default async function SettingsPage() {
   const hostedAuth = isHostedAuthMode();
 
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 p-4 sm:p-6" data-testid="settings-page">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="app-page-title">Settings</h1>
-          <p className="app-page-description">
-            Connect banks and context sources, control syncing, and manage local data.
-          </p>
-        </div>
-        <ThemeToggle
-          className="size-8 shrink-0 rounded-full border border-border bg-card text-foreground shadow-xs transition-colors hover:bg-muted motion-reduce:transition-none"
-          iconClassName="size-4"
-          start="top-right"
-          variant="circle-blur"
-        />
-      </header>
-
-      <Tabs defaultValue="connections" className="gap-5">
-        <TabsList variant="buttons" className="justify-start">
-          <TabsTrigger value="connections">Connections</TabsTrigger>
-          <TabsTrigger value="sync-ai">Sync &amp; AI</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="data">Data</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="connections" className="flex flex-col gap-5">
-          <ConnectionsSettings
-            accountCountByConnection={accountCountByConnection}
-            financeKitStatus={financeKitStatusPayload}
-            plaidStatus={plaidStatusPayload}
-            providerConnections={providerConnectionsPayload}
-            simpleFinStatus={simpleFinStatusPayload}
-            snapTradeStatus={snapTradeStatusPayload}
-          />
-          <SourceAdaptersPanel
-            initialAdapters={sourceAdapterPayload}
-            initialEvidenceLinks={initialEvidenceLinks}
-            initialSourceItems={initialSourceItems}
-            initialSummary={sourceSummaryPayload}
-          />
-        </TabsContent>
-
-        <TabsContent value="sync-ai" className="flex flex-col gap-5">
-          <SyncEverythingPanel initialSchedule={syncSchedulePayload} initialStatus={syncStatusPayload} />
-          <AiProviderPanel initialProvider={aiProviderPayload} />
-        </TabsContent>
-
-        <TabsContent value="security" className="flex flex-col gap-5">
-          <SecuritySettingsPanel hostedAuth={hostedAuth} />
-          <ApiTokensPanel hostedAuth={hostedAuth} />
-        </TabsContent>
-
-        <TabsContent value="data" className="flex flex-col gap-5">
-          <DemoModePanel initialEnabled={demoModeEnabled} />
-          <AppearanceSettingsPanel />
-          <SoundSettingsPanel />
-          <LocalDataPanel initialTransactionCount={financeData.transactions.length} />
-        </TabsContent>
-      </Tabs>
-
-      <footer className="border-t border-border pt-4 text-xs text-muted-foreground">
-        <Link className="underline-offset-4 hover:underline" href="/privacy">
-          Koban Privacy Policy
-        </Link>
-      </footer>
-    </main>
+    <SettingsView
+      accountCountByConnection={accountCountByConnection}
+      aiProvider={aiProviderPayload}
+      demoModeEnabled={demoModeEnabled}
+      evidenceLinks={initialEvidenceLinks}
+      financeKitStatus={financeKitStatusPayload}
+      hostedAuth={hostedAuth}
+      accent={accent}
+      fontChoice={fontChoice}
+      moneyColors={moneyColors}
+      plaidStatus={plaidStatusPayload}
+      providerConnections={providerConnectionsPayload}
+      simpleFinStatus={simpleFinStatusPayload}
+      snapTradeStatus={snapTradeStatusPayload}
+      sourceAdapters={sourceAdapterPayload}
+      sourceItems={initialSourceItems}
+      sourceSummary={sourceSummaryPayload}
+      syncSchedule={syncSchedulePayload}
+      syncStatus={syncStatusPayload}
+      transactionCount={financeData.transactions.length}
+    />
   );
 }
 

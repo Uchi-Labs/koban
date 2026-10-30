@@ -1,0 +1,25 @@
+{
+  "name": "@ai-finances/agent-interface",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "koban": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "ajv": "^8.20.0"
+  },
+  "description": "Standalone Koban command-line interface and MCP server for personal finance",
+  "files": [
+    "src/*.js",
+    "!src/*.test.js",
+    "README.md"
+  ]
+}

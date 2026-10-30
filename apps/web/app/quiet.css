@@ -1,0 +1,709 @@
+/* ============================================================================
+   Quiet register — token layer
+   ============================================================================
+
+   Active only under `<html data-ui="quiet">`. See lib/ui-mode.ts for the
+   cookie that sets it. While both designs coexist this file never touches the
+   Ink & Mint tokens in shadcn.css; it overrides them by specificity, so the
+   existing 210 components render in the quiet palette with no edits.
+
+   Source of the palette: whoami.wiki, read from its live computed styles.
+   Its entire colour system is six custom properties, reproduced verbatim in
+   section 1. The kanoon monorepo was also studied but defines no token layer
+   at all (raw Tailwind utilities inline), so it informs the component
+   conventions below rather than the colours.
+
+   Every colour here was checked with a WCAG relative-luminance script before
+   being committed. Ratios are recorded inline. Three of them are not the
+   obvious choice, and the comments say why.
+   ============================================================================ */
+
+/* ── 1. The semantic layer ──────────────────────────────────────────────────
+   Structurally from whoami.wiki: six custom properties, and surfaces separated
+   by BORDER ALONE with no fill difference, which is the register's actual
+   mechanism. The light ground itself is no longer whoami's pure #fff — it is
+   the warm cream from the owner's personal site. See the note on the block
+   below for why that is a knowing departure and what it costs.               */
+
+:root[data-ui="quiet"] {
+  /* Warm ground, lifted verbatim from the personal site's palette
+     (~/Repos/vishhvak app/globals.css). This replaces the pure #fff the
+     register asks for, at the owner's explicit request.
+
+     Two things worth recording, because the swap looks riskier than it is.
+     The register lists a cream body as an anti-pattern, so this is a knowing
+     departure, not an oversight. And it does NOT cost contrast: the warm ink
+     and muted tones come across with the ground rather than a neutral grey
+     being dropped onto it, and muted text actually improves, from 4.74:1 on
+     white to 5.17:1 here. Every ratio below was measured against #f8f4e9. */
+  --q-background: #f8f4e9;
+  --q-foreground: #211d16;
+  --q-text-primary: #211d16;        /* 15.26:1 */
+  --q-text-muted: #6e6656;          /* 5.17:1 — a neutral #737373 would be 4.31:1 and fail */
+  --q-border-primary: rgb(33 29 22 / 0.14);
+  --q-border-muted: rgb(33 29 22 / 0.08);
+
+  /* ── Dashboard extensions. Four additions to the six above, each earning
+     its place; the register permits none of these by default.               */
+
+  /* (a) Control borders. The register's 15% border measures 1.41:1, which is
+     fine for a decorative hairline but fails WCAG 1.4.11 for anything whose
+     border is what identifies the control. 48% is the measured minimum that
+     reaches 3:1 on the cream ground (#918d84 = 3.01:1); it was 42% back when
+     the ground was pure white. Inputs, checkboxes, and select
+     triggers use this; dividers and card outlines keep the 15%.            */
+  --q-border-control: rgb(33 29 22 / 0.48);
+
+  /* (b) One working accent, for links and selection only.
+
+     Indirected through --q-accent-light so the settings panel can override it
+     per ground. An inline style on <html> cannot know which theme is active,
+     and the theme flips on the client without a request, so both ground values
+     are set and each block picks its own. The literal here is the fallback and
+     remains the default. */
+  --q-accent: var(--q-accent-light, #2563eb);   /* blue-600, 4.70:1 on the cream */
+  --q-accent-contrast: #ffffff;
+  --q-selection: rgb(37 99 235 / 0.1);
+
+  /* (c) Money semantics. A hard project rule (CLAUDE.md) and sanctioned by
+     the register, which allows semantic colour "where it means something".
+     The green and red are deliberately asymmetric in step: green-600 fails
+     at 3.30:1 because green is inherently lighter at the same nominal step,
+     so positive drops to green-700 while negative stays at red-600.        */
+  /* Both sit around 45% saturation and are rotated toward the cool side of
+     their hue (green to 157, red to 348) so large fills like the cash-flow
+     bars read calmer than the Tailwind steps did. Saturated green-700 and
+     red-600 measured 5.02:1 and 4.83:1; these hold that while dropping
+     roughly a third of the chroma. */
+  --q-positive: #2f7d5f;            /* 4.53:1 on cream (4.98:1 on white) */
+  --q-negative: #b8455c;            /* 4.73:1 on cream (5.19:1 on white) */
+
+  /* (d) A single recessed surface for the sidebar rail. Everything else is
+     the page ground separated by borders. Warm, one step below the cream: a
+     neutral grey here would read as a cold stripe down a warm page.        */
+  --q-sunken: #f3eee0;
+
+  /* (e2) Overlay surface: menus, popovers, dialogs, tooltips, command palette.
+
+     ONE cream, at the owner's explicit instruction: "make sure coloring is
+     universal across the board. EVERYWHERE." Overlays are the page ground and
+     nothing else; the control-strength border in section 5 is what separates
+     them. That is also the register's own mechanism, so this is a return to it
+     rather than a departure.
+
+     Two earlier values are recorded here because both were wrong in an
+     instructive way, and a future edit will be tempted by each. #ebe5d5 stepped
+     DOWN from the page and made every menu the muddiest surface on screen.
+     #fffdf8 stepped UP and made the popover, every dropdown, both dialogs and
+     the command palette read as white against a cream app, which is the
+     complaint this value exists to answer. A floating layer does not need a
+     fill difference when it has a 3:1 border and a scrim behind it.
+
+     Dark is deliberately NOT collapsed with it: nothing there reads as the
+     wrong colour, #333333 on #262626 is a 1.3:1 lift rather than a hue change,
+     and flattening it would remove separation without fixing anything. */
+  --q-raised: var(--q-background);
+
+  /* The switch thumb, and only that. It is a 12px affordance rather than a
+     surface, so it is the one thing that must NOT be the universal cream: the
+     thumb has to be visible on the sunken track when off AND on the accent fill
+     when on. It used to borrow --q-raised, which worked only while that was
+     warm white; once overlays collapsed onto the page, a cream thumb on a
+     #f3eee0 track measured 1.02:1 and vanished. */
+  --q-control-thumb: #ffffff;
+
+  /* (e) The row highlight, for hover and selection in the sidebar.
+
+     On a light ground this must be DARKER than what it sits on. The first
+     version used the page cream, which is lighter than the rail, so a hovered
+     row appeared to lift out of the page and read louder than the actually
+     selected row. Every light UI worth copying does the reverse: a step down
+     from the surface, so the highlight looks pressed into it. Two steps below
+     the rail, still warm, still quiet. Stopped at this exact value because a
+     step darker (#e9e2d0) dropped muted text sitting on the pill to 4.40:1;
+     this holds 4.52:1 while still reading clearly as a shape.
+
+     Separate from --q-raised on purpose: the two move in OPPOSITE directions on
+     a light ground. An overlay floats, so it goes lighter; a selected row is
+     pressed into its surface, so it goes darker. One token cannot be both. */
+  --q-pressed: #ebe5d5;
+}
+
+:root[data-ui="quiet"].dark {
+  --q-background: #262626;          /* neutral-800. NOT black — the register is explicit */
+  --q-foreground: #ededed;
+  --q-text-primary: #f5f5f5;
+  --q-text-muted: #a3a3a3;          /* 6.00:1 on #262626 */
+  --q-border-primary: rgb(255 255 255 / 0.15);
+  --q-border-muted: rgb(255 255 255 / 0.1);
+
+  --q-border-control: rgb(255 255 255 / 0.34);  /* measured minimum for 3:1 (#707070 = 3.06:1) */
+
+  --q-accent: var(--q-accent-dark, #60a5fa);    /* blue-400, 5.95:1 on #262626 */
+  --q-accent-contrast: #171717;
+  --q-selection: rgb(96 165 250 / 0.2);
+
+  --q-positive: #4ade80;            /* green-400, 8.68:1 */
+  --q-negative: #f87171;            /* red-400,   5.47:1 — red-500 measured 4.02:1, rejected */
+
+  --q-sunken: #212121;
+  /* On the dark ground both float the same way, so these coincide. */
+  --q-raised: #333333;
+  --q-pressed: #333333;
+}
+
+/* ── 2. The bridge ──────────────────────────────────────────────────────────
+   Remaps the app's existing Ink & Mint variable names onto the quiet field.
+   This is what makes the toggle work without touching components: every one
+   of the 210 existing components already reads var(--foreground), var(--card),
+   var(--positive) and so on, so redefining those names here restyles all of
+   them at once.
+
+   Deleted at Phase 4 along with the Ink & Mint tokens, once every surface has
+   been rebuilt against the --q-* names directly.                            */
+
+:root[data-ui="quiet"],
+:root[data-ui="quiet"].dark {
+  --background: var(--q-background);
+  --foreground: var(--q-foreground);
+
+  /* Cards carry no fill of their own — they are the page surface plus a
+     border. This single pair of lines is most of what makes the app read as
+     the quiet register rather than Ink & Mint. */
+  --card: var(--q-background);
+  --card-foreground: var(--q-foreground);
+  /* Overlays get their own surface, unlike cards.
+
+     A card is IN the page, so the register's "separated by border alone" holds.
+     A popover FLOATS OVER it, and with --popover set to the page ground it had
+     no fill difference, a 15%-alpha ring, and a black shadow that is invisible
+     against a dark page -- three separation mechanisms all defeated at once, so
+     the category dropdown read as loose rows sitting on the transaction list
+     behind it. --q-raised carries it: lighter than the page on dark, a step
+     down on light. Measured both ways -- ink 11.59:1 dark / 13.34:1 light,
+     muted 5.01:1 dark / 4.52:1 light. */
+  --popover: var(--q-raised);
+  --popover-foreground: var(--q-foreground);
+
+  --primary: var(--q-accent);
+  --primary-foreground: var(--q-accent-contrast);
+  --secondary: var(--q-sunken);
+  --secondary-foreground: var(--q-text-primary);
+  --accent: var(--q-sunken);
+  --accent-foreground: var(--q-text-primary);
+
+  --muted: var(--q-sunken);
+  --muted-foreground: var(--q-text-muted);
+
+  --destructive: var(--q-negative);
+  --border: var(--q-border-primary);
+  --input: var(--q-border-control);
+  --ring: var(--q-accent);
+
+  --positive: var(--q-positive);
+  --negative: var(--q-negative);
+
+  /* The rail is the page surface plus its border, not a third cream. Three
+     tints within 1.05-1.14:1 of each other did not read as a ladder, they read
+     as one surface that failed to repaint. --q-sunken is still the fill for
+     muted chips and skeletons, which do need to sit apart from the page. */
+  --sidebar: var(--q-background);
+  --sidebar-foreground: var(--q-text-primary);
+  --sidebar-primary: var(--q-accent);
+  --sidebar-primary-foreground: var(--q-accent-contrast);
+  --sidebar-accent: var(--q-pressed);
+  --sidebar-accent-foreground: var(--q-text-primary);
+  --sidebar-border: var(--q-border-primary);
+  --sidebar-ring: var(--q-accent);
+
+  /* Radii. The Ink & Mint ladder is generated by calc() off this one value,
+     so dropping it retires all 88 rounded-2xl and 8 rounded-3xl uses at once.
+     kanoon caps panels at rounded-lg; whoami's largest measured radius is
+     12px. 0.375rem = 6px base puts rounded-lg at 6px and rounded-2xl at
+     10.8px, so nothing in the app can exceed 12px without asking. */
+  --radius: 0.375rem;
+}
+
+/* Charts: a monochrome-blue ramp plus neutrals, replacing the five-hue
+   categorical set. Revisited in Phase 3 when recharts comes out; these values
+   exist so charts are not broken in the meantime. */
+:root[data-ui="quiet"] {
+  --chart-1: #2563eb;
+  --chart-2: #737373;
+  --chart-3: #93c5fd;
+  --chart-4: #404040;
+  --chart-5: #1e40af;
+}
+:root[data-ui="quiet"].dark {
+  --chart-1: #60a5fa;
+  --chart-2: #a3a3a3;
+  --chart-3: #1d4ed8;
+  --chart-4: #d4d4d4;
+  --chart-5: #93c5fd;
+}
+
+/* ── 3. Tailwind registration ───────────────────────────────────────────────
+   Utilities for the new primitives in components/quiet/. The existing
+   components keep using the bridged names above.                            */
+
+@theme inline {
+  --color-q-bg: var(--q-background);
+  --color-q-ink: var(--q-text-primary);
+  --color-q-muted: var(--q-text-muted);
+  --color-q-accent: var(--q-accent);
+  --color-q-positive: var(--q-positive);
+  --color-q-negative: var(--q-negative);
+  --color-q-sunken: var(--q-sunken);
+  --color-q-line: var(--q-border-primary);
+  --color-q-line-soft: var(--q-border-muted);
+  --color-q-line-control: var(--q-border-control);
+}
+
+/* All namespaced `q-`. The register's own names for these would be `text-muted`
+   and `border-primary`, but `border-primary` is already used 18 times in this
+   codebase (as `border-primary/20` and friends) to mean "a border in the accent
+   colour" — the opposite of the register's "faint hairline". Defining a utility
+   under that name would leave one word meaning two things and would apply in
+   BOTH designs, since @utility is not scoped by selector. Namespacing costs two
+   characters and removes the trap. */
+@utility q-ink {
+  color: var(--q-text-primary);
+}
+@utility q-muted {
+  color: var(--q-text-muted);
+}
+@utility q-border {
+  border-color: var(--q-border-primary);
+}
+@utility q-border-soft {
+  border-color: var(--q-border-muted);
+}
+@utility q-border-control {
+  border-color: var(--q-border-control);
+}
+
+/* The hairline divider. kanoon's separator convention is a bare border-b with
+   a dark: twin; expressed here as one utility so it cannot drift. */
+@utility q-rule {
+  block-size: 1px;
+  inline-size: 100%;
+  background-color: var(--q-border-primary);
+  border: 0;
+}
+
+/* ── 4. Type ────────────────────────────────────────────────────────────────
+   Measured from whoami.wiki's live pages. It runs three registers, and a
+   finance dashboard is the first of them:
+
+     app chrome  12px / 16px   (155 of ~200 text nodes on the product page)
+     docs        14px / 20px
+     prose       16px / 26px
+     h1          24px / 32px, weight 400 (prose) or 500 (docs)
+     micro       11px / 16.5px, 9px / 12px
+     tracked     9px / 12px / 600 / 0.45px  — the only tracked caps anywhere
+
+   kanoon independently lands in the same place: text-sm and text-xs are 68%
+   of all size usage across its monorepo.                                    */
+
+/* Faces: Satoshi Medium for everything, Cabinet Grotesk Extrabold for titles.
+   Both self-hosted variable woff2, wired in app/layout.tsx.
+
+   Satoshi at a heavy base weight is one of the eras this register was drawn
+   from ("Satoshi at base font-weight: 600, editorial dashboard look"), which
+   is the closest of them to a finance dashboard.
+
+   Extrabold titles are in-register because the register builds hierarchy from
+   "colour, weight, and hairline dividers — never from size jumps". Weight is
+   the sanctioned lever; SIZE is the constrained one. So --q-text-title stays
+   at 24px and nothing above it exists. A display headline is the anti-pattern,
+   not a heavy one.                                                          */
+
+:root[data-ui="quiet"] {
+  --q-font-sans: var(--font-quiet-sans), ui-sans-serif, system-ui, sans-serif;
+  --q-font-display: var(--font-quiet-display), var(--font-quiet-sans), ui-sans-serif, sans-serif;
+  --q-weight-body: 500;        /* Satoshi Medium */
+  --q-weight-title: 800;       /* Cabinet Grotesk Extrabold */
+
+  --q-text-micro: 0.6875rem;   /* 11px / 16.5px */
+  --q-text-chrome: 0.75rem;    /* 12px / 16px  — the dashboard's dominant size */
+  --q-text-body: 0.875rem;     /* 14px / 20px */
+  --q-text-prose: 1rem;        /* 16px / 26px */
+  --q-text-title: 1.5rem;      /* 24px / 32px */
+
+  --q-leading-micro: 1rem;
+  --q-leading-chrome: 1rem;
+  --q-leading-body: 1.25rem;
+  --q-leading-prose: 1.625rem;
+  --q-leading-title: 2rem;
+}
+
+/* ── 5. Base surface ───────────────────────────────────────────────────────*/
+
+:root[data-ui="quiet"] body {
+  background-color: var(--q-background);
+  color: var(--q-text-primary);
+  font-family: var(--q-font-sans);
+  font-size: var(--q-text-body);
+  font-weight: var(--q-weight-body);
+  line-height: var(--q-leading-body);
+}
+
+/* Titles. The size is pinned rather than inherited from a scale so a heading
+   cannot quietly grow into a display headline; hierarchy below this level is
+   carried by weight and by --q-text-muted, not by more size steps. */
+:root[data-ui="quiet"] :is(h1, h2, h3, [data-q-title]) {
+  font-family: var(--q-font-display);
+  font-weight: var(--q-weight-title);
+  letter-spacing: -0.01em;
+}
+:root[data-ui="quiet"] :is(h1, [data-q-title]) {
+  font-size: var(--q-text-title);
+  line-height: var(--q-leading-title);
+}
+:root[data-ui="quiet"] h2 {
+  font-size: var(--q-text-prose);
+  line-height: var(--q-leading-prose);
+}
+:root[data-ui="quiet"] h3 {
+  font-size: var(--q-text-body);
+  line-height: var(--q-leading-body);
+}
+
+/* Money and any figure the eye compares down a column. Already a project rule;
+   restated here so the quiet tree inherits it. */
+:root[data-ui="quiet"] :is([data-q-amount], .tabular-nums) {
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-ui="quiet"] ::selection {
+  background-color: var(--q-selection);
+}
+
+/* The switch track is a surface, not a border.
+
+   components/ui/switch.tsx paints its off state with `bg-input/90`, and
+   `--input` here is the CONTROL BORDER colour (48% ink, sized to be seen as an
+   outline). Used as a fill at 90% that is a dark muddy slab on the cream, the
+   same mistake the text inputs had. Off is the recessed tint, on is the accent,
+   and the thumb is the raised surface so it reads against both. */
+:root[data-ui="quiet"] [data-slot="switch"][data-unchecked] {
+  background: var(--q-sunken);
+  border-color: var(--q-border-control);
+}
+:root[data-ui="quiet"] [data-slot="switch-thumb"] {
+  background: var(--q-control-thumb);
+}
+:root[data-ui="quiet"] [data-slot="switch"][data-checked] [data-slot="switch-thumb"] {
+  background: var(--q-accent-contrast);
+}
+
+/* Floating overlays get a border strong enough to read as an edge.
+
+   The surface change alone is not enough: the picker carries
+   `ring-1 ring-foreground/10`, which on a dark ground is white at 10% and
+   simply disappears, and its `shadow-lg` is a black shadow over a near-black
+   page. Control strength is already the measured value for a boundary that has
+   to be seen (3:1), so overlays borrow it rather than inventing a third alpha.
+   Scoped to overlays; cards keep the quiet 15% hairline. */
+:root[data-ui="quiet"] :is(
+  [data-slot="category-picker"],
+  [data-slot="select-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="popover-content"],
+  [data-slot="dialog-content"],
+  [class*="bg-popover"]
+) {
+  border: 1px solid var(--q-border-control);
+  box-shadow: none;
+}
+
+/* Text inputs are the page surface plus a border, like every other surface in
+   this register -- not a filled well.
+
+   components/ui/input.tsx paints itself with `bg-input/50`, and `--input` here
+   is the CONTROL BORDER colour (48% ink, chosen to clear 3:1 as an outline).
+   Used as a fill that is a 24% wash, which on the cream ground rendered as a
+   muddy taupe slab. The colour was never wrong; it was being used for the
+   wrong property. Border carries the control, exactly as the register asks. */
+:root[data-ui="quiet"] :is([data-slot="input"], [data-slot="textarea"], textarea) {
+  background: var(--q-background);
+  border-color: var(--q-border-control);
+}
+
+/* Same problem wherever a field is hand-rolled instead of using the Input
+   component -- e.g. the `$ Target` box on /goals, which is a <span> wearing
+   `bg-input/40` around a bare <input>. Matching on the utility class rather
+   than a data-slot is what reaches those. */
+/* The switch is excluded because it is the one control that wears `bg-input`
+   without being a field: its off state is `data-unchecked:bg-input/90`, and a
+   substring match on the class list hits it in BOTH states. That repainted the
+   ON track with the page ground, so the accent fill never appeared and the
+   toggle read the same whether it was on or off. */
+:root[data-ui="quiet"] :is([class*="bg-input"]):not([data-slot="switch"]) {
+  background: var(--q-background);
+  border-color: var(--q-border-control);
+}
+
+/* Anything wearing the accent as a fill gets the accent's contrast ink.
+
+   `text-primary-foreground` is in the button variant string but Tailwind never
+   emits a rule for it (verified against the live CSSOM: the selector does not
+   exist). Real <button>s happen to come out white anyway, so the gap only
+   shows on a link styled as a button -- `<a className={buttonVariants()}>` --
+   which inherits the page ink instead and renders near-black text on a blue
+   fill. Setting it here does not depend on that utility existing. */
+:root[data-ui="quiet"] :is(a, button)[data-slot="button"].bg-primary {
+  color: var(--q-accent-contrast);
+}
+
+/* Links: the register's underline-offset-4, and the one accent.
+
+   Scoped to bare anchors. An anchor carrying a data-slot is a component that
+   already owns its colour -- a sidebar nav item, or a link wearing button
+   styling -- and repainting it accent-blue either turns the whole navigation
+   into a wall of links or, when the component also paints an accent
+   background, renders the label invisible against it. The accent belongs to
+   prose links and selection, not to navigation. */
+:root[data-ui="quiet"] a:not([data-slot]):not([data-q-plain]) {
+  color: var(--q-accent);
+  text-underline-offset: 4px;
+}
+
+/* A single visible focus treatment for everything, meeting 3:1 as a non-text
+   indicator (blue-600 is 5.17:1 on #fff, blue-400 is 5.95:1 on #262626). */
+:root[data-ui="quiet"] :focus-visible {
+  outline: 2px solid var(--q-accent);
+  outline-offset: 2px;
+}
+
+/* Focus on a form field is the field's own border turning accent -- no ring,
+   no outline, no offset halo.
+
+   Three treatments used to stack on one input: the component's
+   `focus-visible:border-ring`, its 3px ring, and the offset outline from the
+   rule above. Even after dropping the component's ring, the outline sat 2px
+   OUTSIDE the field's rounded border as a floating blue capsule, and inside a
+   hand-rolled wrapper (the `$ Target` box) it drew around the bare <input>
+   rather than the box the user sees. The border is already there, already the
+   right shape, and #2563eb on the cream is 4.70:1 -- well past the 3:1 a
+   non-text focus indicator needs. */
+:root[data-ui="quiet"] :is(input, textarea, select):focus-visible,
+:root[data-ui="quiet"] :is([data-slot="select-trigger"], [data-slot="input"], [data-slot="textarea"]):focus-visible {
+  border-color: var(--q-accent);
+  box-shadow: none;
+  outline: none;
+}
+
+/* A field built as a wrapper around a bare transparent <input> has no border of
+   its own to colour, so the wrapper carries the focus instead. Without this the
+   rule above would leave those fields with no focus indicator at all. */
+:root[data-ui="quiet"] :is([class*="bg-input"]):focus-within {
+  border-color: var(--q-accent);
+}
+
+/* Mobile-only antialiasing. Present identically in kanoon's web and docs
+   packages, and called out in the register's token notes. */
+@media (max-width: 640px) {
+  :root[data-ui="quiet"] body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ── 5b. Flatten ────────────────────────────────────────────────────────────
+   Tokens cannot reach these. Ink & Mint builds elevation in component-level
+   rules that hardcode their own gradients, borders, and shadows rather than
+   reading a variable — `.dark [data-slot="card"]` (shadcn.css:889) sets a
+   gradient overlay, a literal 7% border, and three shadows including an inset.
+   Being class+attribute selectors they tie with the token block on specificity
+   and win on source order, so they need explicit overrides at (0,3,0).
+
+   The register is flat: separation is a hairline border, and a shadow means
+   "this is pretending to be an OS window". None of these are.
+
+   Deliberately NOT flattened, because they are functional rather than
+   decorative: .scroll-fade-* and [data-overflowing] (they signal that content
+   continues past the edge), focus rings, and .t-shimmer (loading state).      */
+
+:root[data-ui="quiet"] :is(
+  [data-slot="card"],
+  [data-slot="sidebar-inset"],
+  [data-dashboard-card="layered"],
+  [data-dashboard-card-plane="primary"]
+) {
+  background: var(--q-background);
+  border-color: var(--q-border-primary);
+  box-shadow: none;
+}
+
+/* Literal elevation utilities. 76 of these are written directly into
+   component class strings, so they outlive the token swap. Only the plain
+   elevation steps are neutralised; ring/inset/focus treatments are untouched. */
+:root[data-ui="quiet"] :is(
+  .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl, .shadow-soft
+) {
+  box-shadow: none;
+}
+
+/* Decorative sheens have no place in the register. */
+:root[data-ui="quiet"] :is(.sheen-pill::after, .sidebar-fold-blur::after) {
+  display: none;
+}
+
+/* ── 5c. Structure ──────────────────────────────────────────────────────────
+   The remaining distance between "Ink & Mint recoloured" and the register is
+   type size, casing, and density. All reachable from CSS because the markup
+   already carries the right roles and slots.                                 */
+
+/* Tracked caps. The register names this exactly: "Section eyebrow / tracked
+   caps heading -> font-mono text-sm text-muted label, or nothing", and permits
+   tracked caps only at <=9px inside faux OS chrome. There are 49 `uppercase`
+   and 44 `tracking-wide` uses here, nearly all card eyebrows.
+
+   Reverting the casing is safe for the test suite: the DOM text is already
+   sentence case ("Monthly spending"), the capitals are applied by CSS, and
+   Chrome does not fold text-transform into the accessible name — so
+   getByRole("heading", { name: "Monthly spending" }) keeps matching.
+
+   `.card-label` is listed explicitly: the card eyebrows take their capitals
+   from that class, not from the Tailwind `uppercase` utility, so a
+   utility-only selector list misses every card on the dashboard. Confirmed by
+   reading the live DOM — the text node is already "Monthly spending".       */
+:root[data-ui="quiet"] :is(
+  .uppercase, .card-label,
+  .tracking-wide, .tracking-wider, .tracking-widest
+) {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Chrome runs at 12px. Measured as the dominant size on the reference app
+   (155 of ~200 text nodes); this app currently sits a step up at 14px. */
+:root[data-ui="quiet"] :is(
+  [data-slot="sidebar-menu-button"],
+  [data-slot="sidebar-group-label"],
+  [data-slot="card-header"] :is(h2, h3, [data-slot="card-title"]),
+  [data-slot="badge"],
+  th
+) {
+  font-size: var(--q-text-chrome);
+  line-height: var(--q-leading-chrome);
+}
+
+/* Card eyebrows are labels, not titles: muted ink, normal weight, sans. They
+   were competing with the numbers underneath them. */
+:root[data-ui="quiet"] [data-slot="card-header"] :is(h2, h3, [data-slot="card-title"]) {
+  font-family: var(--q-font-sans);
+  font-weight: 500;
+  color: var(--q-text-muted);
+  letter-spacing: normal;
+}
+
+/* Navigation. Active state carries by weight and ink, not by a tinted fill and
+   an inset ring — the register builds hierarchy from "colour, weight, and
+   hairline dividers". */
+:root[data-ui="quiet"] [data-slot="sidebar-menu-button"] {
+  border-radius: var(--radius);
+}
+/* `[data-active]` on presence, not `="true"` — the shell sets it to the empty
+   string, so an equality selector never matches. */
+:root[data-ui="quiet"] [data-slot="sidebar-menu-button"][data-active] {
+  /* The pill, plus accent ink and weight. Leaving active fill-free while hover
+     painted one meant whichever row the pointer rested on outranked the page
+     actually open; giving active the same surface AND two signals hover does
+     not have puts the ranking back the right way round.
+
+     --q-pressed, NOT --q-raised. A selected row is pressed into the rail, so it
+     goes darker; --q-raised is the overlay colour and goes lighter, which on the
+     cream ground is warm white -- pointing this at it painted every active tab
+     white. */
+  background: var(--q-pressed);
+  box-shadow: none;
+  /* Accent ink, not plain ink. Weight alone lost to the hover pill: hover
+     paints a whole surface while active stays fill-free, so whichever row the
+     pointer happened to rest on read as more selected than the page actually
+     open. Colour restores the ranking without giving active a fill, which is
+     the thing this rule exists to avoid, and the register already reserves the
+     accent for links AND selection. */
+  color: var(--q-accent);
+  font-weight: 700;
+}
+/* The rail is the page ground plus its border, not a second cream.
+   This rule used to paint --q-sunken while the bridge above set --sidebar to
+   --q-background, so the two disagreed and the rail rendered #f3eee0 against a
+   #f8f4e9 page: a 1.02:1 difference, invisible as a ladder step but enough to
+   read as "the sidebar is a different colour from everything else". The border
+   is what separates them. --q-sunken keeps its real job, which is chips,
+   skeletons and table header rows. */
+/* Segmented controls select DOWNWARD, like every other selection in this
+   register.
+
+   The component is built for Ink & Mint, where the track is a grey and the
+   selected pill is white: raised, the usual iOS segmented look, and correct
+   there. Under the quiet tokens that inverts into nothing at all, because the
+   track resolves to --q-sunken (#f3eee0) and the pill to the page cream
+   (#f8f4e9). A selected pill 1.02:1 lighter than its own track is invisible,
+   which is why the net-worth range read as "off".
+
+   Same correction already applied to the sidebar: on a light ground a selection
+   is pressed into its surface, so it goes darker. The track becomes the page
+   ground so the control is one flat field, and the pill carries --q-pressed. */
+:root[data-ui="quiet"] [data-slot="segmented-control"] {
+  background: var(--q-background);
+  border: 1px solid var(--q-border-muted);
+}
+:root[data-ui="quiet"] [data-slot="segmented-control-pill"] {
+  background: var(--q-pressed);
+  box-shadow: none;
+}
+
+:root[data-ui="quiet"] [data-slot="sidebar"] {
+  background: var(--q-background);
+  border-right: 1px solid var(--q-border-primary);
+}
+
+/* The one sanctioned display element.
+
+   The register bans display type, and for every other heading this file holds
+   the line at 24px. A money hero is the exception, deliberately and once per
+   page: it is the single most-read element on a finance dashboard, and the
+   register's own objection is to decorative display type, not to the one datum
+   the page exists to show. It is rendered in the display face at a size below
+   the original 2.4rem, so it still reads as part of the same system.
+
+   If this ever grows to two heroes on one page, that is the point at which it
+   has stopped being an exception and should be reconsidered. */
+:root[data-ui="quiet"] .money-hero {
+  font-family: var(--q-font-display);
+  font-size: 2.125rem;             /* 34px, down from 38.4px */
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+:root[data-ui="quiet"] .money-hero :is(.money-symbol, .money-cents) {
+  font-weight: 600;
+}
+
+/* Density. The register's stack gaps are 1 / 2 / 4 / 6 / 8; Ink & Mint pads
+   cards for a raised look they no longer have. */
+:root[data-ui="quiet"] [data-slot="card"] {
+  border-radius: var(--radius);
+}
+
+/* Tables read as data, not as boxes: a tinted header row and hairline rules,
+   no vertical rules, no cell borders. */
+:root[data-ui="quiet"] :is(th, td) {
+  border-left: 0;
+  border-right: 0;
+}
+:root[data-ui="quiet"] th {
+  font-weight: 600;
+  color: var(--q-text-muted);
+  background: var(--q-sunken);
+}
+
+/* Pills keep their shape but lose the wash — the register's pills are outlines
+   with ink, and a fill per category turns a ledger into confetti. */
+:root[data-ui="quiet"] .pill-tint {
+  background-color: transparent;
+  border-color: color-mix(in oklab, var(--pill-color) 40%, transparent);
+}

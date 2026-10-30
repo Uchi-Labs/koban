@@ -8,7 +8,7 @@ import { CategoryPill } from "@/components/category-pill";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { BloomColorPicker } from "@/components/ui/bloom-color-picker";
+import { BlossomPicker } from "@/components/ui/blossom-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralCategoryEmoji } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
@@ -226,7 +226,11 @@ export function CategoryEditDialog({
                 ))}
               </div>
               <div className="h-5 w-px bg-border" />
-              <BloomColorPicker ariaLabel="Custom category color" onChange={setColorDraft} value={color} />
+              {/* The same control as Settings and the new-category dialog. This
+                  was the last call site still on the older BloomColorPicker, so
+                  the app offered two different custom-colour pickers depending on
+                  where you opened it. Identical props, so this is a swap. */}
+              <BlossomPicker ariaLabel="Custom category color" onChange={setColorDraft} value={color} />
             </div>
           </div>
 

@@ -16,11 +16,34 @@ type RowAccount = Pick<Account, "id" | "name" | "currentBalance" | "currency">;
  * (survives resync) and is merged at the read boundary, so the new name shows
  * everywhere the account appears. Empty submit restores the provider name.
  */
-export function SidebarAccountRow({ account, href, active, dotColor }: {
+export function SidebarAccountRow({
+  account,
+  href,
+  active,
+  children,
+  className,
+  dotColor,
+  onMouseEnter
+}: {
   account: RowAccount;
   href: string;
   active: boolean;
+  /**
+   * The hover pill, injected by SharedLayoutBg.
+   *
+   * That component draws its shared-layout pill by cloning each child and
+   * passing the pill in as `children`, alongside `className` and
+   * `onMouseEnter` (components/ui/shared-layout-bg.tsx). A child that does not
+   * accept all three drops them silently, which is exactly what happened here:
+   * the accounts list was wrapped in SharedLayoutBg with its own pillClassName
+   * (app-shell.tsx), yet no account row ever showed a pill, because this
+   * component ignored every prop the clone injected. Nav rows worked only
+   * because SidebarMenuItem spreads props onto its <li>.
+   */
+  children?: React.ReactNode;
+  className?: string;
   dotColor: string;
+  onMouseEnter?: () => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -86,17 +109,34 @@ export function SidebarAccountRow({ account, href, active, dotColor }: {
   }
 
   return (
-    <li className={cn("rounded-lg", active && "bg-sidebar-accent/70")} ref={rowRef}>
+    <li
+      className={cn("relative rounded-lg", className, active && "bg-sidebar-accent")}
+      onMouseEnter={onMouseEnter}
+      ref={rowRef}
+    >
+      {/* The pill renders absolutely positioned behind the row, so the link
+          sits above it rather than being covered by it. */}
+      {children}
       <Link
         aria-current={active ? "page" : undefined}
         aria-label={`Open account page for ${account.name}`}
-        className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
+        className="relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
         href={href}
         title={`${account.name} · right-click to rename`}
         unstable_dynamicOnHover
       >
         <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
-        <span className="min-w-0 flex-1 truncate text-sidebar-foreground/70">{account.name}</span>
+        {/* Selected accounts read like selected nav items: accent ink and weight,
+            not just a tinted row. The nav above already did this, so an account
+            you had open looked less selected than a page you had open. */}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            active ? "font-medium text-sidebar-primary" : "text-sidebar-foreground/70"
+          )}
+        >
+          {account.name}
+        </span>
         <span className="shrink-0 font-medium tabular-nums">
           {formatCurrency(Math.abs(account.currentBalance), account.currency)}
         </span>

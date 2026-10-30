@@ -1,10 +1,12 @@
 "use client";
 
 import type { Category } from "@ai-finances/schema";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, RotateCcw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleHelp, RotateCcw } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion, type PanInfo } from "motion/react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPill } from "@/components/category-pill";
+import { isUnsure, reviewConfidenceFor, type ReviewConfidence } from "@/components/review-confidence";
+import { ReviewContextPanel, type ReviewContext } from "@/components/review-context-panel";
 import { Button } from "@/components/ui/button";
 import { CategoryPicker } from "@/components/ui/category-picker";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
@@ -18,14 +20,26 @@ import type { TransactionView } from "@/lib/view-models";
 type ReviewAction = "accept" | "categorize" | "review" | "skip";
 interface HistoryItem { action: ReviewAction; categoryId: string; previousCategoryId: string; transactionId: string }
 
-export function ReviewStack({ categories, initialTransactions, suggestions }: {
+export function ReviewStack({ categories, confidences, contexts, initialTransactions, suggestions }: {
   categories: Category[];
+  /** Model confidence (0-1) of each pending category suggestion, by transaction id. */
+  confidences?: Record<string, number>;
+  contexts?: Record<string, ReviewContext>;
   initialTransactions: TransactionView[];
   suggestions: Record<string, string>;
 }) {
   const reduce = useReducedMotion();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /**
+   * Category chosen on the card, per transaction.
+   *
+   * `suggestions` is a read-only prop of what the model proposed, so a user
+   * pick needs somewhere to live until Accept commits it. Keyed by id rather
+   * than held as one value, so a pick survives the card behind it being
+   * promoted, and an Undo that walks back to a card keeps what was chosen.
+   */
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   // Which card is leaving, and in which direction. Deliberately NOT cleared
@@ -35,10 +49,14 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   const [exiting, setExiting] = useState<{ id: string; x: number; y: number } | null>(null);
   const current = initialTransactions[history.length];
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
-  const suggestedId = current ? suggestions[current.id] ?? current.categoryId : undefined;
+  const suggestedId = current ? chosen[current.id] ?? suggestions[current.id] ?? current.categoryId : undefined;
   const reviewed = history.filter((item) => item.action !== "skip").length;
   const recategorized = history.filter((item) => item.action === "categorize" || (item.action === "accept" && item.categoryId !== item.previousCategoryId)).length;
   const reviewProgress = initialTransactions.length === 0 ? 100 : (history.length / initialTransactions.length) * 100;
+  const confidenceFor = useCallback(
+    (id: string) => reviewConfidenceFor(suggestions[id] ? { categoryId: suggestions[id], confidence: confidences?.[id] } : undefined),
+    [confidences, suggestions]
+  );
 
   const advance = useCallback(async (action: ReviewAction, categoryId?: string) => {
     if (!current || busy) return;
@@ -121,6 +139,8 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
     if (!el) return;
     function onWheel(event: WheelEvent) {
       if (!current || busy || pickerOpen) return;
+      // Scrolling inside the context note scrolls the note, not the card.
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable="true"]')) return;
       // Native non-passive listener: React's onWheel is passive, and the page
       // must not scroll while the gesture is steering the card.
       event.preventDefault();
@@ -197,15 +217,15 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
               disturb the page layout below. */}
           <div className="relative">
           {current ? (
-            <div aria-hidden="true" className="invisible rounded-3xl border p-6">
-              <CardBody suggestedCategory={categoryById.get(suggestions[current.id] ?? current.categoryId) ?? current.category} suggestedId={suggestions[current.id] ?? current.categoryId} transaction={current} />
+            <div aria-hidden="true" className="invisible rounded-3xl border p-6" key={current.id}>
+              <CardBody confidence={confidenceFor(current.id)} context={contexts?.[current.id]} showContext suggestedCategory={categoryById.get(suggestedId ?? current.categoryId) ?? current.category} suggestedId={suggestedId ?? current.categoryId} transaction={current} />
             </div>
           ) : null}
           <AnimatePresence initial={false}>
             {stack.length > 0 ? (
               stack.map((transaction, depth) => {
                 const front = depth === 0;
-                const cardSuggestedId = suggestions[transaction.id] ?? transaction.categoryId;
+                const cardSuggestedId = chosen[transaction.id] ?? suggestions[transaction.id] ?? transaction.categoryId;
                 const cardSuggestedCategory = categoryById.get(cardSuggestedId) ?? transaction.category;
                 const leaving = exiting?.id === transaction.id;
                 // Depth pose: each step back lifts, shrinks, fades, and blurs a
@@ -254,7 +274,34 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
                     transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                     whileDrag={front ? { cursor: "grabbing", rotate: 1.5, scale: 1.015 } : undefined}
                   >
-                    <CardBody suggestedCategory={cardSuggestedCategory} suggestedId={cardSuggestedId} transaction={transaction} />
+                    <CardBody
+                      categoryControl={
+                        front && cardSuggestedCategory ? (
+                          <CategoryPicker
+                            categories={categories}
+                            onOpenChange={setPickerOpen}
+                            onSelect={(id) => setChosen((all) => ({ ...all, [transaction.id]: id }))}
+                            open={pickerOpen}
+                            value={cardSuggestedId}
+                          >
+                            <button
+                              aria-label={`Category: ${cardSuggestedCategory.name}. Change it.`}
+                              className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              disabled={busy}
+                              type="button"
+                            >
+                              <CategoryPill category={cardSuggestedCategory} />
+                            </button>
+                          </CategoryPicker>
+                        ) : undefined
+                      }
+                      confidence={confidenceFor(transaction.id)}
+                      context={contexts?.[transaction.id]}
+                      showContext={front}
+                      suggestedCategory={cardSuggestedCategory}
+                      suggestedId={cardSuggestedId}
+                      transaction={transaction}
+                    />
                   </m.article>
                 );
               })
@@ -278,12 +325,15 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
           </div>
         </LazyMotion>
 
-        <div className="mt-5 grid grid-cols-4 gap-2">
+        {/* Two actions, because there were only ever two decisions.
+            "Category" was a button that opened a picker for a value displayed
+            six inches above it, and "As-is" sent a request identical to Accept
+            whenever the suggestion matched the current category -- differing
+            only when it did not, with nothing on screen saying which case you
+            were in. The pill is now the category, so Accept commits whatever it
+            shows and leaving it alone IS as-is. */}
+        <div className="mt-5 grid grid-cols-2 gap-2">
           <Button disabled={!current || busy} onClick={() => void advance("skip")} type="button" variant="outline"><ArrowLeft className="size-4" /><span className="hidden sm:inline">Skip</span></Button>
-          <CategoryPicker categories={categories} onOpenChange={setPickerOpen} onSelect={(id) => void advance("categorize", id)} open={pickerOpen} value={current?.categoryId}>
-            <Button disabled={!current || busy} type="button" variant="outline"><ArrowUp className="size-4" /><span className="hidden sm:inline">Category</span></Button>
-          </CategoryPicker>
-          <Button disabled={!current || busy} onClick={() => void advance("review")} type="button" variant="outline"><ArrowDown className="size-4" /><span className="hidden sm:inline">As-is</span></Button>
           <Button disabled={!current || busy} onClick={() => void advance("accept", suggestedId)} type="button"><ArrowRight className="size-4" /><span className="hidden sm:inline">Accept</span></Button>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
@@ -299,7 +349,18 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   );
 }
 
-function CardBody({ suggestedCategory, suggestedId, transaction }: {
+function CardBody({ categoryControl, confidence, context, showContext, suggestedCategory, suggestedId, transaction }: {
+  confidence: ReviewConfidence;
+  context?: ReviewContext;
+  showContext?: boolean;
+  /**
+   * The category pill, wrapped so it opens the picker.
+   *
+   * Only the front card gets one; the cards stacked behind it render a plain
+   * pill, because they are decoration and an interactive control the user
+   * cannot see is a keyboard trap.
+   */
+  categoryControl?: React.ReactNode;
   suggestedCategory: Category | undefined;
   suggestedId: string;
   transaction: TransactionView;
@@ -312,9 +373,18 @@ function CardBody({ suggestedCategory, suggestedId, transaction }: {
       </div>
       <p className="my-10 text-center text-4xl font-semibold tracking-tight tabular-nums">{formatCurrency(Math.abs(transaction.amount), transaction.currency)}</p>
       <div className="flex items-center justify-between gap-3 rounded-2xl bg-muted/45 p-3">
-        <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Suggested category</p><div className="mt-1">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div></div>
-        {suggestedId !== transaction.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
+        <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Category</p><div className="mt-1">{categoryControl ?? (suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null)}</div></div>
+        <div className="flex flex-col items-end gap-1 text-right">
+          {suggestedId !== transaction.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
+          {isUnsure(confidence) ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <CircleHelp aria-hidden="true" className="size-3.5" />
+              {confidence.kind === "low" ? <span>Not sure · <span className="tabular-nums">{Math.round(confidence.score * 100)}%</span></span> : "No AI suggestion"}
+            </span>
+          ) : null}
+        </div>
       </div>
+      {showContext ? <ReviewContextPanel context={context} transactionId={transaction.id} unsure={isUnsure(confidence)} /> : null}
     </>
   );
 }

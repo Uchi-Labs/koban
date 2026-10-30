@@ -119,7 +119,6 @@ export function RangeSlider({
     ? Array.from({ length: tickCount + 1 }, (_, index) => min + index * step)
     : [];
   const glideTransition = reduce ? { duration: 0 } : { type: "spring" as const, ...SPRING_GLIDE };
-  const rangeScale = Math.max(0, (highPercent - lowPercent) / 100);
 
   return (
     <div
@@ -135,16 +134,10 @@ export function RangeSlider({
     >
       <motion.div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 w-full"
-        animate={{ x: `${lowPercent}%` }}
+        className="pointer-events-none absolute inset-y-0 rounded-xl bg-primary/15"
+        animate={{ left: `${lowPercent}%`, right: `${100 - highPercent}%` }}
         transition={glideTransition}
-      >
-        <motion.div
-          className="h-full origin-left rounded-xl bg-primary/15"
-          animate={{ scaleX: rangeScale }}
-          transition={glideTransition}
-        />
-      </motion.div>
+      />
       {ticks.map((tick) => (
         <span
           aria-hidden="true"
@@ -158,8 +151,8 @@ export function RangeSlider({
         const thumbIndex = index as 0 | 1;
         return (
           <motion.div
-            animate={{ x: `${percent}%` }}
-            className="pointer-events-none absolute inset-y-0 left-0 w-full"
+            animate={{ left: `${percent}%` }}
+            className="pointer-events-none absolute inset-y-0"
             key={index}
             transition={glideTransition}
           >

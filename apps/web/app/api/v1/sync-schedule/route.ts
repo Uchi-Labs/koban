@@ -2,19 +2,14 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readOptionalJsonObject } from "@/lib/api-request";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
-import { runAppSync } from "@/lib/app-sync-service";
 import {
   appSyncScheduleId,
-  claimAppSyncSchedule,
-  claimAppSyncScheduleForRunNow,
-  clearAppSyncScheduleClaim,
   ensureAppSyncSchedule,
-  recordAppSyncScheduleRun,
   snapTradeSyncScheduleId,
   updateAppSyncSchedule
 } from "@/lib/db/finance-db";
 import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync-request";
-import { withSyncScheduleClaimHeartbeat } from "@/lib/sync-schedule-claim";
+import { runScheduledSync } from "@/lib/sync-schedule-coordinator";
 
 export const runtime = "nodejs";
 
@@ -72,17 +67,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unsupported sync schedule action." }, { status: 400 });
   }
 
-  const schedule = await ensureAppSyncSchedule();
-  const schedulePayload = syncScheduleRecordToPayload(schedule);
-
-  if (action === "run_due" && (!schedulePayload.enabled || !schedulePayload.due)) {
-    return NextResponse.json({
-      object: "sync_schedule_run",
-      reason: schedulePayload.enabled ? "not_due" : "disabled",
-      run: null,
-      schedule: schedulePayload,
-      status: "skipped"
-    });
+  // Preserve the route's cheap run_due response before validating options that
+  // will never be used. The coordinator repeats the check at claim time, where
+  // it remains authoritative if the schedule changes between these reads.
+  if (action === "run_due") {
+    const schedulePayload = syncScheduleRecordToPayload(await ensureAppSyncSchedule());
+    if (!schedulePayload.enabled || !schedulePayload.due) {
+      return NextResponse.json({
+        object: "sync_schedule_run",
+        reason: schedulePayload.enabled ? "not_due" : "disabled",
+        run: null,
+        schedule: schedulePayload,
+        status: "skipped"
+      });
+    }
   }
 
   const enrichmentLimit = parseOptionalEnrichmentLimit(body.enrichment_limit);
@@ -98,43 +96,28 @@ export async function POST(request: Request) {
   }
 
   const claimedBy = `sync-schedule-api:${process.pid}:${randomUUID()}`;
-  const claimed = action === "run_due"
-    ? await claimAppSyncSchedule(appSyncScheduleId, claimedBy)
-    : await claimAppSyncScheduleForRunNow(appSyncScheduleId, claimedBy);
+  const result = await runScheduledSync({
+    action,
+    claimedBy,
+    enrichmentLimit: enrichmentLimit.value,
+    sourceIds: sourceIds.value,
+    target: "whole_app"
+  });
 
-  if (!claimed) {
+  if (result.status === "skipped") {
     return NextResponse.json({
       object: "sync_schedule_run",
-      reason: "claimed",
+      reason: result.reason === "busy" ? "claimed" : result.reason,
       run: null,
       schedule: syncScheduleRecordToPayload(await ensureAppSyncSchedule()),
       status: "skipped"
     });
   }
 
-  try {
-    const { run, updatedSchedule } = await withSyncScheduleClaimHeartbeat(
-      appSyncScheduleId,
-      claimedBy,
-      async (signal) => {
-        const run = await runAppSync({
-          enrichmentLimit: enrichmentLimit.value,
-          signal,
-          sourceIds: sourceIds.value
-        });
-        const updatedSchedule = await recordAppSyncScheduleRun(run, appSyncScheduleId, claimedBy);
-        return { run, updatedSchedule };
-      }
-    );
-
-    return NextResponse.json({
-      object: "sync_schedule_run",
-      run: appSyncRunRecordToPayload(run),
-      schedule: syncScheduleRecordToPayload(updatedSchedule),
-      status: "ran"
-    });
-  } catch (error) {
-    await clearAppSyncScheduleClaim(appSyncScheduleId, claimedBy);
-    throw error;
-  }
+  return NextResponse.json({
+    object: "sync_schedule_run",
+    run: appSyncRunRecordToPayload(result.run),
+    schedule: syncScheduleRecordToPayload(result.schedule),
+    status: "ran"
+  });
 }

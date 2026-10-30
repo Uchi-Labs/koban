@@ -127,7 +127,13 @@ function SelectContent({
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
-          className={cn("relative z-50 max-h-(--available-height) min-w-(--anchor-width) origin-(--transform-origin) rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10", className )}
+          // flex column + overflow-hidden so the list scrolls INSIDE the rounded
+          // box. Both this popup and the list below used to carry the same
+          // max-h-(--available-height) while only this one added p-1, so the list
+          // could be 8px taller than its parent's content box and the last item
+          // spilled past the corner radius. The list now flexes within the
+          // remaining space instead of being clamped to the same absolute height.
+          className={cn("relative z-50 flex max-h-(--available-height) min-w-(--anchor-width) origin-(--transform-origin) flex-col overflow-hidden rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10", className )}
             render={
             <m.div
               animate={reduce ? { opacity: 1, scale: 1, y: 0 } : "open"}
@@ -140,7 +146,7 @@ function SelectContent({
         >
           <SelectScrollUpButton />
           <SelectPrimitive.List
-            className="refined-scrollbar scroll-fade-y max-h-(--available-height) overflow-y-auto overscroll-contain"
+            className="refined-scrollbar scroll-fade-y min-h-0 flex-1 overflow-y-auto overscroll-contain"
             render={
               <m.div
                 animate="open"

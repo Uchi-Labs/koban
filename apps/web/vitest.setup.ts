@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 
@@ -83,3 +85,6 @@ clearLocalAiEnv();
 afterEach(() => {
   clearLocalAiEnv();
 });
+
+// Tests must not discover or mutate the operator's registered mailboxes.
+process.env.KOBAN_MAIL_ACCOUNTS_FILE = path.join(os.tmpdir(), `koban-unused-mail-registry-${process.pid}.json`);

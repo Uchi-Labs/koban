@@ -9,6 +9,7 @@ import {
 } from "@/lib/demo-mode";
 import type { AccountBalanceSnapshot } from "@/lib/finance-data";
 import { readPortfolioSnapshot, listInvestmentPositions } from "@/lib/db/finance-db";
+import { resolveSymbolDescriptions } from "@/lib/symbol-description";
 
 /** A point on a Liveline chart. `time` is unix seconds. */
 export interface PortfolioPoint {
@@ -279,13 +280,25 @@ export async function getInvestmentsData(): Promise<InvestmentsData> {
   const rawAccountById = new Map(rawAccounts.map((account) => [account.id, account]));
 
   const weightedPositions = computeHoldingWeights(positions);
+  // Brokerage security names are frequently a different company: SnapTrade
+  // reported DRAM, the Roundhill Memory ETF, as "DATARAM CP", a defunct memory
+  // manufacturer that used to hold the ticker. TradingView is the chosen source
+  // of truth for the display name. Resolution is server-side, so no holding
+  // ever leaves the user's browser, and any symbol it cannot confidently match
+  // keeps the name its provider gave it rather than being invented.
+  //
+  // Skipped in demo mode: those symbols are scrambled, so every lookup would
+  // miss and the requests would be pure waste.
+  const resolvedDescriptions = demoMode
+    ? new Map<string, string>()
+    : await resolveSymbolDescriptions(weightedPositions.map((position) => position.symbol));
   const holdings: HoldingView[] = weightedPositions.map((position) => {
     const account = accountById.get(position.accountId);
     const { costBasisValue, unrealizedPnl, unrealizedPnlPercent } = computeUnrealized(position);
     return {
       id: position.id,
       symbol: position.symbol,
-      description: position.description,
+      description: resolvedDescriptions.get(position.symbol.trim()) ?? position.description,
       accountId: position.accountId,
       accountName: account ? `${account.institutionName} ${account.name}`.trim() : position.accountId,
       units: position.units,

@@ -1,10 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* Quiet register. Inert unless <html data-ui="quiet">; imported here rather
+   than from layout.tsx so its @theme/@utility rules share this Tailwind
+   compilation unit. Deleted at the end of the redesign migration. */
+@import "./quiet.css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --font-sans: var(--font-inter);
   --background: oklch(0.982 0.006 95);
   --foreground: oklch(0.18 0.012 250);
   --card: oklch(0.997 0.003 95);

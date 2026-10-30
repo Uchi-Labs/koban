@@ -31,7 +31,27 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/30 duration-100 supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // The blur transitions with the fade rather than snapping.
+        //
+        // This used to be `backdrop-blur-sm` plus keyframe `animate-in/animate-out`,
+        // which broke twice over. The blur was never animated: it applied at full
+        // strength on the element's first frame while opacity was still 0, and on
+        // close the element unmounts, so the blur disappeared in a single frame
+        // around a 100ms fade. That snap is what reads as a flicker.
+        //
+        // The keyframe utilities were also the wrong system. Base UI drives
+        // enter/exit through data-starting-style/data-ending-style, which are
+        // transitions, and it decides when to unmount by watching them; running a
+        // keyframe animation alongside gives it two clocks that disagree. The
+        // sheet already uses the transition form, so this matches the house
+        // pattern instead of inventing a second one.
+        //
+        // blur-[0px] rather than backdrop-blur-none at the endpoints: the `none`
+        // utility clears the blur slot entirely, leaving two filter lists of
+        // different shape that will not interpolate. Both ends carry a blur().
+        "fixed inset-0 isolate z-50 bg-black/30 transition-[opacity,backdrop-filter] duration-200 ease-out supports-backdrop-filter:backdrop-blur-md",
+        "data-ending-style:opacity-0 data-ending-style:backdrop-blur-[0px] data-starting-style:opacity-0 data-starting-style:backdrop-blur-[0px]",
+        "motion-reduce:transition-none",
         className
       )}
       {...props}

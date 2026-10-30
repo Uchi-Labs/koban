@@ -40,7 +40,7 @@ export function GoalManager({ initialGoals }: { initialGoals: GoalView[] }) {
       {activeGoals.length === 0 ? (
         <EmptyState
           actions={
-            <a className={buttonVariants()} href="#new-goal">
+            <a className={buttonVariants()} data-slot="button" href="#new-goal">
               Create a goal
             </a>
           }
@@ -117,8 +117,12 @@ function GoalCreateForm() {
     }
   }
 
+  // overflow-visible so the emoji popover is not clipped. Card sets
+  // overflow-hidden globally (components/ui/card.tsx) to clip images to its
+  // rounded corners; this card holds no images, and the picker is an
+  // absolutely positioned child that the clip was swallowing entirely.
   return (
-    <Card id="new-goal" size="sm">
+    <Card className="overflow-visible" id="new-goal" size="sm">
       <CardContent>
         <form className="flex flex-col gap-3" onSubmit={create}>
           <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2">

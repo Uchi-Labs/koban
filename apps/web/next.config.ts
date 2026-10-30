@@ -34,7 +34,12 @@ const securityHeaders = [
       "frame-ancestors 'none'",
       "object-src 'none'",
       "form-action 'self'",
-      "img-src 'self' data: blob: https://www.google.com https://icons.duckduckgo.com",
+      // Brand icons are fetched server-side by /api/v1/icons and served from
+      // this origin, so the favicon providers no longer need to be listed. The
+      // page requesting them directly was both a privacy leak (SEC-03) and a
+      // standing violation, since google.com/s2/favicons redirects to
+      // t*.gstatic.com, which was never on this list.
+      "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' https://cdn.plaid.com https://s3.tradingview.com",
@@ -46,6 +51,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Dev-only: hosts other than localhost (e.g. a Tailscale name) must be listed
+  // or `next dev` blocks its scripts and the page never hydrates.
+  allowedDevOrigins: (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean),
   distDir: process.env.NEXT_DIST_DIR || ".next",
   experimental: {
     // Lets a <Link unstable_dynamicOnHover> upgrade its prefetch from the
@@ -73,7 +84,7 @@ const nextConfig: NextConfig = {
     ];
   },
   output: "standalone",
-  serverExternalPackages: ["@electric-sql/pglite", "pg"],
+  serverExternalPackages: ["@electric-sql/pglite", "ai-sdk-provider-claude-code", "pg"],
   transpilePackages: [
     "@ai-finances/schema",
     "@ai-finances/sync-protocol"
