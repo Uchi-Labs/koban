@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getEffectiveLlmEnrichmentStatus, recordLlmProviderHealth } from "@/lib/enrichment-runs";
 import { checkConfiguredLlmProvider } from "@/lib/llm-enrichment";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const provider = await getEffectiveLlmEnrichmentStatus();
+  const provider = maskLlmStatusForPublicDemo(await getEffectiveLlmEnrichmentStatus());
 
   return NextResponse.json({
     object: "enrichment_provider",

@@ -4,13 +4,12 @@ export default function AccountsLoading() {
   return (
     <main aria-label="Loading accounts" className="flex min-h-svh flex-col" role="status">
       <span className="sr-only">Loading accounts</span>
-      <header className="flex items-center justify-between border-b border-border px-6 py-3.5">
+      <header className="flex items-center justify-between h-14 shrink-0 border-b border-border px-6">
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-8 w-36" />
       </header>
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <div className="grid gap-2">
-          <Skeleton className="h-3 w-28" />
           <Skeleton className="h-8 w-52" />
           <Skeleton className="h-4 w-80 max-w-full" />
         </div>

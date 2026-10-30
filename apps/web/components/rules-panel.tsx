@@ -1,7 +1,7 @@
 "use client";
 
 import type { Category, TagStyle, TransactionRuleMatchOperator } from "@ai-finances/schema";
-import { Check, Pause, Play, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Pause, Play, Plus, Trash2, X } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
@@ -630,11 +630,8 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
           </p>
         </div>
         <Button disabled={model.suggestionBusy} onClick={model.generateSuggestions} size="sm" type="button" variant="secondary">
-          <Sparkles size={14} />
           {model.suggestionBusy ? (
-            <span className="t-shimmer" data-text="Analyzing...">
-              Analyzing...
-            </span>
+            <span className="t-shimmer">Analyzing...</span>
           ) : (
             "Generate suggestions"
           )}
@@ -642,8 +639,8 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-4 rounded-2xl bg-muted/40 px-4 py-3">
-          <div className="flex flex-col gap-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl bg-muted/40 px-4 py-3">
+          <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-xs text-muted-foreground">LLM provider</span>
             <strong className="text-sm font-semibold">{providerLabel(model.provider)}</strong>
             <em className="text-xs text-muted-foreground not-italic">
@@ -792,8 +789,8 @@ function SuggestionRow({
         onCheckedChange={(checked) => onToggleSelected(suggestion.id, checked === true)}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <strong className="text-sm font-semibold">{suggestionLabel(suggestion)}</strong>
+        <div className="flex flex-wrap items-center gap-2">
+          <strong className="min-w-0 text-sm font-semibold break-words">{suggestionLabel(suggestion)}</strong>
           <Badge variant="outline">{Math.round(suggestion.confidence * 100)}%</Badge>
         </div>
         <p className="text-sm text-muted-foreground">{suggestion.reason}</p>
@@ -1079,10 +1076,12 @@ function RuleRow({
   tagStyleByName: Map<string, TagStyle>;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl border border-border p-4">
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <strong className="text-sm font-semibold">{rule.name}</strong>
+    // The actions wrap below the details once the row is narrower than ~15rem
+    // of content plus the buttons (phones).
+    <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border p-4">
+      <div className="flex min-w-0 flex-1 basis-60 flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <strong className="min-w-0 text-sm font-semibold break-words">{rule.name}</strong>
           <Badge variant={rule.enabled ? "default" : "outline"}>{rule.enabled ? "Enabled" : "Paused"}</Badge>
         </div>
         <p className="text-sm text-muted-foreground">

@@ -9,6 +9,7 @@ import { Pool } from "pg";
 import type { NextRequest } from "next/server";
 import { evaluatePasswordSignInMfaPolicy } from "@/lib/mfa-policy";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
+import { isPublicDemo } from "@/lib/public-demo";
 
 export const authCookieName = "af_session";
 export const loginPath = "/login";
@@ -31,7 +32,7 @@ let betterAuthTestOverride = false;
 
 interface ApiAuthResult {
   authenticated: boolean;
-  method?: "api_key" | "better_auth_session" | "legacy" | "open";
+  method?: "api_key" | "better_auth_session" | "legacy" | "open" | "public_demo";
 }
 
 export function getConfiguredAuthToken(env: AuthEnvironment = readWorkspaceEnv()): string | undefined {
@@ -80,6 +81,10 @@ export async function authenticateApiRequest(
   request: Request | NextRequest,
   env: AuthEnvironment = readWorkspaceEnv()
 ): Promise<ApiAuthResult> {
+  if (isPublicDemo(env)) {
+    return { authenticated: true, method: "public_demo" };
+  }
+
   const expectedToken = getConfiguredAuthToken(env);
   const bearerToken = getBearerToken(request.headers.get("authorization"));
 

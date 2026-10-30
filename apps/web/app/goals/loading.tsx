@@ -4,12 +4,11 @@ export default function GoalsLoading() {
   return (
     <main aria-label="Loading goals" className="flex min-h-svh flex-col" role="status">
       <span className="sr-only">Loading goals</span>
-      <header className="flex items-center border-b border-border px-6 py-3.5">
+      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
         <Skeleton className="h-4 w-16" />
       </header>
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <div className="grid gap-2">
-          <Skeleton className="h-3 w-28" />
           <Skeleton className="h-8 w-32" />
           <Skeleton className="h-4 w-[32rem] max-w-full" />
         </div>

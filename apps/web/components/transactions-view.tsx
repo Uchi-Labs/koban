@@ -26,7 +26,7 @@ import { useSyncControls } from "@/components/sync-provider";
 import Link from "next/link";
 import { toast } from "sonner";
 import React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Amount } from "@/components/amount";
 import { CategoryPill } from "@/components/category-pill";
 import { CategoryPicker } from "@/components/ui/category-picker";
@@ -350,26 +350,35 @@ function resetButtonState(setState: (state: ButtonState) => void) {
   window.setTimeout(() => setState("idle"), 1400);
 }
 
-function useSmallViewport() {
-  return useSyncExternalStore(subscribeSmallViewport, getSmallViewportSnapshot, getServerSmallViewportSnapshot);
-}
+// The inspector column needs the workspace itself to be wide, not the window:
+// a docked finance agent can leave a large window with a narrow workspace.
+// Matches the @5xl/workspace (64rem) container query on the layout below.
+const INSPECTOR_COLUMN_MIN_WIDTH = 1024;
 
-function subscribeSmallViewport(onStoreChange: () => void) {
-  if (typeof window === "undefined" || !window.matchMedia) {
-    return () => {};
-  }
+function useCompactWorkspace() {
+  const [compact, setCompact] = useState(false);
 
-  const media = window.matchMedia("(max-width: 639px)");
-  media.addEventListener("change", onStoreChange);
-  return () => media.removeEventListener("change", onStoreChange);
-}
+  useEffect(() => {
+    const workspace = document.querySelector<HTMLElement>('[data-testid="transactions-page"]');
+    if (!workspace) {
+      return;
+    }
 
-function getSmallViewportSnapshot() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
-}
+    // A zero width means the workspace isn't laid out yet, not that it's narrow.
+    const update = () => {
+      const width = workspace.getBoundingClientRect().width;
+      setCompact(width > 0 && width < INSPECTOR_COLUMN_MIN_WIDTH);
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(workspace);
+    return () => observer.disconnect();
+  }, []);
 
-function getServerSmallViewportSnapshot() {
-  return false;
+  return compact;
 }
 
 async function loadGoalDirectory() {
@@ -503,6 +512,9 @@ function useTransactionsViewModel({
   const [selectedId, setSelectedId] = useState(initialSelectedTransaction?.id ?? "");
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(() => new Set());
   const [inspectorOpen, setInspectorOpen] = useState(transactions.length > 0);
+  // The desktop pane shows the first row by default; the phone sheet covers the
+  // list, so it waits for a row tap or a deep-linked transaction.
+  const [inspectorRequested, setInspectorRequested] = useState(Boolean(initialSelectedTransactionId));
   const [inspectorFocusTarget, setInspectorFocusTarget] = useState<"category" | "tag" | null>(null);
   const [newRuleContext, setNewRuleContext] = useState<{ category: Category; merchant: string } | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<TransactionEvidenceView[]>([]);
@@ -921,6 +933,7 @@ function useTransactionsViewModel({
     groupedTransactions,
     hasActiveFilters,
     inspectorOpen,
+    inspectorRequested,
     inspectorMessage,
     linkEvidenceLoading,
     linkEvidenceQuery,
@@ -1027,6 +1040,7 @@ function useTransactionsViewModel({
     setSelectedId(transaction.id);
     setInspectorFocusTarget(options?.focus ?? null);
     setInspectorOpen(true);
+    setInspectorRequested(true);
     setEvidenceItems([]);
     void refreshEvidence(transaction.id);
   }
@@ -2195,7 +2209,7 @@ interface MerchantGroup {
 function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
   return (
     <main
-      className="flex h-[100dvh] min-h-0 flex-col bg-background text-foreground"
+      className="@container/workspace flex h-[100dvh] min-h-0 flex-col bg-background text-foreground"
       data-testid="transactions-page"
     >
       <Tabs
@@ -2204,7 +2218,7 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
         value={model.tab}
       >
         <TransactionsHeader model={model} />
-        <TabsContent className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]" value="all">
+        <TabsContent className="grid min-h-0 flex-1 grid-cols-1 @5xl/workspace:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]" value="all">
           <TransactionsList model={model} />
           <TransactionInspector model={model} />
           <MobileTransactionInspector model={model} />
@@ -2261,6 +2275,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
         <Button
           aria-label="Sync accounts"
           className="rounded-full"
+          data-demo-hidden=""
           disabled={syncing}
           onClick={syncNow}
           size="icon-sm"
@@ -2337,7 +2352,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             </InputGroupText>
           </InputGroupAddon>
         </InputGroup>
-        <div aria-label="Transaction amount filters" className="flex min-w-0 flex-1 items-center gap-1 sm:flex-none">
+        <div aria-label="Transaction amount filters" className="flex min-w-0 flex-1 basis-full items-center gap-1 sm:flex-none sm:basis-auto">
           <InputGroup className="h-9 min-w-0 flex-1 rounded-full border border-border/50 bg-input/35 sm:w-24 sm:flex-none">
             <InputGroupAddon align="inline-start" className="pl-2 pr-0">
               <InputGroupText className="text-xs">$</InputGroupText>
@@ -2371,7 +2386,8 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
         </div>
         <RangeSlider
           aria-label="transaction amount range"
-          className="h-9 w-44 shrink-0 rounded-full border border-border/50 bg-input/35"
+          // Phones keep the Min/Max fields; the slider would squeeze them to "$".
+          className="hidden h-9 w-44 shrink-0 rounded-full border border-border/50 bg-input/35 sm:flex"
           max={model.amountRangeMax}
           min={0}
           onValueChange={([minimum, maximum]) => {
@@ -2825,19 +2841,19 @@ function TransactionRowButton({
           <span className="hidden shrink-0 items-center gap-1 lg:flex">
             {visibleTags.map((tag) => (
               <span
-                className="inline-flex h-4 max-w-20 items-center gap-1 rounded-full border border-border/70 px-1.5 text-[10px] font-medium text-muted-foreground"
+                className="inline-flex h-[22px] max-w-32 items-center gap-1.5 rounded-full border border-border/70 px-2 text-xs font-medium text-muted-foreground"
                 key={tag}
               >
                 <span
                   aria-hidden="true"
-                  className="size-1.5 shrink-0 rounded-full"
+                  className="size-2 shrink-0 rounded-full"
                   style={{ backgroundColor: model.tagStyleByName.get(tag.toLowerCase())?.color ?? "var(--muted-foreground)" }}
                 />
                 <span className="truncate">{tag}</span>
               </span>
             ))}
             {extraTagCount > 0 ? (
-              <span className="text-[10px] font-medium text-muted-foreground tabular-nums">+{extraTagCount}</span>
+              <span className="text-xs font-medium text-muted-foreground tabular-nums">+{extraTagCount}</span>
             ) : null}
           </span>
         ) : null}
@@ -3095,7 +3111,7 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
   return (
     <aside
       aria-label="Selected transaction inspector"
-      className="t-panel-slide hidden min-h-0 flex-col border-l border-border/60 bg-muted/10 lg:flex [--panel-translate-y:24px]"
+      className="t-panel-slide hidden min-h-0 flex-col border-l border-border/60 bg-muted/10 @5xl/workspace:flex [--panel-translate-y:24px]"
       data-animating={panelAnimating ? "true" : undefined}
       data-open={model.inspectorOpen ? "true" : "false"}
       onTransitionEnd={finishPanelTransition}
@@ -3165,10 +3181,10 @@ function TransactionInspector({ model }: { model: TransactionsViewModel }) {
 }
 
 function MobileTransactionInspector({ model }: { model: TransactionsViewModel }) {
-  const smallViewport = useSmallViewport();
+  const compactWorkspace = useCompactWorkspace();
   const transaction = model.selectedTransaction;
 
-  if (!smallViewport) {
+  if (!compactWorkspace) {
     return null;
   }
 
@@ -3182,7 +3198,7 @@ function MobileTransactionInspector({ model }: { model: TransactionsViewModel })
           model.setInspectorOpen(false);
         }
       }}
-      open={Boolean(transaction && model.inspectorOpen)}
+      open={Boolean(transaction && model.inspectorOpen && model.inspectorRequested)}
       title={transaction?.merchant ?? "Transaction"}
     >
       {transaction ? (

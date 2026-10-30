@@ -20,21 +20,13 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem
-} from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import {
   groupAgentConversationsByDate,
   type AgentConversationSummary
 } from "@/lib/agent-conversations";
 import { EASE_SMOOTH_OUT } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
 const rowTransition = {
   duration: 0.35,
@@ -42,9 +34,10 @@ const rowTransition = {
   layout: { duration: 0.35, ease: EASE_SMOOTH_OUT }
 } as const;
 
-const MotionSidebarMenuItem = m.create(SidebarMenuItem);
+// The chat list lives in the agent panel (its History view), not the app
+// sidebar, so it uses plain list markup rather than the sidebar primitives.
 
-export interface AgentChatSidebarProps {
+export interface AgentChatHistoryProps {
   activeConversationId: string | null;
   busyConversationId: string | null;
   conversations: AgentConversationSummary[];
@@ -55,7 +48,7 @@ export interface AgentChatSidebarProps {
   onRenameConversation: (id: string, title: string) => Promise<void>;
 }
 
-export function AgentChatSidebar({
+export function AgentChatHistory({
   activeConversationId,
   busyConversationId,
   conversations,
@@ -64,23 +57,21 @@ export function AgentChatSidebar({
   onDeleteConversation,
   onOpenConversation,
   onRenameConversation
-}: AgentChatSidebarProps) {
+}: AgentChatHistoryProps) {
   const reduce = useReducedMotion();
 
   if (loading) {
-    return <AgentChatSidebarSkeleton />;
+    return <AgentChatHistorySkeleton />;
   }
 
   if (conversations.length === 0) {
-    return null;
+    return <p className="px-3 py-6 text-center text-sm text-muted-foreground">No chats yet. Ask Koban something to start one.</p>;
   }
 
   const groups = groupAgentConversationsByDate(conversations);
 
   return (
-    <SidebarGroup className="border-t border-sidebar-border/70" data-testid="agent-chat-sidebar">
-      <SidebarGroupLabel>Chats</SidebarGroupLabel>
-      <SidebarGroupContent>
+    <div className="flex flex-col gap-2" data-testid="agent-chat-history">
         <LazyMotion features={domAnimation}>
           <AnimatePresence initial={false} mode="popLayout">
             {groups.map((group) => {
@@ -94,12 +85,12 @@ export function AgentChatSidebar({
                   transition={reduce ? { duration: 0 } : rowTransition}
                 >
                   <h3
-                    className="px-3 pt-2 pb-1 text-[11px] font-medium text-sidebar-foreground/50"
+                    className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground"
                     id={`agent-chat-group-${groupKey}`}
                   >
                     {group.label}
                   </h3>
-                  <SidebarMenu>
+                  <ul className="flex flex-col gap-0.5">
                     <AnimatePresence initial={insertedConversationId !== null} mode="popLayout">
                       {group.conversations.map((conversation) => {
                         const inserted = conversation.id === insertedConversationId;
@@ -119,29 +110,26 @@ export function AgentChatSidebar({
                         );
                       })}
                     </AnimatePresence>
-                  </SidebarMenu>
+                  </ul>
                 </m.section>
               );
             })}
           </AnimatePresence>
         </LazyMotion>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    </div>
   );
 }
 
-function AgentChatSidebarSkeleton() {
+function AgentChatHistorySkeleton() {
   const reduce = useReducedMotion();
   const widths = ["78%", "64%", "86%", "58%"];
 
   return (
-    <SidebarGroup className="border-t border-sidebar-border/70" aria-busy="true" data-testid="agent-chat-sidebar-loading">
-      <SidebarGroupLabel>Chats</SidebarGroupLabel>
-      <SidebarGroupContent>
+    <div aria-busy="true" data-testid="agent-chat-history-loading">
         <LazyMotion features={domAnimation}>
-          <SidebarMenu aria-label="Loading chats">
+          <ul aria-label="Loading chats">
             {widths.map((width, index) => (
-              <SidebarMenuItem className="flex h-11 items-center px-2" key={width}>
+              <li className="flex h-11 items-center px-3" key={width}>
                 <span
                   className="relative block h-3 overflow-hidden rounded-full bg-muted"
                   style={{ width }}
@@ -161,12 +149,11 @@ function AgentChatSidebarSkeleton() {
                     />
                   ) : null}
                 </span>
-              </SidebarMenuItem>
+              </li>
             ))}
-          </SidebarMenu>
+          </ul>
         </LazyMotion>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    </div>
   );
 }
 
@@ -184,9 +171,9 @@ function ConversationRow({
   busy: boolean;
   conversation: AgentConversationSummary;
   inserted: boolean;
-  onDeleteConversation: AgentChatSidebarProps["onDeleteConversation"];
-  onOpenConversation: AgentChatSidebarProps["onOpenConversation"];
-  onRenameConversation: AgentChatSidebarProps["onRenameConversation"];
+  onDeleteConversation: AgentChatHistoryProps["onDeleteConversation"];
+  onOpenConversation: AgentChatHistoryProps["onOpenConversation"];
+  onRenameConversation: AgentChatHistoryProps["onRenameConversation"];
   reduce: boolean;
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -296,9 +283,9 @@ function ConversationRow({
 
   return (
     <>
-      <MotionSidebarMenuItem
+      <m.li
         animate={{ filter: "blur(0px)", height: "auto", opacity: 1, y: 0 }}
-        className="overflow-hidden"
+        className="group/chat-row relative overflow-hidden"
         data-conversation-id={conversation.id}
         data-testid="agent-chat-row"
         exit={
@@ -364,22 +351,24 @@ function ConversationRow({
           </form>
         ) : (
           <>
-            <SidebarMenuButton
+            <button
               aria-current={active ? "true" : undefined}
               aria-label={`Open chat ${conversation.title}`}
-              className="h-11 pr-9"
+              className={cn(
+                "flex h-11 w-full min-w-0 items-center rounded-xl pr-11 pl-3 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none",
+                active && "bg-muted font-medium"
+              )}
               data-sound="none"
-              isActive={active}
               onClick={() => void onOpenConversation(conversation.id)}
               type="button"
             >
               <ConversationTitle reduce={reduce} title={conversation.title} />
-            </SidebarMenuButton>
+            </button>
 
             {busy ? (
               <span
                 aria-label={`${conversation.title} is responding`}
-                className="pointer-events-none absolute top-1/2 right-2.5 z-10 -translate-y-1/2 text-sidebar-foreground/55 opacity-100 transition-opacity group-focus-within/menu-item:opacity-0 group-hover/menu-item:opacity-0 motion-reduce:transition-none"
+                className="pointer-events-none absolute top-1/2 right-3.5 z-10 -translate-y-1/2 text-muted-foreground opacity-100 transition-opacity group-focus-within/chat-row:opacity-0 group-hover/chat-row:opacity-0 motion-reduce:transition-none"
                 role="status"
               >
                 <Spinner decorative size="sm" variant="ring" />
@@ -394,16 +383,15 @@ function ConversationRow({
               <PopoverTrigger
                 id={menuTriggerId}
                 render={
-                  <SidebarMenuAction
+                  <button
                     aria-label={`Actions for ${conversation.title}`}
-                    className="top-3"
+                    className="absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-muted-foreground opacity-0 outline-none transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/chat-row:opacity-100 aria-expanded:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
                     data-sound="none"
                     onClick={(event) => event.stopPropagation()}
-                    showOnHover
                     type="button"
                   >
-                    <Ellipsis />
-                  </SidebarMenuAction>
+                    <Ellipsis className="size-4" />
+                  </button>
                 }
               />
               <ConversationActionsMenu
@@ -417,7 +405,7 @@ function ConversationRow({
             </Popover>
           </>
         )}
-      </MotionSidebarMenuItem>
+      </m.li>
 
       <Dialog
         onOpenChange={(open) => {
@@ -495,7 +483,7 @@ function ConversationActionsMenu({
 }) {
   return (
     <PopoverPortal>
-      <PopoverPositioner align="end" className="isolate z-50" side="right" sideOffset={6}>
+      <PopoverPositioner align="end" className="isolate z-[60]" side="bottom" sideOffset={4}>
         <PopoverPopup
           aria-label="Conversation actions"
           className="relative z-50 w-36 overflow-hidden rounded-xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/5 outline-none dark:ring-foreground/10"

@@ -12,8 +12,8 @@ import {
   LayoutDashboard,
   Lightbulb,
   LoaderCircle,
+  MessageCircle,
   PieChart,
-  Plus,
   RefreshCw,
   Repeat2,
   ScrollText,
@@ -28,8 +28,9 @@ import { attachGlobalUiSounds, playClose, playError, playOpen, playSuccess, prep
 import { AgentPanelProvider, useAgentPanel } from "@/components/agent-panel-provider";
 import { SidebarAccountRow } from "@/components/sidebar-account-row";
 import { SyncProvider } from "@/components/sync-provider";
-import { AgentChatSidebar } from "@/components/agent-chat-sidebar";
 import { CommandPalette } from "@/components/command-palette";
+import { KobanTour, startKobanTour } from "@/components/koban-tour";
+import { ThemeToggle } from "@/components/motion/theme-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -82,8 +83,7 @@ const mobileNavItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Transactions", href: "/transactions", icon: Layers },
   { label: "Review", href: "/review", icon: Check },
-  { label: "Recurrings", href: "/recurrings", icon: Repeat2 },
-  { label: "Cash flow", href: "/cash-flow", icon: ArrowLeftRight }
+  { label: "Recurrings", href: "/recurrings", icon: Repeat2 }
 ];
 
 const SIDEBAR_MIN_WIDTH = 208;
@@ -197,6 +197,7 @@ interface AppShellProps {
   children: React.ReactNode;
   demoMode?: boolean;
   lastSyncedAt?: string;
+  publicDemo?: boolean;
   reviewActionableCount: number;
   source: "empty" | "koban";
   transactionCount: number;
@@ -217,6 +218,7 @@ function AppShellContent({
   accounts,
   demoMode,
   lastSyncedAt,
+  publicDemo,
   reviewActionableCount,
   source,
   transactionCount,
@@ -297,8 +299,18 @@ function AppShellContent({
     return () => window.clearTimeout(timeout);
   }, [syncStatus]);
 
+  const { closeAgent, open: agentOpen, openAgent } = agentPanel;
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "j" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        if (agentOpen) {
+          closeAgent();
+        } else {
+          openAgent();
+        }
+        return;
+      }
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         prepareUiSound();
@@ -317,7 +329,7 @@ function AppShellContent({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [agentOpen, closeAgent, openAgent]);
 
   async function syncNow() {
     setSyncing(true);
@@ -325,9 +337,7 @@ function AppShellContent({
     const loadingDescription = "Connected accounts, sources, semantic updates, and AI enrichment are running.";
     const toastId = showToast({
       description: (
-        <span className="t-shimmer" data-text={loadingDescription}>
-          {loadingDescription}
-        </span>
+        <span className="t-shimmer">{loadingDescription}</span>
       ),
       duration: 0,
       status: "loading",
@@ -400,6 +410,7 @@ function AppShellContent({
           demoMode={demoMode}
           lastSyncedAt={lastSyncedAt}
           onOpenPalette={() => changePaletteOpen(true)}
+          publicDemo={publicDemo}
           pathname={pathname}
           reviewActionableCount={reviewActionableCount}
           source={source}
@@ -412,8 +423,9 @@ function AppShellContent({
       </Sidebar>
 
       {/* ponytail: legacy pages offset themselves by --sidebar-width; zero it inside the inset until every page is migrated */}
+      {/* The finance agent docks on the right on wide screens; the page reflows beside it. */}
       <SidebarInset
-        className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0"
+        className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] transition-[margin] duration-[320ms] ease-[var(--ease-smooth-out)] motion-reduce:transition-none md:pb-0 lg:mr-[var(--agent-dock-width,0px)]"
         style={{ ["--sidebar-width" as string]: "0px" }}
       >
         {children}
@@ -441,18 +453,40 @@ function AppShellContent({
               </DockItem>
             );
           })}
+          {/* Phones have no sidebar, so the agent gets its own dock stop. */}
+          <DockItem
+            active={agentPanel.open}
+            aria-label="Ask Koban"
+            className="rounded-xl"
+            onClick={() => (agentPanel.open ? agentPanel.closeAgent() : agentPanel.openAgent())}
+          >
+            <span className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none">
+              <Image
+                alt=""
+                aria-hidden="true"
+                className="koban-cat size-4 object-contain"
+                height={16}
+                src="/icons/koban-1024-transparent.png"
+                width={16}
+              />
+              <span>Ask</span>
+            </span>
+          </DockItem>
           <DockItem
             active={paletteOpen}
             aria-label="Search"
-            className="flex-col gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground hover:text-foreground"
+            className="rounded-xl"
             onClick={() => changePaletteOpen(true)}
           >
-            <Search className="size-4" />
-            <span>Search</span>
+            <span className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none">
+              <Search className="size-4" />
+              <span>Search</span>
+            </span>
           </DockItem>
         </Dock>
       </nav>
       <CommandPalette onOpenChangeAction={changePaletteOpen} open={paletteOpen} />
+      <KobanTour autoStart={publicDemo} />
     </SidebarProvider>
     </SyncProvider>
   );
@@ -467,6 +501,7 @@ function AppSidebarSections({
   lastSyncedAt,
   onOpenPalette,
   pathname,
+  publicDemo,
   reviewActionableCount,
   source,
   syncIslandState,
@@ -483,6 +518,7 @@ function AppSidebarSections({
   lastSyncedAt?: string;
   onOpenPalette: () => void;
   pathname: string;
+  publicDemo?: boolean;
   reviewActionableCount: number;
   source: AppShellProps["source"];
   syncIslandState: ReturnType<typeof deriveSyncIslandState>;
@@ -491,7 +527,7 @@ function AppSidebarSections({
   syncNow: () => void;
   transactionCount: number;
 }) {
-  const { isMobile, state, toggleSidebar } = useSidebar();
+  const { toggleSidebar } = useSidebar();
   const syncButtonLabel = syncStatus === "syncing"
     ? "Syncing"
     : syncStatus === "success"
@@ -515,7 +551,7 @@ function AppSidebarSections({
           >
             <Image
               alt=""
-              className="size-7 object-contain transition-transform duration-[var(--duration-fast)] ease-[var(--ease-bounce-strong)] group-hover/logo:-translate-y-1 group-hover/logo:scale-110 group-hover/logo:-rotate-6 motion-reduce:transition-none motion-reduce:group-hover/logo:transform-none"
+              className="koban-cat size-7 object-contain"
               height={28}
               priority
               src="/icons/koban-1024-transparent.png"
@@ -526,7 +562,7 @@ function AppSidebarSections({
             <Image
               alt=""
               aria-hidden="true"
-              className="size-7 object-contain transition-transform duration-[var(--duration-fast)] ease-[var(--ease-bounce-strong)] group-hover/logo:-translate-y-1 group-hover/logo:scale-110 group-hover/logo:-rotate-6 motion-reduce:transition-none motion-reduce:group-hover/logo:transform-none"
+              className="koban-cat size-7 object-contain"
               height={28}
               priority
               src="/icons/koban-1024-transparent.png"
@@ -536,42 +572,54 @@ function AppSidebarSections({
           <span className="truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             Koban
           </span>
-          {demoMode ? (
+          {demoMode || publicDemo ? (
             <span
               className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase group-data-[collapsible=icon]:hidden"
               style={{
                 backgroundColor: "color-mix(in oklab, oklch(0.78 0.15 72) 16%, transparent)",
                 color: "oklch(0.78 0.15 72)"
               }}
-              title="Demo mode is on — money figures are scrambled"
+              title={publicDemo ? "Sample data in a read-only demo" : "Demo mode is on — money figures are scrambled"}
             >
               Demo
             </span>
           ) : null}
-          <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:hidden" />
+          {/* Theme sits beside the collapse control, visible on every page. */}
+          <ThemeToggle
+            className="ml-auto size-7 shrink-0 rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground motion-reduce:transition-none group-data-[collapsible=icon]:hidden"
+            iconClassName="size-4"
+            start="top-left"
+            variant="circle-blur"
+          />
+          <SidebarTrigger className="group-data-[collapsible=icon]:hidden" />
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <div className="mx-2 mb-1 flex flex-col gap-1 group-data-[collapsible=icon]:mx-0 group-data-[collapsible=icon]:items-center">
+            {/* One grid down the sidebar: every row box spans the nav's width, icons and
+                dots start 10px in, and counts, keys, and amounts end 10px in. */}
+            <div className="mb-1 flex flex-col gap-1 group-data-[collapsible=icon]:items-center">
+              {/* Opens the agent where you left it; New chat and History live in its header. */}
               <button
-                aria-label="Start a new chat"
+                aria-keyshortcuts="Meta+J Control+J"
+                aria-label="Ask a question"
                 className={cn(
-                  "flex h-10 w-full items-center justify-start gap-2 rounded-[0.875rem] border border-foreground bg-foreground px-3 text-sm font-semibold text-background shadow-[inset_0_1px_0_color-mix(in_oklab,var(--background)_35%,transparent),0_8px_18px_-12px_color-mix(in_oklab,var(--foreground)_45%,transparent)] transition-[transform,opacity] hover:opacity-90 active:scale-[0.98] motion-reduce:transition-none group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
-                  agentPanel.open && !agentPanel.activeConversationId && "ring-2 ring-sidebar-ring/35"
+                  "flex h-10 w-full min-w-0 items-center gap-2 rounded-xl border border-sidebar-border bg-background/70 px-[9px] text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:text-sidebar-foreground motion-reduce:transition-none group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
+                  agentPanel.open && "border-ring/50 text-sidebar-foreground"
                 )}
                 data-sound="open"
-                data-testid="new-chat-button"
-                onClick={agentPanel.startNewConversation}
-                style={{
-                  backgroundImage: "linear-gradient(180deg, oklch(from var(--foreground) calc(l + 0.08) c h), var(--foreground) 55%, oklch(from var(--foreground) calc(l - 0.035) c h))"
-                }}
+                data-testid="ask-koban-button"
+                onClick={() => (agentPanel.open ? agentPanel.closeAgent() : agentPanel.openAgent())}
                 type="button"
               >
-                <Plus aria-hidden="true" className="size-4 shrink-0" />
-                <span className="group-data-[collapsible=icon]:hidden">New</span>
+                <MessageCircle aria-hidden="true" className="size-4 shrink-0" />
+                <span className="flex-1 truncate text-left group-data-[collapsible=icon]:hidden">Ask a question…</span>
+                <kbd className="inline-flex items-center gap-0.5 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-2 py-0.5 font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
+                  <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
+                  <span className="text-[10px] leading-none">J</span>
+                </kbd>
               </button>
               <button
                 aria-label="Open search"
@@ -648,27 +696,16 @@ function AppSidebarSections({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {!isMobile && state === "expanded" ? (
-          <AgentChatSidebar
-            activeConversationId={agentPanel.activeConversationId}
-            busyConversationId={agentPanel.busyConversationId}
-            conversations={agentPanel.conversations}
-            insertedConversationId={agentPanel.insertedConversationId}
-            loading={agentPanel.conversationsLoading}
-            onDeleteConversation={agentPanel.deleteConversation}
-            onOpenConversation={agentPanel.openConversation}
-            onRenameConversation={agentPanel.renameConversation}
-          />
-        ) : null}
+
 
         {accountGroups.map((group) => (
           <SidebarGroup className="group-data-[collapsible=icon]:hidden" key={group.id}>
-            <SidebarGroupLabel>{group.name}</SidebarGroupLabel>
+            <SidebarGroupLabel className="px-2.5">{group.name}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SharedLayoutBg
                 aria-label={`${group.name} accounts`}
                 as="ul"
-                className="flex flex-col gap-0.5 px-2"
+                className="flex flex-col gap-0.5"
                 pillClassName="rounded-lg bg-sidebar-accent/70"
               >
                 {group.accountIds.flatMap((accountId) => {
@@ -699,6 +736,12 @@ function AppSidebarSections({
               ? `${accountCount} accounts · ${transactionCount.toLocaleString()} transactions. ${formatSyncAge(lastSyncedAt)}`
               : "Connect an account in Settings to populate accounts and transactions."}
           </p>
+          {/* The public demo has no live bank connection to sync. */}
+          {publicDemo ? (
+            <Button className="mt-2 w-full" onClick={startKobanTour} size="sm" type="button" variant="outline">
+              Take the tour
+            </Button>
+          ) : (
           <Button
             aria-label={syncButtonLabel}
             className="mt-2 w-full"
@@ -723,6 +766,7 @@ function AppSidebarSections({
               {syncButtonLabel}
             </ActionSwapText>
           </Button>
+          )}
         </div>
       </SidebarFooter>
     </>

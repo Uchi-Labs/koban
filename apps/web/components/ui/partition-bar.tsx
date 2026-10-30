@@ -119,7 +119,9 @@ export function PartitionBarSegment({
 
   return (
     <li
-      className="flex min-w-0 shrink-0 grow-0 flex-col transition-[flex-basis] duration-[var(--duration-fast)] ease-[var(--ease-smooth-out)] motion-reduce:transition-none"
+      // Percent bases sum to 100% before the list's gaps, so segments shrink
+      // (in proportion to their basis) to fit instead of overflowing by the gaps.
+      className="flex min-w-0 shrink grow-0 flex-col transition-[flex-basis] duration-[var(--duration-fast)] ease-[var(--ease-smooth-out)] motion-reduce:transition-none"
       style={{ ...style, ...tintStyle, flexBasis: `${widthPercent}%` }}
       {...props}
     >

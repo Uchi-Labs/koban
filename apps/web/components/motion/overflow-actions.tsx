@@ -58,13 +58,12 @@ export interface OverflowActionsProps {
   classNames?: OverflowActionsClassNames;
 }
 
-// This needs a softer layout spring than the app defaults so the overflow group
-// stays visually attached to the toggle while entering and leaving.
+// Critically damped (bounce 0): the group slides open and settles once. The
+// earlier underdamped spring (damping ratio ~0.6) wobbled on every open/close.
 const SHELL_TRANSITION: Transition = {
   type: "spring",
-  stiffness: 220,
-  damping: 17,
-  mass: 0.85,
+  duration: 0.28,
+  bounce: 0,
 };
 
 const ICON_VARIANTS: Variants = {

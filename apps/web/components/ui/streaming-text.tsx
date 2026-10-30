@@ -21,10 +21,10 @@ interface StreamingTextProps extends HTMLAttributes<HTMLSpanElement> {
   speed?: number;
   /** Milliseconds to wait before the first word appears. */
   delay?: number;
-  /** How long a word wears the blue gradient before settling into the
-   *  theme foreground, in milliseconds. */
+  /** How long a word stays muted before settling into the theme
+   *  foreground, in milliseconds. */
   settleDelay?: number;
-  /** Show a small pulsing gradient dot riding the stream head. */
+  /** Show a small pulsing dot riding the stream head. */
   showCursor?: boolean;
   /** Called once, after the last word has appeared. */
   onComplete?: () => void;
@@ -56,35 +56,15 @@ function tokenize(text: string): StreamToken[] {
   return tokens;
 }
 
-/** Freshly streamed words wear this gradient, then crossfade into
- *  text-foreground — black in light mode, white in dark — so the trail
- *  of blue always marks what just arrived. */
-const gradientText =
-  "bg-gradient-to-r from-primary via-chart-5 to-chart-1 bg-clip-text text-transparent";
-
-/** Consecutive words sample a 3x-wide version of the gradient at stepped
- *  offsets that ping-pong across GRADIENT_PHASES positions, so the blue
- *  trail reads as one continuous ribbon of color flowing over several
- *  words instead of every word restarting at sky. Static paint — the
- *  offset never animates, so it costs nothing per frame. */
-const GRADIENT_PHASES = 6;
-
-function gradientOffset(index: number): string {
-  const cycle = 2 * (GRADIENT_PHASES - 1);
-  const step = index % cycle;
-  const phase = step < GRADIENT_PHASES ? step : cycle - step;
-  return `${(phase / (GRADIENT_PHASES - 1)) * 100}% 50%`;
-}
-
-/** How long the gradient → foreground crossfade runs once a word's settle
+/** How long the muted to foreground crossfade runs once a word's settle
  *  delay has elapsed, in seconds. Together with settleDelay this bounds how
- *  many words are blue at once. */
+ *  many words are muted at once. */
 const SETTLE_FADE = 0.45;
 
 /** Entrance fade length in seconds. Deliberately much longer than the
  *  default streaming cadence: at any moment four to five words are mid-fade
  *  at staggered opacities, which turns the reveal into one continuous
- *  gradient wave instead of discrete word pops. */
+ *  wave instead of discrete word pops. */
 const ENTER_FADE = 0.5;
 
 const settleTransition = (settleDelay: number) => ({
@@ -97,15 +77,13 @@ const settleTransition = (settleDelay: number) => ({
 // streaming tick — only the newly revealed word mounts and animates.
 const StreamedWord = memo(function StreamedWord({
   word,
-  index,
   settleDelay,
 }: {
   word: string;
-  index: number;
   settleDelay: number;
 }) {
   return (
-    // The word is a grid stacking two copies of itself: the gradient copy
+    // The word is a grid stacking two copies of itself: the muted copy
     // on top fades out while the foreground copy fades in, so the color
     // handoff is a true crossfade and stays theme-correct in both modes.
     // Every animated value here is opacity — nothing that forces the
@@ -128,12 +106,8 @@ const StreamedWord = memo(function StreamedWord({
       </motion.span>
       <motion.span
         animate={{ opacity: 0 }}
-        className={cn("col-start-1 row-start-1", gradientText)}
+        className="col-start-1 row-start-1 text-muted-foreground"
         initial={{ opacity: 1 }}
-        style={{
-          backgroundSize: "300% 100%",
-          backgroundPosition: gradientOffset(index),
-        }}
         transition={settleTransition(settleDelay)}
       >
         {word}
@@ -159,7 +133,7 @@ const StreamingText = forwardRef<HTMLSpanElement, StreamingTextProps>(
     const tokens = useMemo(() => tokenize(text), [text]);
     const [count, setCount] = useState(0);
     // Reduced motion skips the stream entirely — the full text renders
-    // static in the foreground color, no gradient, no cursor.
+    // static in the foreground color, no cursor.
     const reduceMotion = useReducedMotion() ?? false;
 
     const onCompleteRef = useRef(onComplete);
@@ -238,7 +212,6 @@ const StreamingText = forwardRef<HTMLSpanElement, StreamingTextProps>(
                 ) : (
                   <Fragment key={`word-${index}`}>
                     <StreamedWord
-                      index={index}
                       settleDelay={settleDelay}
                       word={token.value}
                     />{" "}
@@ -250,13 +223,7 @@ const StreamingText = forwardRef<HTMLSpanElement, StreamingTextProps>(
                   {streaming && (
                     <motion.span
                       animate={{ opacity: [0.4, 1, 0.4], scale: 1 }}
-                      className={cn(
-                        "inline-block size-[0.55em] rounded-full align-baseline",
-                        "bg-gradient-to-br from-primary to-chart-1",
-                        // The glow rides the dot's animated opacity, so it
-                        // breathes with the pulse at zero per-frame cost.
-                        "shadow-[0_0_0.7em_color-mix(in_oklab,var(--primary)_55%,transparent)]"
-                      )}
+                      className="inline-block size-[0.55em] rounded-full bg-muted-foreground align-baseline"
                       exit={{ opacity: 0, scale: 0 }}
                       initial={{ opacity: 0, scale: 0 }}
                       transition={{
