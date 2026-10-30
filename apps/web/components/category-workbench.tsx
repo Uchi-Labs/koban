@@ -3,6 +3,7 @@
 import type { Category } from "@ai-finances/schema";
 import { GripVertical, Lock, Pencil, Plus } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 import { CategoryEditDialog } from "@/components/category-manager";
 import { CategoryPill } from "@/components/category-pill";
@@ -13,6 +14,7 @@ import { RollingDigits } from "@/components/ui/rolling-digits";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, EASE_SMOOTH_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
+import { categoryColorPalette } from "@/lib/category-style";
 import { cn } from "@/lib/utils";
 
 export interface MonthPoint {
@@ -96,8 +98,8 @@ export function CategoryWorkbench({
   );
 
   return (
-    <main className="flex min-h-svh flex-col" data-testid="categories-page">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-6 py-3.5">
+    <main className="@container/page flex min-h-svh flex-col" data-testid="categories-page">
+      <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
         <span className="text-[13px] font-semibold tracking-tight">Categories</span>
         <Button onClick={() => setCreating(true)} size="sm" type="button" variant="outline">
           <Plus className="size-4" />
@@ -105,8 +107,8 @@ export function CategoryWorkbench({
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6 xl:max-w-[80rem]">
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(30rem,0.8fr)]">
+      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6 @6xl/page:max-w-[80rem]">
+        <div className="grid items-start gap-5 @6xl/page:grid-cols-[minmax(0,1.55fr)_minmax(30rem,0.8fr)]">
           <div className="flex min-w-0 flex-col gap-5">
             <div aria-label="Category totals">
               <SummaryCard
@@ -151,7 +153,7 @@ export function CategoryWorkbench({
             />
           </div>
 
-          <aside className="hidden xl:sticky xl:top-20 xl:flex xl:flex-col xl:gap-5">
+          <aside className="hidden @6xl/page:sticky @6xl/page:top-20 @6xl/page:flex @6xl/page:flex-col @6xl/page:gap-5">
             <AllCategoriesList
               onSelect={setSelectedId}
               selectedId={selectedId}
@@ -209,7 +211,7 @@ function SummaryCard({
   return (
     <button
       className={cn(
-        "iconiq-theme flex w-full items-center justify-around gap-8 rounded-lg border bg-card/95 px-8 py-5 text-left shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none",
+        "iconiq-theme flex w-full items-center justify-around gap-4 rounded-lg border bg-card/95 px-4 py-5 text-left sm:gap-8 sm:px-8 shadow-[var(--ic-card-rest-shadow)] transition-[background-color,border-color,box-shadow] duration-250 ease-[var(--ease-smooth-out)] motion-reduce:transition-none",
         selectedAll ? "border-ring/50 ring-1 ring-ring/30" : "border-border/70 hover:border-foreground/11 hover:bg-card hover:shadow-[var(--ic-card-hover-shadow)]"
       )}
       onClick={onSelectAll}
@@ -350,10 +352,11 @@ function CategoryTable({
 }) {
   const reduce = useReducedMotion();
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   return (
     <section
       aria-label="Regular categories"
-      className="iconiq-theme rounded-lg border border-border/70 bg-card/95 shadow-[var(--ic-card-rest-shadow)]"
+      className="@container/cattable iconiq-theme rounded-lg border border-border/70 bg-card/95 shadow-[var(--ic-card-rest-shadow)]"
     >
       <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2.5">
         <div className="flex min-w-0 flex-col">
@@ -367,7 +370,7 @@ function CategoryTable({
           <Button onClick={toggleArchived} size="sm" type="button" variant="ghost">{showArchived ? "Hide archived" : "Show archived"}</Button>
         </div>
       </div>
-      <div className="hidden grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem] items-center gap-3 border-b border-border px-4 pb-2 sm:grid">
+      <div className="hidden grid-cols-[minmax(9rem,1fr)_minmax(3rem,10rem)_5.5rem_5.5rem_5.5rem_1.75rem] items-center gap-3 border-b border-border px-4 pb-2 @xl/cattable:grid">
         <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Category</span>
         <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget used</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
@@ -379,11 +382,17 @@ function CategoryTable({
         <div className="px-1.5 py-1.5">
           {summaries.map((summary) => (
             <CategoryTableRow
-              draggable
+              draggable={inlineEditId !== summary.id}
+              editingInline={inlineEditId === summary.id}
               isDragging={draggedId === summary.id}
               key={summary.id}
               monthLabel={monthLabel}
-              onEdit={() => onEdit(summary)}
+              onCloseEdit={() => setInlineEditId(null)}
+              onEdit={() => setInlineEditId(summary.id)}
+              onOpenMore={() => {
+                setInlineEditId(null);
+                onEdit(summary);
+              }}
               onDragEnd={() => setDraggedId(null)}
               onDragOver={(event) => event.preventDefault()}
               onDragStart={() => setDraggedId(summary.id)}
@@ -413,9 +422,12 @@ function CategoryTable({
 
 function CategoryTableRow({
   draggable,
+  editingInline,
   isDragging,
   monthLabel,
+  onCloseEdit,
   onEdit,
+  onOpenMore,
   onDragEnd,
   onDragOver,
   onDragStart,
@@ -426,9 +438,12 @@ function CategoryTableRow({
   summary
 }: {
   draggable: boolean;
+  editingInline: boolean;
   isDragging: boolean;
   monthLabel: string;
+  onCloseEdit: () => void;
   onEdit: () => void;
+  onOpenMore: () => void;
   onDragEnd: () => void;
   onDragOver: (event: React.DragEvent) => void;
   onDragStart: () => void;
@@ -465,7 +480,7 @@ function CategoryTableRow({
           aria-label={`View ${summary.name}`}
           aria-pressed={selected}
           className={cn(
-            "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_1.75rem] items-center gap-3 rounded-xl px-2.5 py-2 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)_10rem_5.5rem_5.5rem_5.5rem_1.75rem]",
+            "group grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_1.75rem] items-center gap-3 rounded-xl px-2.5 py-2 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 @xl/cattable:grid-cols-[minmax(9rem,1fr)_minmax(3rem,10rem)_5.5rem_5.5rem_5.5rem_1.75rem]",
             selected ? "bg-accent" : "hover:bg-muted/50",
             summary.archived && "opacity-55"
           )}
@@ -491,7 +506,7 @@ function CategoryTableRow({
             {summary.isBuiltIn ? <Lock aria-label="System category" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
             {summary.archived ? <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Archived</span> : null}
           </span>
-          <div className="hidden sm:block">
+          <div className="hidden @xl/cattable:block">
             {summary.budgetAmount ? (
               <BudgetBar color={summary.color} pct={pct} />
             ) : (
@@ -499,12 +514,12 @@ function CategoryTableRow({
             )}
           </div>
           <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
-          <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block">
+          <span className="hidden text-right text-sm tabular-nums text-muted-foreground @xl/cattable:block">
             {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
           </span>
           <span
             className={cn(
-              "hidden text-right text-sm tabular-nums sm:block",
+              "hidden text-right text-sm tabular-nums @xl/cattable:block",
               remaining === undefined
                 ? "text-muted-foreground"
                 : remaining < 0
@@ -516,7 +531,7 @@ function CategoryTableRow({
           </span>
           <Button
             aria-label={`Edit ${summary.name}`}
-            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
             onClick={(event) => {
               event.stopPropagation();
               onEdit();
@@ -528,8 +543,178 @@ function CategoryTableRow({
             <Pencil className="size-3.5" />
           </Button>
         </div>
+        <AnimatePresence initial={false}>
+          {editingInline ? (
+            <m.div
+              animate={{ height: "auto", opacity: 1 }}
+              className="overflow-hidden"
+              exit={{ height: 0, opacity: 0 }}
+              initial={{ height: 0, opacity: 0 }}
+              key="inline-editor"
+              transition={{ duration: reduce ? 0 : 0.22, ease: EASE_SMOOTH_OUT }}
+            >
+              <CategoryInlineEditor onClose={onCloseEdit} onOpenMore={onOpenMore} summary={summary} />
+            </m.div>
+          ) : null}
+        </AnimatePresence>
       </m.div>
     </m.div>
+  );
+}
+
+// Edits a category in place under its row. Only changed fields are sent, so a
+// budget tweak never rewrites the name.
+function CategoryInlineEditor({
+  onClose,
+  onOpenMore,
+  summary
+}: {
+  onClose: () => void;
+  onOpenMore: () => void;
+  summary: CategorySummary;
+}) {
+  const router = useRouter();
+  const initialBudget = summary.budgetAmount ? String(Math.round(summary.budgetAmount * 100) / 100) : "";
+  const [name, setName] = useState(summary.name);
+  const [emoji, setEmoji] = useState(summary.emoji ?? "");
+  const [color, setColor] = useState(summary.color);
+  const [budget, setBudget] = useState(initialBudget);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  const budgetRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    (summary.isBuiltIn ? budgetRef : nameRef).current?.focus();
+  }, [summary.isBuiltIn]);
+
+  async function save() {
+    const changes: Record<string, unknown> = {};
+    const trimmedName = name.trim();
+    if (!summary.isBuiltIn && trimmedName !== summary.name) {
+      if (!trimmedName) {
+        setMessage("Name can't be empty.");
+        return;
+      }
+      changes.name = trimmedName;
+    }
+    if (emoji.trim() && emoji.trim() !== (summary.emoji ?? "")) changes.emoji = emoji.trim();
+    if (color !== summary.color) changes.color = color;
+    if (budget !== initialBudget) {
+      const amount = Number(budget.replace(/[$,\s]/g, ""));
+      if (budget.trim() !== "" && (!Number.isFinite(amount) || amount < 0)) {
+        setMessage("Budget must be a positive amount.");
+        return;
+      }
+      changes.budget_amount = budget.trim() === "" || amount === 0 ? null : amount;
+    }
+    if (Object.keys(changes).length === 0) {
+      onClose();
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/v1/categories/${encodeURIComponent(summary.id)}`, {
+        body: JSON.stringify(changes),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH"
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Couldn't save this category.");
+      }
+      router.refresh();
+      onClose();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Couldn't save this category.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void save();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+    }
+  }
+
+  const fieldClass = "h-8 rounded-lg border border-border bg-background px-2.5 text-sm outline-hidden focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60";
+
+  return (
+    <div className="mx-2.5 mt-1 mb-2 flex flex-col gap-3 rounded-xl border border-border/70 bg-card px-3 py-3" onKeyDown={onKeyDown}>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          aria-label="Emoji"
+          className={cn(fieldClass, "w-11 text-center text-base")}
+          maxLength={4}
+          onChange={(event) => setEmoji(event.target.value)}
+          value={emoji}
+        />
+        <input
+          aria-label="Category name"
+          className={cn(fieldClass, "min-w-0 flex-1 basis-40")}
+          disabled={summary.isBuiltIn}
+          onChange={(event) => setName(event.target.value)}
+          ref={nameRef}
+          title={summary.isBuiltIn ? "Built-in categories keep their name" : undefined}
+          value={name}
+        />
+        <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span className="sr-only">Monthly budget</span>
+          <span aria-hidden="true">$</span>
+          <input
+            className={cn(fieldClass, "w-24 text-right tabular-nums text-foreground")}
+            inputMode="decimal"
+            onChange={(event) => setBudget(event.target.value)}
+            placeholder="No budget"
+            ref={budgetRef}
+            value={budget}
+          />
+          <span className="text-xs">/ mo</span>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div aria-label="Color" className="flex flex-wrap gap-1.5" role="radiogroup">
+          {categoryColorPalette.map((swatch) => (
+            <button
+              aria-checked={swatch === color}
+              aria-label={swatch}
+              className={cn(
+                "size-5 rounded-full outline-offset-2 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none",
+                swatch === color && "outline-2 outline-foreground/70"
+              )}
+              key={swatch}
+              onClick={() => setColor(swatch)}
+              role="radio"
+              style={{ backgroundColor: swatch }}
+              type="button"
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" onClick={onOpenMore} type="button">
+            Archive or delete…
+          </button>
+          <Button onClick={onClose} size="sm" type="button" variant="ghost">
+            Cancel
+          </Button>
+          <Button disabled={saving} onClick={() => void save()} size="sm" type="button">
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </div>
+      {message ? (
+        <p aria-live="polite" className="text-xs text-[var(--negative)]">
+          {message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -654,10 +839,10 @@ function DetailPane({
         </div>
       )}
 
-      <div className="xl:hidden">
+      <div className="@6xl/page:hidden">
         <KeyMetrics detail={detail} transactionsToReview={transactionsToReview} />
       </div>
-      <div className="xl:hidden">
+      <div className="@6xl/page:hidden">
         <AllCategoriesList onSelect={onSelect} selectedId={selectedId} summaries={summaries} />
       </div>
     </m.section>
@@ -691,42 +876,107 @@ function PillButton({
   );
 }
 
+const TIMELINE_MONTHS = 12;
+
+/**
+ * Twelve months of spending against the monthly budget: every month labeled,
+ * a dashed budget line, and a one-line read of how many months went over.
+ * The last month is still in progress, so it is drawn lighter and left out of
+ * the over-budget count and the average.
+ */
 function SpendTimeline({ detail }: { detail: CategoryDetail }) {
-  const max = Math.max(1, ...detail.monthly.map((point) => point.spent));
-  const monthlyBudget = detail.budgetAmount;
+  const months = detail.monthly.slice(-TIMELINE_MONTHS);
+  const budget = detail.budgetAmount && detail.budgetAmount > 0 ? detail.budgetAmount : undefined;
+  const complete = months.slice(0, -1);
+  const current = months.at(-1);
+  const overCount = budget === undefined ? 0 : complete.filter((point) => point.spent > budget).length;
+  // Whole dollars: the summary line is a read, not a ledger figure.
+  const average = complete.length > 0 ? Math.round(complete.reduce((total, point) => total + point.spent, 0) / complete.length) : 0;
+  const scaleMax = Math.max(1, budget ?? 0, ...months.map((point) => point.spent)) * 1.08;
+  const toPercent = (value: number) => Math.min(100, (value / scaleMax) * 100);
 
   return (
     <IconiqCard className="rounded-lg border-border/70 bg-card/60">
-      <IconiqCardContent className="flex flex-col gap-2">
-        <div className="flex h-32 items-end gap-[3px]">
-          {detail.monthly.map((point) => {
-            const height = (point.spent / max) * 100;
-            const overBudget = monthlyBudget !== undefined && point.spent > monthlyBudget;
-            return (
-              <div
-                className="group/bar relative flex h-full flex-1 items-end"
-                key={point.month}
-                title={`${formatMonthShort(point.month)}: ${formatCurrency(point.spent)}`}
-              >
-                <span
-                  className="w-full rounded-sm transition-[height]"
-                  style={{
-                    backgroundColor: point.spent === 0 ? "var(--muted)" : overBudget ? "var(--negative)" : "var(--positive)",
-                    height: `${Math.max(point.spent > 0 ? 3 : 1.5, height)}%`,
-                    opacity: point.spent === 0 ? 0.4 : 1
-                  }}
-                />
-              </div>
-            );
-          })}
+      <IconiqCardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          {budget !== undefined ? (
+            <>
+              <span className="font-medium text-foreground">
+                {overCount === 0 ? "No months" : `${overCount} of ${complete.length} months`}
+              </span>{" "}
+              over budget · {formatCurrency(average)} a month on average
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-foreground">{formatCurrency(average)}</span> a month on average over the last{" "}
+              {complete.length} months
+            </>
+          )}
+        </p>
+
+        <div className="relative h-40">
+          {budget !== undefined ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/35"
+              style={{ bottom: `${toPercent(budget)}%` }}
+            >
+              <span className="absolute right-0 bottom-1 rounded bg-card/90 px-1 text-[11px] text-muted-foreground tabular-nums">
+                Budget {formatCurrency(budget)}
+              </span>
+            </div>
+          ) : null}
+          <div className="flex h-full items-end gap-1">
+            {months.map((point) => {
+              const inProgress = point === current;
+              const over = budget !== undefined && point.spent > budget;
+              const label = `${formatMonthLong(point.month)}${inProgress ? " so far" : ""}: ${formatCurrency(point.spent)}`;
+              return (
+                <div className="group/bar relative flex h-full flex-1 items-end" key={point.month} title={label}>
+                  <span className="pointer-events-none absolute inset-x-0 z-20 text-center text-[11px] font-medium whitespace-nowrap tabular-nums opacity-0 transition-opacity group-hover/bar:opacity-100 motion-reduce:transition-none" style={{ bottom: `calc(${toPercent(point.spent)}% + 4px)` }}>
+                    {formatCompactCurrency(point.spent)}
+                  </span>
+                  <span
+                    className={cn("w-full rounded-t-[3px] transition-[height] motion-reduce:transition-none", inProgress && "opacity-45")}
+                    style={{
+                      backgroundColor: point.spent === 0 ? "var(--muted)" : over ? "var(--negative)" : "color-mix(in oklab, var(--positive) 75%, var(--card))",
+                      height: `${Math.max(point.spent > 0 ? 2 : 1, toPercent(point.spent))}%`
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex justify-between text-[10px] tracking-wide text-muted-foreground tabular-nums">
-          <span>{formatMonthShort(detail.monthly[0]?.month ?? "")}</span>
-          <span>{formatMonthShort(detail.monthly.at(-1)?.month ?? "")}</span>
+        {/* Narrow charts label each bar with the month's initial; wider ones spell it out. */}
+        <div aria-hidden="true" className="@container/months flex gap-1 text-[11px] text-muted-foreground">
+          {months.map((point) => (
+            <span className={cn("min-w-0 flex-1 text-center whitespace-nowrap", point === current && "text-foreground")} key={point.month}>
+              <span className="@md/months:hidden">{formatMonthLetter(point.month).charAt(0)}</span>
+              <span className="hidden @md/months:inline">{formatMonthLetter(point.month)}</span>
+            </span>
+          ))}
         </div>
+        <p className="sr-only">
+          {months.map((point) => `${formatMonthLong(point.month)} ${formatCurrency(point.spent)}`).join(", ")}
+        </p>
       </IconiqCardContent>
     </IconiqCard>
   );
+}
+
+function formatMonthLong(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString("en-US", { month: "long", timeZone: "UTC", year: "numeric" });
+}
+
+function formatMonthLetter(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+}
+
+function formatCompactCurrency(value: number): string {
+  return value >= 1000 ? `$${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : formatCurrency(value);
 }
 
 function KeyMetrics({ detail, transactionsToReview }: { detail: CategoryDetail; transactionsToReview: number }) {
@@ -773,16 +1023,17 @@ function AllCategoriesList({
 
   return (
     <IconiqCard className="rounded-lg border-border/70 bg-card/60">
-      <IconiqCardContent className="flex w-full flex-col gap-1">
-      <div className="grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 px-1 pb-1.5">
+      {/* Budget drops out when the list is narrow (phones, docked agent); Left still shows the gap. */}
+      <IconiqCardContent className="@container/allcats flex w-full flex-col gap-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_4.75rem_4.75rem] items-center gap-3 px-1 pb-1.5 @sm/allcats:grid-cols-[minmax(0,1fr)_5rem_5rem_5rem]">
         <span className="text-sm font-semibold tracking-tight">All categories</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
+        <span className="hidden text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase @sm/allcats:block">Budget</span>
         <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
       </div>
       <ScrollArea
-        className="max-h-64 xl:max-h-[420px]"
-        viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-64 xl:max-h-[420px]"
+        className="max-h-64 @6xl/page:max-h-[420px]"
+        viewportClassName="scroll-fade-y scroll-fade-sm h-fit max-h-64 @6xl/page:max-h-[420px]"
       >
         <div className="flex flex-col">
           {summaries.map((summary) => {
@@ -800,7 +1051,7 @@ function AllCategoriesList({
           return (
             <button
               className={cn(
-                "grid grid-cols-[minmax(0,1fr)_6rem_6rem_6rem] items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+                "grid grid-cols-[minmax(0,1fr)_4.75rem_4.75rem] items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-hidden @sm/allcats:grid-cols-[minmax(0,1fr)_5rem_5rem_5rem] transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
                 selectedId === summary.id ? "bg-accent" : "hover:bg-muted/40"
               )}
               key={summary.id}
@@ -811,7 +1062,7 @@ function AllCategoriesList({
                 <CategoryPill category={category} className="max-w-full" />
               </span>
               <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
-              <span className="text-right text-sm tabular-nums text-muted-foreground">
+              <span className="hidden text-right text-sm tabular-nums text-muted-foreground @sm/allcats:block">
                 {summary.budgetAmount ? formatCurrency(summary.budgetAmount) : "—"}
               </span>
               <span
@@ -830,18 +1081,4 @@ function AllCategoriesList({
       </IconiqCardContent>
     </IconiqCard>
   );
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatMonthShort(month: string): string {
-  if (!month) {
-    return "";
-  }
-  const [year, monthNumber] = month.split("-").map(Number);
-  return new Date(Date.UTC(year, monthNumber - 1, 1)).toLocaleDateString("en-US", {
-    month: "short",
-    timeZone: "UTC",
-    year: "2-digit"
-  });
 }

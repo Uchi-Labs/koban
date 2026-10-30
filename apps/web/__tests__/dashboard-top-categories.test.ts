@@ -53,4 +53,16 @@ describe("buildTopCategoryCells", () => {
       { amount: 0, budget: 90, categoryId: "cat_health" }
     ]);
   });
+
+  it("uses the category's current budget over the one the summary captured", () => {
+    const cells = buildTopCategoryCells(
+      [summary("cat_custom_childcare", -1_420), summary("cat_food", -900, 1_200)],
+      [category("cat_custom_childcare", 1_450), category("cat_food", 1_300)]
+    );
+
+    expect(cells).toEqual([
+      { amount: 1_420, budget: 1_450, categoryId: "cat_custom_childcare" },
+      { amount: 900, budget: 1_300, categoryId: "cat_food" }
+    ]);
+  });
 });

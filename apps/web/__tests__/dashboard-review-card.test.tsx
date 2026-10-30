@@ -72,6 +72,22 @@ describe("DashboardReviewCard", () => {
     expect(screen.getByRole("button", { name: "Mark 0 as reviewed" })).toBeDisabled();
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
+
+  it("marks only the rows it shows, never ones hidden below the fold", async () => {
+    const many = Array.from({ length: 10 }, (_, index) => createTransaction(`txn_m${index}`, `Merchant ${index}`, -(index + 1)));
+    render(
+      <DashboardReviewCard
+        initialRows={getTransactionViews(many, { accounts: [account], categories })}
+        reviewSectionLabel="Latest"
+        totalToReview={10}
+      />
+    );
+
+    const visible = screen.getAllByText(/^Merchant \d$/).length;
+    expect(visible).toBe(8);
+    await userEvent.click(screen.getByRole("button", { name: `Mark ${visible} as reviewed` }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(visible));
+  });
 });
 
 function createTransaction(id: string, merchantName: string, amount: number): Transaction {

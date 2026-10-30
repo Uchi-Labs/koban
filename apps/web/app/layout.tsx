@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { authenticateApiRequest } from "@/lib/auth";
 import { ACCENT_COOKIE, accentStyle, parseAccent } from "@/lib/accent-color";
 import { getShellData } from "@/lib/finance-data";
+import { isPublicDemo } from "@/lib/public-demo";
 import { FONT_CHOICE_COOKIE, fontChoiceStyle, parseFontChoice } from "@/lib/font-choice";
 import { MONEY_COLORS_COOKIE, moneyColorStyle, parseMoneyColors } from "@/lib/money-colors";
 import { parseSidebarWidth, SIDEBAR_WIDTH_COOKIE } from "@/lib/sidebar-width";
@@ -18,7 +19,24 @@ import localFont from "next/font/local";
 import { selectableFontVariables } from "./fonts";
 import { cn } from "@/lib/utils";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+// Apercu is the default face. Inter stays declared, unpreloaded, because it is
+// one of the typefaces Appearance settings can switch to.
+const inter = Inter({ preload: false, subsets: ["latin"], variable: "--font-inter" });
+
+// Apercu Pro ships no semibold, so medium also answers 600 (font-semibold)
+// instead of the browser falling through to bold.
+const apercu = localFont({
+  display: "swap",
+  src: [
+    { path: "./fonts/apercu/apercu-pro-regular.woff2", style: "normal", weight: "400" },
+    { path: "./fonts/apercu/apercu-pro-regular-italic.woff2", style: "italic", weight: "400" },
+    { path: "./fonts/apercu/apercu-pro-medium.woff2", style: "normal", weight: "500 600" },
+    { path: "./fonts/apercu/apercu-pro-medium-italic.woff2", style: "italic", weight: "500 600" },
+    { path: "./fonts/apercu/apercu-pro-bold.woff2", style: "normal", weight: "700 900" },
+    { path: "./fonts/apercu/apercu-pro-bold-italic.woff2", style: "italic", weight: "700 900" }
+  ],
+  variable: "--font-sans"
+});
 
 // Quiet register faces. Self-hosted variable woff2 (~84KB for both, covering
 // every weight), following the reference codebases, which use next/font/local
@@ -78,7 +96,9 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
-  const theme = cookieStore.get("koban_theme")?.value === "light" ? "light" : "dark";
+  // A visitor's own toggle wins; otherwise the public demo opens in light mode.
+  const themeCookie = cookieStore.get("koban_theme")?.value;
+  const theme = themeCookie === "light" || themeCookie === "dark" ? themeCookie : isPublicDemo() ? "light" : "dark";
   // Read server-side so the correct design renders on first paint, with no
   // flash of the other one. See lib/ui-mode.ts — migration scaffolding.
   const uiMode = parseUiMode(cookieStore.get(UI_MODE_COOKIE)?.value);
@@ -103,8 +123,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang="en"
+      data-public-demo={isPublicDemo() ? "" : undefined}
       data-ui={uiMode}
-      className={cn(theme === "dark" && "dark", "font-sans", inter.variable, quietFonts)}
+      className={cn(theme === "dark" && "dark", "font-sans", apercu.variable, inter.variable, quietFonts)}
       style={rootStyle}
     >
       <body className="antialiased">
@@ -116,6 +137,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             demoMode={shellData.demoMode}
             initialSidebarWidth={sidebarWidth}
             lastSyncedAt={shellData.lastSyncedAt}
+            publicDemo={isPublicDemo()}
             reviewActionableCount={shellData.reviewActionableCount}
             source={shellData.source}
             transactionCount={shellData.transactionCount}

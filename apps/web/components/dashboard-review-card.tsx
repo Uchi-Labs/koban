@@ -24,6 +24,8 @@ const lastSyncedFormatter = new Intl.DateTimeFormat("en-US", {
 
 type ReviewButtonState = "error" | "idle" | "loading" | "success";
 
+const DASHBOARD_REVIEW_ROWS = 8;
+
 export function DashboardReviewCard({
   currency,
   initialRows,
@@ -45,8 +47,9 @@ export function DashboardReviewCard({
   const [buttonState, setButtonState] = useState<ReviewButtonState>("idle");
   const [message, setMessage] = useState("");
   const remainingCount = Math.max(0, totalToReview - reviewedCount);
-  const rowsToMark = rows.slice(0, 10);
-  const displayRows = rows.slice(0, 5);
+  // The button marks exactly the rows on screen, never ones the user hasn't seen.
+  const displayRows = rows.slice(0, DASHBOARD_REVIEW_ROWS);
+  const rowsToMark = displayRows;
   const displayCurrency = currency ?? rows[0]?.currency ?? initialRows[0]?.currency ?? "USD";
   const reviewTotalAmount = rows.reduce((total, transaction) => total + Math.abs(transaction.amount), 0);
   const displayedButtonState: ReviewButtonState = rowsToMark.length === 0 ? "idle" : buttonState;
@@ -153,7 +156,7 @@ export function DashboardReviewCard({
               {/* ponytail: plain div, not IconiqCard interactive — 10 spring-hover
                   cards with backdrop-blur made dashboard hover visibly laggy */}
               <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
-                <div className="flex items-center gap-3 px-3 py-2.5">
+                <div className="@container flex items-center gap-3 px-3 py-2.5">
                   {domain ? (
                     <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} />
                   ) : (
@@ -168,7 +171,10 @@ export function DashboardReviewCard({
                     <span className="truncate text-sm font-medium text-foreground">{transaction.merchant}</span>
                     <span className="truncate text-xs text-muted-foreground">{transaction.accountName}</span>
                   </div>
-                  {transaction.category ? <CategoryPill category={transaction.category} /> : null}
+                  {/* The row, not the viewport, decides: it narrows when the agent docks. */}
+                  {transaction.category ? (
+                    <CategoryPill category={transaction.category} className="hidden max-w-36 min-w-0 @min-[24rem]:inline-flex" />
+                  ) : null}
                   <Amount amount={transaction.amount} className="min-w-[5.5rem] text-right" currency={transaction.currency} />
                 </div>
               </div>
@@ -196,7 +202,7 @@ export function DashboardReviewCard({
       <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
         <span className="text-xs tabular-nums text-muted-foreground">
           {remainingCount > 0
-            ? `1 - ${Math.min(10, remainingCount).toLocaleString()} of ${remainingCount.toLocaleString()}`
+            ? `1 - ${Math.min(DASHBOARD_REVIEW_ROWS, remainingCount).toLocaleString()} of ${remainingCount.toLocaleString()}`
             : "0 to review"}
         </span>
         <Button

@@ -9,22 +9,21 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-sans: var(--font-inter);
-  --background: oklch(0.982 0.006 95);
-  --foreground: oklch(0.18 0.012 250);
-  --card: oklch(0.997 0.003 95);
-  --card-foreground: oklch(0.18 0.012 250);
-  --popover: oklch(0.997 0.003 95);
-  --popover-foreground: oklch(0.18 0.012 250);
-  --primary: oklch(0.5 0.12 165);
-  --primary-foreground: oklch(0.985 0.004 165);
-  --secondary: oklch(0.94 0.012 245);
-  --secondary-foreground: oklch(0.24 0.014 250);
-  --muted-foreground: oklch(0.43 0.018 245);
-  --accent: oklch(0.92 0.03 165);
-  --accent-foreground: oklch(0.22 0.035 165);
+  --background: oklch(0.976 0.012 85);
+  --foreground: oklch(0.2 0.014 60);
+  --card: oklch(0.994 0.006 85);
+  --card-foreground: oklch(0.2 0.014 60);
+  --popover: oklch(0.994 0.006 85);
+  --popover-foreground: oklch(0.2 0.014 60);
+  --primary: oklch(0.47 0.105 158);
+  --primary-foreground: oklch(0.975 0.014 85);
+  --secondary: oklch(0.935 0.013 80);
+  --secondary-foreground: oklch(0.26 0.016 60);
+  --muted-foreground: oklch(0.46 0.02 65);
+  --accent: oklch(0.925 0.022 78);
+  --accent-foreground: oklch(0.24 0.02 60);
   --destructive: oklch(0.54 0.19 22);
-  --input: oklch(0.875 0.012 245);
+  --input: oklch(0.87 0.015 75);
   --ring: oklch(0.54 0.13 165);
   --chart-1: oklch(0.62 0.16 245);
   --chart-2: oklch(0.72 0.16 80);
@@ -32,16 +31,16 @@
   --chart-4: oklch(0.58 0.18 295);
   --chart-5: oklch(0.64 0.13 190);
   --radius: 0.625rem;
-  --sidebar-foreground: oklch(0.24 0.014 250);
-  --sidebar-primary: oklch(0.5 0.12 165);
-  --sidebar-primary-foreground: oklch(0.985 0.004 165);
-  --sidebar-accent: oklch(0.92 0.025 165);
-  --sidebar-accent-foreground: oklch(0.22 0.035 165);
-  --sidebar-border: oklch(0.87 0.012 245);
+  --sidebar-foreground: oklch(0.26 0.016 60);
+  --sidebar-primary: oklch(0.47 0.105 158);
+  --sidebar-primary-foreground: oklch(0.975 0.014 85);
+  --sidebar-accent: oklch(0.915 0.024 78);
+  --sidebar-accent-foreground: oklch(0.24 0.02 60);
+  --sidebar-border: oklch(0.865 0.015 75);
   --sidebar-ring: oklch(0.54 0.13 165);
-  --sidebar: oklch(0.965 0.009 95);
-  --border: oklch(0.875 0.012 245);
-  --muted: oklch(0.95 0.008 245);
+  --sidebar: oklch(0.958 0.015 82);
+  --border: oklch(0.87 0.015 75);
+  --muted: oklch(0.945 0.012 80);
   --positive: oklch(0.46 0.12 165);
   --negative: oklch(0.54 0.18 22);
 }
@@ -190,6 +189,11 @@
   background-color: color-mix(in oklab, var(--pill-color) 28%, transparent);
   color: var(--pill-color);
 }
+/* An emoji brings its own color; a tinted tile behind it reads as an opaque
+   emoji background, so only icon and initial swatches get the tile. */
+.pill-tint.category-tag [data-swatch][data-emoji] {
+  background-color: transparent;
+}
 
 /* ── Motion tokens (transitions.dev scale + Emil's curves) ─────────── */
 :root {
@@ -207,8 +211,9 @@
   --ease-strong-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-strong-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
-  --ease-bounce-strong: cubic-bezier(0.34, 3.85, 0.64, 1);
+  /* Names kept for existing consumers; values are exponential ease-outs with no overshoot. */
+  --ease-bounce: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce-strong: cubic-bezier(0.16, 1, 0.3, 1);
   --distance-micro: 4px;
   --distance-small: 6px;
   --distance-base: 8px;
@@ -227,7 +232,7 @@
   --digit-distance: var(--distance-base);
   --digit-stagger: 70ms;
   --digit-blur: var(--blur-small);
-  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --digit-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --digit-dir-x: 0;
   --digit-dir-y: 1;
   --badge-slide-dur: 260ms;
@@ -269,7 +274,7 @@
   --check-ease-out: var(--ease-smooth-out);
   --check-ease-opacity: var(--ease-smooth-out);
   --check-ease-rotate: var(--ease-smooth-out);
-  --check-ease-bob: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --check-ease-bob: cubic-bezier(0.22, 1, 0.36, 1);
   --check-ease-path: var(--ease-smooth-out);
   --avatar-lift: -4px;
   --avatar-dur: 320ms;
@@ -304,9 +309,8 @@
   --reveal-ease: var(--ease-strong-in-out);
   --shimmer-dur: 2000ms;
   --shimmer-base: var(--muted-foreground);
-  --shimmer-highlight: var(--foreground);
-  --shimmer-band: 400%;
-  --shimmer-ease: var(--ease-linear);
+  --shimmer-min: 0.6;
+  --shimmer-ease: var(--ease-in-out);
   --stagger-dur: var(--duration-very-slow);
   --stagger-distance: var(--distance-medium);
   --stagger-stagger: var(--duration-stagger);
@@ -321,7 +325,6 @@
 .dark {
   --glow-opacity: 0.85;
   --shimmer-base: var(--muted-foreground);
-  --shimmer-highlight: var(--foreground);
 }
 
 @keyframes t-digit-pop-in {
@@ -365,7 +368,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 8px;
+  right: 10px;
   display: flex;
   align-items: center;
   pointer-events: none;
@@ -662,34 +665,12 @@
 }
 
 .t-shimmer {
-  position: relative;
-  display: inline-block;
   color: var(--shimmer-base);
-}
-.t-shimmer::before {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent 40%,
-    var(--shimmer-highlight) 50%,
-    transparent 60%,
-    transparent 100%
-  );
-  background-size: var(--shimmer-band) 100%;
-  background-repeat: no-repeat;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
   animation: t-shimmer var(--shimmer-dur) var(--shimmer-ease) infinite;
 }
 @keyframes t-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: 0% 0; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: var(--shimmer-min); }
 }
 
 .t-stagger-line {
@@ -763,7 +744,7 @@
   .t-success-check svg path,
   .t-skel-skeleton.is-pulsing > *,
   [data-slot="skeleton"],
-  .t-shimmer::before {
+  .t-shimmer {
     animation: none !important;
   }
   .t-text-swap,
@@ -831,6 +812,10 @@
   }
   html {
     @apply font-sans;
+    /* Apercu's x-height is 0.504 of its size; the type scale was tuned on
+       Inter's 0.546. Matching it scales every size ~9% so labels read at the
+       size they were designed for. */
+    font-size-adjust: 0.55;
   }
   h1,
   h2,
@@ -883,8 +868,8 @@
 
 :root:not(.dark) [data-slot="card"] {
   box-shadow:
-    0 1px 2px oklch(0.18 0.012 250 / 0.04),
-    0 12px 32px -24px oklch(0.18 0.03 250 / 0.24);
+    0 1px 2px oklch(0.2 0.014 60 / 0.05),
+    0 12px 32px -24px oklch(0.25 0.03 60 / 0.24);
 }
 
 .dark [data-slot="card"] {
@@ -923,27 +908,32 @@
   color: var(--muted-foreground);
 }
 
-/* Hero money numbers: big, tight, currency + cents de-emphasized. */
-.money-hero {
-  font-size: 2.4rem;
-  font-weight: 650;
-  letter-spacing: -0.045em;
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-}
+/* Hero money numbers: big, tight, currency + cents de-emphasized. Layered so a
+   caller's text-* size utility wins over the default 2.4rem. */
+@layer components {
+  .money-hero {
+    font-size: 2.4rem;
+    font-weight: 650;
+    letter-spacing: -0.045em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    /* Symbol, dollars, and cents are separate inline boxes; never split them. */
+    white-space: nowrap;
+  }
 
-.money-hero .money-symbol {
-  font-size: 0.58em;
-  font-weight: 550;
-  vertical-align: 0.32em;
-  margin-right: 0.06em;
-  color: oklch(from var(--foreground) l c h / 0.55);
-}
+  .money-hero .money-symbol {
+    font-size: 0.58em;
+    font-weight: 550;
+    vertical-align: 0.32em;
+    margin-right: 0.06em;
+    color: oklch(from var(--foreground) l c h / 0.55);
+  }
 
-.money-hero .money-cents {
-  font-size: 0.52em;
-  font-weight: 550;
-  color: oklch(from var(--foreground) l c h / 0.45);
+  .money-hero .money-cents {
+    font-size: 0.52em;
+    font-weight: 550;
+    color: oklch(from var(--foreground) l c h / 0.45);
+  }
 }
 
 /* Sonner honors most motion prefs, but pin transitions off under reduced motion. */
@@ -999,9 +989,17 @@ a[data-slot="sidebar-menu-button"]:active {
   transform: scale(0.96);
 }
 
-/* Press-scale reads as a row wiggle on full-width list rows — keep them still. */
+/* The public demo has no live providers: hide controls that would only fail
+   (sync) or expose setup internals. */
+html[data-public-demo] [data-demo-hidden] {
+  display: none !important;
+}
+
+/* Press-scale reads as a row wiggle on full-width list rows — keep them still.
+   Wide triggers (accordion headers) opt out with data-press="none". */
 button.ledger-transaction-row:active,
-button.transaction-review-row:active {
+button.transaction-review-row:active,
+[data-press="none"]:active {
   transform: none;
 }
 
@@ -1107,17 +1105,13 @@ button.transaction-review-row:active {
 }
 
 @keyframes bounce-in {
-  0% {
+  from {
     opacity: 0;
-    transform: scale(0.6);
+    transform: translateY(var(--distance-micro));
   }
-  55% {
+  to {
     opacity: 1;
-    transform: scale(1.16);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -1183,7 +1177,7 @@ button.transaction-review-row:active {
 }
 
 .animate-bounce-in {
-  animation: bounce-in var(--duration-slow) var(--ease-bounce);
+  animation: bounce-in var(--duration-fast) var(--ease-smooth-out);
 }
 
 [data-slot="skeleton"] {
@@ -1685,5 +1679,83 @@ button.transaction-review-row:active {
   }
   .link-underline::after {
     transition: none;
+  }
+}
+
+/* Every Koban cat beckons once when the pointer lands on it (the logo button
+   counts as part of its cat). Pointer-only and skipped under reduced motion. */
+@keyframes koban-cat-beckon {
+  0% { transform: translateY(0) rotate(0deg); }
+  30% { transform: translateY(-3px) rotate(-9deg); }
+  55% { transform: translateY(-3px) rotate(6deg); }
+  80% { transform: translateY(-1px) rotate(-3deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+@layer components {
+  .koban-cat {
+    transform-origin: 50% 90%;
+  }
+
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .koban-cat:hover,
+    .group\/logo:hover .koban-cat {
+      animation: koban-cat-beckon 650ms var(--ease-smooth-out);
+    }
+  }
+}
+
+/* The agent's "working" line: a highlight sweeps across the muted label and
+   the dot sends out a soft ring, so a long wait still reads as progress.
+   Both hold still under reduced motion. */
+@keyframes agent-working-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+
+@keyframes agent-working-ring {
+  0% { opacity: 0.45; transform: scale(1); }
+  100% { opacity: 0; transform: scale(2.8); }
+}
+
+@layer components {
+  .agent-working-text {
+    color: var(--muted-foreground);
+  }
+
+  .agent-working-dot {
+    position: relative;
+    display: inline-block;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 9999px;
+    background: var(--positive);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .agent-working-text {
+      background: linear-gradient(
+          90deg,
+          var(--muted-foreground) 0%,
+          var(--muted-foreground) 38%,
+          var(--foreground) 50%,
+          var(--muted-foreground) 62%,
+          var(--muted-foreground) 100%
+        )
+        0 0 / 250% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: agent-working-sweep 1.8s linear infinite;
+    }
+
+    .agent-working-dot::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: var(--positive);
+      animation: agent-working-ring 1.6s var(--ease-smooth-out) infinite;
+    }
   }
 }

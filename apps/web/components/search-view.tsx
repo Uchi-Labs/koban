@@ -17,7 +17,7 @@ export function SearchView({ categories, query, results }: SearchViewProps) {
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="semantic-search-page">
-      <header className="flex items-center border-b border-border px-6 py-3.5">
+      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
         <span className="text-[13px] font-semibold tracking-tight">Search</span>
       </header>
 

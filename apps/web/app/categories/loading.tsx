@@ -4,7 +4,7 @@ export default function CategoriesLoading() {
   return (
     <main aria-label="Loading categories" className="flex min-h-svh flex-col" role="status">
       <span className="sr-only">Loading categories</span>
-      <header className="flex items-center justify-between border-b border-border px-6 py-3.5">
+      <header className="flex items-center justify-between h-14 shrink-0 border-b border-border px-6">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-32" />
       </header>

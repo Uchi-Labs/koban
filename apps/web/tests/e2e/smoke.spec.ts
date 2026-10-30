@@ -748,7 +748,7 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   await page.goto("/");
   await expectOneVisiblePage(page, "dashboard-page");
   const before = await readConversations();
-  await page.getByTestId("new-chat-button").click();
+  await page.getByTestId("ask-koban-button").click();
   await expect(page.getByTestId("agent-panel")).toBeVisible();
   await expect.poll(async () => (await readConversations()).data.length).toBe(before.data.length);
 
@@ -771,6 +771,12 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
 
   await panel.getByRole("button", { name: "Close finance agent" }).click();
   await page.reload();
+  // Saved chats live in the agent panel's History view.
+  const openHistory = async () => {
+    await page.getByTestId("ask-koban-button").click();
+    await panel.getByRole("button", { name: "Chat history" }).click();
+  };
+  await openHistory();
   const persistedRow = page.getByRole("button", { name: `Open chat ${persisted.title}` });
   await expect(persistedRow).toBeVisible();
   await persistedRow.click();
@@ -779,6 +785,7 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   await expect(panel.getByTestId("agent-answer-text")).toContainText(/spending/i);
 
   await panel.getByRole("button", { name: "Close finance agent" }).click();
+  await openHistory();
   await persistedRow.hover();
   await page.getByRole("button", { name: `Actions for ${persisted.title}` }).click();
   await page.getByRole("button", { name: "Rename" }).click();
@@ -801,6 +808,7 @@ test("finance agent answers with local ledger evidence and a chart", async ({ pa
   await page.screenshot({ fullPage: true, path: "test-results/agent-panel-smoke.png" });
 
   await panel.getByRole("button", { name: "Close finance agent" }).click();
+  await openHistory();
   await renamedRow.hover();
   await page.getByRole("button", { name: `Actions for ${renamedTitle}` }).click();
   await page.getByRole("button", { name: "Delete" }).click();

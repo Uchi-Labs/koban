@@ -20,15 +20,17 @@ type IslandContextValue = {
 
 const IslandContext = createContext<IslandContextValue | null>(null);
 
+// No overshoot: a status pill that balloons past its size on every state
+// change reads as a glitch, not a transition.
 const SHELL_SPRING = {
-  bounce: 0.2,
-  duration: 0.4,
+  bounce: 0,
+  duration: 0.35,
   type: "spring"
 } as const;
 
 const CONTENT_SPRING = {
-  bounce: 0.2,
-  duration: 0.4,
+  bounce: 0,
+  duration: 0.3,
   type: "spring"
 } as const;
 

@@ -24,14 +24,17 @@ export default async function DashboardPage() {
     source,
     transactions
   } = financeData;
-  const insights = deriveInsights(transactions, applyBudgetOverrides(categories, budgetOverrides)).filter((item) => !dismissedInsights.has(item.id));
+  // Custom categories and edited budgets live in the override map; apply it once
+  // so the budget total, top categories, and insights agree with /categories.
+  const budgetedCategories = applyBudgetOverrides(categories, budgetOverrides);
+  const insights = deriveInsights(transactions, budgetedCategories).filter((item) => !dismissedInsights.has(item.id));
   const reviewRows = getTransactionViews(
     transactions.filter(isReviewActionableTransaction).slice(0, 10),
     { accounts, categories }
   );
   const recurringViews = getUpcomingRecurringViews(recurringItems, categories);
   const categoryById = new Map(categories.map((category) => [category.id, category]));
-  const monthlyBudget = categories.reduce((total, category) => total + (category.budgetAmount ?? 0), 0);
+  const monthlyBudget = budgetedCategories.reduce((total, category) => total + (category.archived ? 0 : category.budgetAmount ?? 0), 0);
   const monthlySpending = Math.abs(dashboardSummary.monthlySpending);
   const monthlyBudgetDelta = monthlySpending - monthlyBudget;
   const { latestTransactionDate, netWorthTrends, spendingTrend } = buildDashboardTrends(
@@ -46,7 +49,7 @@ export default async function DashboardPage() {
   const projectedMonthlySpending = monthlySpendingProjection.amount;
   const reviewSectionLabel = reviewRows[0]?.dateLabel ?? "Latest";
   const investmentBalance = accountGroups.find((group) => group.id === "group_investments")?.totalBalance ?? 0;
-  const topCategoryCells = buildTopCategoryCells(dashboardSummary.topCategories, categories);
+  const topCategoryCells = buildTopCategoryCells(dashboardSummary.topCategories, budgetedCategories);
 
   const overBudget = monthlyBudgetDelta >= 0;
   const projectionIsEarly = monthlySpendingProjection.confidence === "early";

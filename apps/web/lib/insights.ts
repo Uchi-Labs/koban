@@ -95,7 +95,9 @@ export function detectUnusualCharges(
     const categoryHistory = excluding(categoryGroups.get(transaction.categoryId), transaction.id);
     const merchantUnusual = merchantHistory.size >= 3 && amount > merchantHistory.percentile(0.95);
     const medianAmount = categoryHistory.median();
-    const categoryUnusual = categoryHistory.size >= 3 && medianAmount > 0 && amount > medianAmount * 3;
+    // A merchant with its own steady history (a monthly insurance bill, a
+    // warehouse-club run) is judged against that history, not its category.
+    const categoryUnusual = merchantHistory.size < 3 && categoryHistory.size >= 3 && medianAmount > 0 && amount > medianAmount * 3;
     if (!merchantUnusual && !categoryUnusual) return [];
     const categoryName = categoryById.get(transaction.categoryId)?.name ?? "its category";
     return [{
@@ -148,16 +150,33 @@ export function detectBudgetTrajectory(transactions: Transaction[], categories: 
   const day = Number(anchor.slice(8, 10));
   const [year, monthNumber] = month.split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year!, monthNumber!, 0)).getUTCDate();
-  const totals = new Map<string, number>();
+  // Bills charged in each of the previous two months (rent, tuition, a phone
+  // plan) land once a month; projecting them by days elapsed would turn a
+  // mortgage paid on the 1st into a month-long pace.
+  const previousMonths = [shiftMonth(month, -1), shiftMonth(month, -2)];
+  const billMonths = new Map<string, Set<string>>();
+  for (const transaction of transactions) {
+    const transactionMonth = transaction.date.slice(0, 7);
+    if (!previousMonths.includes(transactionMonth)) continue;
+    const key = `${transaction.categoryId}|${normalize(transaction.merchantName)}`;
+    const seen = billMonths.get(key) ?? new Set<string>();
+    seen.add(transactionMonth);
+    billMonths.set(key, seen);
+  }
+  const fixedTotals = new Map<string, number>();
+  const variableTotals = new Map<string, number>();
   for (const transaction of transactions) {
     if (transaction.date.slice(0, 7) !== month) continue;
+    const isBill = billMonths.get(`${transaction.categoryId}|${normalize(transaction.merchantName)}`)?.size === previousMonths.length;
+    const totals = isBill ? fixedTotals : variableTotals;
     totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0) + Math.abs(transaction.amount));
   }
 
   return categories.flatMap((category) => {
     if (!category.budgetAmount || category.archived) return [];
-    const spent = totals.get(category.id) ?? 0;
-    const projected = roundMoney((spent / Math.max(1, day)) * daysInMonth);
+    const fixed = fixedTotals.get(category.id) ?? 0;
+    const variable = variableTotals.get(category.id) ?? 0;
+    const projected = roundMoney(fixed + (variable / Math.max(1, day)) * daysInMonth);
     const overage = roundMoney(projected - category.budgetAmount);
     if (overage <= 25) return [];
     return [{
@@ -234,3 +253,8 @@ function normalize(value: string): string { return value.toLowerCase().replace(/
 function money(value: number): string { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value); }
 function roundMoney(value: number): number { return Math.round(value * 100) / 100; }
 function insightId(...parts: string[]): string { return parts.map((part) => part.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")).join(":"); }
+
+function shiftMonth(month: string, offset: number): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(Date.UTC(year!, monthNumber! - 1 + offset, 1)).toISOString().slice(0, 7);
+}

@@ -30,40 +30,50 @@ describe("ReviewStack context for unsure cards", () => {
   beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 }))));
   afterEach(() => vi.unstubAllGlobals());
 
-  it("opens the context field unfocused on a low-confidence card", async () => {
+  it("flags a low-confidence card without taking focus from the shortcuts", async () => {
     render(<ReviewStack categories={categories} confidences={{ txn_1: 0.62 }} initialTransactions={views()} suggestions={{ txn_1: "cat_transportation" }} />);
     expect(screen.getAllByText("62%")[0]).toBeInTheDocument();
-    const field = screen.getAllByRole("textbox", { name: "Context for this transaction" }).find((element) => !element.closest("[aria-hidden='true']"))!;
-    expect(field).not.toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Add context" })).not.toHaveFocus();
 
     // Shortcuts still work because nothing stole focus.
     await userEvent.keyboard("j");
     expect(await screen.findByRole("heading", { name: "Review complete" })).toBeInTheDocument();
   });
 
-  it("keeps the context field closed on a confident card", () => {
+  it("does not flag a confident card", () => {
     render(<ReviewStack categories={categories} confidences={{ txn_1: 0.91 }} initialTransactions={views()} suggestions={{ txn_1: "cat_transportation" }} />);
-    expect(screen.queryByRole("textbox", { name: "Context for this transaction" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add context" })).toBeInTheDocument();
+    expect(screen.queryByText(/Not sure/)).not.toBeInTheDocument();
+  });
+
+  it("shows why the card was filed and the evidence behind it", () => {
+    render(
+      <ReviewStack
+        categories={categories}
+        contexts={{ txn_1: { evidence: [{ confidence: 0.84, relationship: "receipt", sourceLabel: "Gmail", summary: "", title: "Your Tuesday evening trip with Uber" }], notes: [], reason: "Uber rides are transportation." } }}
+        initialTransactions={views()}
+        suggestions={{}}
+      />
+    );
+    expect(screen.getAllByText("Uber rides are transportation.")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Your Tuesday evening trip with Uber")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Gmail · 84% match")[0]).toBeInTheDocument();
   });
 
   it("saves context through the context-notes API", async () => {
     render(<ReviewStack categories={categories} initialTransactions={views()} suggestions={{}} />);
-    const field = screen.getAllByRole("textbox", { name: "Context for this transaction" }).find((element) => !element.closest("[aria-hidden='true']"))!;
-    await userEvent.type(field, "Airport ride for the Denver work trip");
-    await userEvent.click(screen.getByRole("button", { name: "Queue for next pass" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Add context" }), "Airport ride for the Denver work trip");
+    await userEvent.click(screen.getByRole("button", { name: "Save context" }));
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/transactions/txn_1/context-notes",
       expect.objectContaining({ body: JSON.stringify({ body: "Airport ride for the Denver work trip" }), method: "POST" })
     );
-    expect(await screen.findByText("Airport ride for the Denver work trip")).toBeInTheDocument();
+    expect((await screen.findAllByText("Airport ride for the Denver work trip"))[0]).toBeInTheDocument();
   });
 
-  it("does not swipe the card while scrolling inside the note", () => {
+  it("does not swipe the card while scrolling inside the context field", () => {
     render(<ReviewStack categories={categories} initialTransactions={views()} suggestions={{}} />);
-    const field = screen.getAllByRole("textbox", { name: "Context for this transaction" }).find((element) => !element.closest("[aria-hidden='true']"))!;
-    field.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -140 }));
+    screen.getByRole("textbox", { name: "Add context" }).dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -140 }));
     expect(screen.getByRole("heading", { name: "Uber" })).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
   });
