@@ -10,8 +10,8 @@ import { SecuritySettingsPanel } from "@/components/security-settings-panel";
 import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
 import { SoundSettingsPanel } from "@/components/sound-settings-panel";
 import { AiProviderPanel, SyncEverythingPanel } from "@/components/sync-everything-panel";
-import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isPublicDemo } from "@/lib/public-demo";
 
 /**
  * Presentation for /settings. The page keeps every await, every provider status
@@ -74,12 +74,6 @@ export function SettingsView({
             Connect banks and context sources, control syncing, and manage local data.
           </p>
         </div>
-        <ThemeToggle
-          className="size-8 shrink-0 rounded-full border border-border bg-card text-foreground shadow-xs transition-colors hover:bg-muted motion-reduce:transition-none"
-          iconClassName="size-4"
-          start="top-right"
-          variant="circle-blur"
-        />
       </header>
 
       <Tabs defaultValue="connections" className="gap-5">
@@ -109,7 +103,7 @@ export function SettingsView({
 
         <TabsContent value="sync-ai" className="flex flex-col gap-5">
           <SyncEverythingPanel initialSchedule={syncSchedule} initialStatus={syncStatus} />
-          <AiProviderPanel initialProvider={aiProvider} />
+          {isPublicDemo() ? null : <AiProviderPanel initialProvider={aiProvider} />}
         </TabsContent>
 
         <TabsContent value="security" className="flex flex-col gap-5">

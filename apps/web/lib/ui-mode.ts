@@ -13,7 +13,9 @@
 export type UiMode = "ink" | "quiet";
 
 export const UI_MODE_COOKIE = "koban_ui";
-export const UI_MODE_DEFAULT: UiMode = "quiet";
+// Ink & Mint is what the public demo shows; the personal app matches it until
+// the quiet register is chosen in Settings.
+export const UI_MODE_DEFAULT: UiMode = "ink";
 
 /** Narrows an arbitrary cookie value, falling back to the current design. */
 export function parseUiMode(value: string | undefined): UiMode {

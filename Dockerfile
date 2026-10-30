@@ -23,6 +23,8 @@ WORKDIR /app
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-build/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-build/static ./apps/web/.next-build/static
+# The public demo's daily reseed applies the Better Auth schema from this file.
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/db/better-auth.sql ./apps/web/db/better-auth.sql
 USER nextjs
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]

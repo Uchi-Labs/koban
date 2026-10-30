@@ -1,9 +1,12 @@
 "use client";
 
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
-import { ArrowDown, Send, Sparkles, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, History, SquarePen, X } from "lucide-react";
+import Image from "next/image";
 import * as React from "react";
 import { AgentAnswer } from "@/components/agent-answer";
+import { AgentChatHistory, type AgentChatHistoryProps } from "@/components/agent-chat-history";
+import { ManekiMoment } from "@/components/maneki-moment";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,12 +17,11 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport
 } from "@/components/ui/message-scroller";
-import { StatefulButton } from "@/components/ui/stateful-button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { AgentConversationTurnSummary } from "@/lib/agent-conversations";
 import type { AgentMeta, AgentStreamControls } from "@/lib/hooks/use-agent-stream";
-import { EASE_SMOOTH_OUT, SPRING_PANEL } from "@/lib/motion";
+import { EASE_SMOOTH_OUT } from "@/lib/motion";
 import { playClose, playOpen } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 
@@ -30,45 +32,81 @@ const suggestedQuestions = [
   "What rules would clean this up?"
 ];
 
-// Drag-resizable height for the finance agent bottom drawer. The sheet is
-// anchored to the bottom edge, so height grows as the pointer moves up:
-// height = window.innerHeight - clientY, clamped and capped to the viewport.
-const AGENT_PANEL_MIN_HEIGHT = 480;
-const AGENT_PANEL_MAX_HEIGHT = 900;
-const AGENT_PANEL_DEFAULT_HEIGHT = 560;
-const AGENT_PANEL_HEIGHT_STORAGE_KEY = "koban:agent-panel-height";
+// On wide screens the agent docks as a right-hand column and the page reflows
+// beside it (the shell reads --agent-dock-width as the content's right margin),
+// so every page keeps working while the chat is open. Narrower screens can't
+// fit both, so the panel slides over the page instead.
+const AGENT_PANEL_MIN_WIDTH = 360;
+const AGENT_PANEL_MAX_WIDTH = 760;
+const AGENT_PANEL_DEFAULT_WIDTH = 440;
+// Room the page keeps beside the dock: the left sidebar plus a usable column.
+const AGENT_PANEL_PAGE_RESERVE = 256 + 520;
+// Docks only when the narrowest panel still leaves the page its reserve.
+const AGENT_PANEL_DOCK_QUERY = `(min-width: ${AGENT_PANEL_PAGE_RESERVE + AGENT_PANEL_MIN_WIDTH}px)`;
+const AGENT_PANEL_WIDTH_STORAGE_KEY = "koban:agent-panel-width";
+const AGENT_DOCK_WIDTH_VAR = "--agent-dock-width";
+// The panel slide and the page's margin shift (app-shell, 320ms ease-smooth-out)
+// run on one curve so the two move as a single motion.
+const AGENT_PANEL_SLIDE = { duration: 0.32, ease: [0.22, 1, 0.36, 1] } as const;
 
-function clampAgentPanelHeight(px: number) {
+function clampAgentPanelWidth(px: number) {
   const viewportCap =
-    typeof window === "undefined" ? AGENT_PANEL_MAX_HEIGHT : Math.round(window.innerHeight * 0.92);
-  const max = Math.min(AGENT_PANEL_MAX_HEIGHT, viewportCap);
-  return Math.min(max, Math.max(AGENT_PANEL_MIN_HEIGHT, px));
+    typeof window === "undefined" ? AGENT_PANEL_MAX_WIDTH : window.innerWidth - AGENT_PANEL_PAGE_RESERVE;
+  const max = Math.max(AGENT_PANEL_MIN_WIDTH, Math.min(AGENT_PANEL_MAX_WIDTH, viewportCap));
+  return Math.min(max, Math.max(AGENT_PANEL_MIN_WIDTH, px));
+}
+
+function subscribeDockQuery(onChange: () => void) {
+  const media = window.matchMedia(AGENT_PANEL_DOCK_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function useDockedLayout() {
+  return React.useSyncExternalStore(
+    subscribeDockQuery,
+    () => window.matchMedia(AGENT_PANEL_DOCK_QUERY).matches,
+    () => true
+  );
 }
 
 export function AgentPanel({
+  chats,
   conversationLoading,
   draftPrefill,
   onAskAction,
   onCloseAction,
   open,
   persistenceError,
+  showChatSignal,
   stream,
   submitting,
   turns
 }: {
+  /** The chat list shown in the panel's History view, and starting a new chat. */
+  chats: AgentChatHistoryProps & { onNewChat: () => void };
   conversationLoading: boolean;
   draftPrefill: string;
   onAskAction: (question: string) => void;
   onCloseAction: () => void;
   open: boolean;
   persistenceError: string;
+  showChatSignal: number;
   stream: AgentStreamControls;
   submitting: boolean;
   turns: AgentConversationTurnSummary[];
 }) {
   const reduce = useReducedMotion();
   const [draft, setDraft] = React.useState(() => draftPrefill);
-  const [panelHeight, setPanelHeight] = React.useState(AGENT_PANEL_DEFAULT_HEIGHT);
+  // The panel remounts for every new or reopened chat, so this resets to "chat".
+  const [view, setView] = React.useState<"chat" | "history">("chat");
+  const [seenShowChatSignal, setSeenShowChatSignal] = React.useState(showChatSignal);
+  if (seenShowChatSignal !== showChatSignal) {
+    setSeenShowChatSignal(showChatSignal);
+    setView("chat");
+  }
+  const docked = useDockedLayout();
+  const [panelWidth, setPanelWidth] = React.useState(AGENT_PANEL_DEFAULT_WIDTH);
   const [resizing, setResizing] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const turnIdRef = React.useRef(0);
@@ -76,18 +114,31 @@ export function AgentPanel({
   const closeAction = React.useEffectEvent(onCloseAction);
   const canSubmit = draft.trim().length > 0 && !submitting;
 
-  // Hydrate the persisted height after mount (localStorage is client-only, so the
+  // Hydrate the persisted width after mount (localStorage is client-only, so the
   // first render must match the SSR default to avoid a hydration mismatch).
   React.useEffect(() => {
-    const stored = window.localStorage.getItem(AGENT_PANEL_HEIGHT_STORAGE_KEY);
-    if (!stored) {
-      return;
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(AGENT_PANEL_WIDTH_STORAGE_KEY);
+    } catch {
+      // Storage blocked: fall back to the default width, still clamped below.
     }
-    const parsed = Number.parseInt(stored, 10);
-    if (Number.isFinite(parsed)) {
-      setPanelHeight(clampAgentPanelHeight(parsed));
-    }
+    const parsed = stored ? Number.parseInt(stored, 10) : Number.NaN;
+    const preferred = Number.isFinite(parsed) ? parsed : AGENT_PANEL_DEFAULT_WIDTH;
+    // Re-clamp on resize so the page always keeps its reserve beside the dock.
+    const apply = () => setPanelWidth((current) => clampAgentPanelWidth(current));
+    setPanelWidth(clampAgentPanelWidth(preferred));
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
   }, []);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(AGENT_DOCK_WIDTH_VAR, open && docked ? `${panelWidth}px` : "0px");
+    return () => {
+      root.style.setProperty(AGENT_DOCK_WIDTH_VAR, "0px");
+    };
+  }, [docked, open, panelWidth]);
 
   function handleResizePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) {
@@ -99,12 +150,12 @@ export function AgentPanel({
     const previousUserSelect = document.body.style.userSelect;
     const previousCursor = document.body.style.cursor;
     document.body.style.userSelect = "none";
-    document.body.style.cursor = "row-resize";
-    let latest = panelHeight;
+    document.body.style.cursor = "col-resize";
+    let latest = panelWidth;
 
     const handleMove = (moveEvent: PointerEvent) => {
-      latest = clampAgentPanelHeight(window.innerHeight - moveEvent.clientY);
-      setPanelHeight(latest);
+      latest = clampAgentPanelWidth(window.innerWidth - moveEvent.clientX);
+      setPanelWidth(latest);
     };
 
     const handleUp = () => {
@@ -113,16 +164,24 @@ export function AgentPanel({
       document.body.style.userSelect = previousUserSelect;
       document.body.style.cursor = previousCursor;
       setResizing(false);
-      window.localStorage.setItem(AGENT_PANEL_HEIGHT_STORAGE_KEY, String(latest));
+      try {
+        window.localStorage.setItem(AGENT_PANEL_WIDTH_STORAGE_KEY, String(latest));
+      } catch {
+        // Width just won't persist (private window, blocked storage).
+      }
     };
 
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
   }
 
-  function resetPanelHeight() {
-    setPanelHeight(AGENT_PANEL_DEFAULT_HEIGHT);
-    window.localStorage.removeItem(AGENT_PANEL_HEIGHT_STORAGE_KEY);
+  function resetPanelWidth() {
+    setPanelWidth(clampAgentPanelWidth(AGENT_PANEL_DEFAULT_WIDTH));
+    try {
+      window.localStorage.removeItem(AGENT_PANEL_WIDTH_STORAGE_KEY);
+    } catch {
+      // Nothing persisted to clear.
+    }
   }
 
   React.useEffect(() => {
@@ -178,68 +237,126 @@ export function AgentPanel({
       <AnimatePresence>
         {open ? (
           <>
-            <m.button
-              aria-label="Close finance agent"
-              animate={{ opacity: 1 }}
-              className="fixed inset-0 z-40 bg-background/35"
-              data-sound="none"
-              exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.15 } }}
-              initial={{ opacity: 0 }}
-              onClick={onCloseAction}
-              transition={reduce ? { duration: 0 } : { duration: 0.25, ease: EASE_SMOOTH_OUT }}
-              type="button"
-            />
-            <m.aside
-              animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
-              aria-label="Finance agent"
-              aria-modal="true"
-              className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-border border-b-0 bg-background shadow-2xl"
-              data-testid="agent-panel"
-              exit={reduce ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, transition: { duration: 0.2 }, y: "100%" }}
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: "100%" }}
-              role="dialog"
-              style={{ height: `min(${panelHeight}px, 92svh)` }}
-              transition={reduce ? { duration: 0.15 } : SPRING_PANEL}
-            >
-              <button
-                aria-label="Drag to resize the finance agent drawer. Double-click to reset."
-                className="group/agent-resize relative z-10 flex h-5 w-full shrink-0 cursor-row-resize touch-none items-center justify-center select-none"
-                data-dragging={resizing ? "true" : undefined}
-                onDoubleClick={resetPanelHeight}
-                onPointerDown={handleResizePointerDown}
-                tabIndex={-1}
+            {docked ? null : (
+              <m.button
+                aria-label="Close finance agent"
+                animate={{ opacity: 1 }}
+                className="fixed inset-0 z-40 bg-background/35"
+                data-sound="none"
+                exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.15 } }}
+                initial={{ opacity: 0 }}
+                onClick={onCloseAction}
+                transition={reduce ? { duration: 0 } : { duration: 0.25, ease: EASE_SMOOTH_OUT }}
                 type="button"
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "h-1 w-9 rounded-full transition-colors motion-reduce:transition-none",
-                    resizing ? "bg-primary" : "bg-border group-hover/agent-resize:bg-primary/50"
-                  )}
-                />
-              </button>
-              <header className="flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 pb-3 backdrop-blur-[var(--blur-small)]">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold tracking-tight">Finance agent</h2>
-                  <span className="sheen-pill inline-flex h-5 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 text-[10px] font-semibold tracking-wide text-primary uppercase">
-                    <Sparkles aria-hidden="true" className="size-3" />
-                    AI
-                  </span>
-                </div>
-                <Button
-                  aria-label="Close finance agent"
-                  data-sound="none"
-                  onClick={onCloseAction}
-                  size="icon"
+              />
+            )}
+            <m.aside
+              animate={reduce ? { opacity: 1 } : { opacity: 1, x: 0 }}
+              aria-label="Finance agent"
+              aria-modal={docked ? undefined : true}
+              className={cn(
+                "fixed inset-y-0 right-0 z-50 flex flex-col overflow-hidden border-l border-border bg-background",
+                !docked && "shadow-2xl"
+              )}
+              data-docked={docked ? "true" : "false"}
+              data-testid="agent-panel"
+              exit={reduce ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, transition: { duration: 0.2 }, x: "100%" }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, x: "100%" }}
+              role={docked ? "complementary" : "dialog"}
+              style={{ width: docked ? `${panelWidth}px` : "min(92vw, 28rem)" }}
+              transition={reduce ? { duration: 0.15 } : AGENT_PANEL_SLIDE}
+            >
+              {docked ? (
+                <button
+                  aria-label="Drag to resize the finance agent. Double-click to reset."
+                  className="group/agent-resize absolute inset-y-0 left-0 z-10 flex w-2 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center select-none"
+                  data-dragging={resizing ? "true" : undefined}
+                  onDoubleClick={resetPanelWidth}
+                  onPointerDown={handleResizePointerDown}
+                  tabIndex={-1}
                   type="button"
-                  variant="ghost"
                 >
-                  <X className="size-4" />
-                </Button>
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "h-full w-px transition-colors motion-reduce:transition-none",
+                      resizing ? "bg-primary" : "bg-transparent group-hover/agent-resize:bg-primary/50"
+                    )}
+                  />
+                </button>
+              ) : null}
+              <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 pr-2 pl-4 backdrop-blur-[var(--blur-small)]">
+                {view === "history" ? (
+                  <div className="-ml-2 flex items-center gap-1">
+                    <Button
+                      aria-label="Back to chat"
+                      data-sound="none"
+                      onClick={() => setView("chat")}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <ArrowLeft className="size-4" />
+                    </Button>
+                    <h2 className="text-sm font-semibold tracking-tight">Chats</h2>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <KobanAvatar size={24} />
+                    <h2 className="text-sm font-semibold tracking-tight">Ask Koban</h2>
+                  </div>
+                )}
+                <div className="flex items-center">
+                  {view === "chat" ? (
+                    <Button
+                      aria-label="Chat history"
+                      data-sound="none"
+                      onClick={() => setView("history")}
+                      size="icon-sm"
+                      title="Chat history"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <History className="size-4" />
+                    </Button>
+                  ) : null}
+                  <Button
+                    aria-label="New chat"
+                    data-sound="none"
+                    data-testid="new-chat-button"
+                    onClick={chats.onNewChat}
+                    size="icon-sm"
+                    title="New chat"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <SquarePen className="size-4" />
+                  </Button>
+                  <Button
+                    aria-label="Close finance agent"
+                    data-sound="none"
+                    onClick={onCloseAction}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
               </header>
 
               <div className="relative min-h-0 flex-1">
-                {conversationLoading ? (
+                {view === "history" ? (
+                  <div className="scroll-fade-y h-full overflow-y-auto overscroll-contain p-2">
+                    <AgentChatHistory
+                      {...chats}
+                      onOpenConversation={(id) => {
+                        setView("chat");
+                        return chats.onOpenConversation(id);
+                      }}
+                    />
+                  </div>
+                ) : conversationLoading ? (
                   <div className="flex h-full items-center justify-center p-6">
                     <Spinner aria-label="Loading chat" size="lg" variant="ring" />
                   </div>
@@ -251,33 +368,31 @@ export function AgentPanel({
                       <Alert appearance="destructive" message={persistenceError} variant="inline" width="100%" />
                     ) : null}
                     <section
-                      aria-label="Finance agent suggestions"
-                      className="m-auto flex flex-col items-center gap-4 py-6 text-center"
+                      aria-label="Suggested questions"
+                      className="m-auto flex w-full max-w-sm flex-col items-center gap-5 py-6 text-center"
                     >
-                      <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                        <Sparkles aria-hidden="true" className="size-5" />
-                      </span>
-                      <div className="max-w-sm space-y-1">
-                        <h3 className="text-sm font-semibold">Ask your ledger</h3>
-                        <p className="text-sm leading-5 text-muted-foreground">
-                          Explore spending, review work, source health, or cleanup opportunities.
+                      <ManekiMoment priority size={76} />
+                      <div className="space-y-1">
+                        <h3 className="text-base font-semibold text-balance">What would you like to know?</h3>
+                        <p className="text-sm leading-5 text-pretty text-muted-foreground">
+                          I can read every transaction, note, budget, and goal in this ledger.
                         </p>
                       </div>
-                      <div className="flex max-w-lg flex-wrap justify-center gap-2">
+                      <ul className="flex w-full flex-col gap-1.5">
                         {suggestedQuestions.map((suggestion) => (
-                          <Button
-                            className="h-auto rounded-xl px-3 py-2 text-left text-xs whitespace-normal"
-                            data-sound="send"
-                            data-sound-hover=""
-                            key={suggestion}
-                            onClick={() => ask(suggestion)}
-                            type="button"
-                            variant="secondary"
-                          >
-                            {suggestion}
-                          </Button>
+                          <li key={suggestion}>
+                            <button
+                              className="w-full rounded-xl border border-border/70 bg-card/60 px-3.5 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                              data-sound="send"
+                              data-sound-hover=""
+                              onClick={() => ask(suggestion)}
+                              type="button"
+                            >
+                              {suggestion}
+                            </button>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </section>
                   </div>
                 ) : (
@@ -315,7 +430,7 @@ export function AgentPanel({
                                 key={`answer-${turnIdRef.current}`}
                                 messageId={`answer-${turnIdRef.current}`}
                               >
-                                <div className="flex flex-col gap-4">
+                                <AssistantRow>
                                   {stream.error ? (
                                     <Alert appearance="destructive" message={stream.error} variant="inline" width="100%" />
                                   ) : null}
@@ -327,7 +442,7 @@ export function AgentPanel({
                                     status={stream.status}
                                     variant="panel"
                                   />
-                                </div>
+                                </AssistantRow>
                               </MessageScrollerItem>
                             </>
                           ) : null}
@@ -354,52 +469,40 @@ export function AgentPanel({
                 )}
               </div>
 
-              <div className="shrink-0 border-t border-border bg-background p-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs text-muted-foreground" htmlFor="agent-panel-question">
-                      Question
-                    </label>
-                    <div className="grid">
-                      <div className="relative col-start-1 row-start-1 flex flex-col">
-                        <Textarea
-                          aria-label="Finance question"
-                          className="min-h-24 px-4 py-3"
-                          disabled={submitting}
-                          id="agent-panel-question"
-                          onChange={(event) => {
-                            setDraft(event.target.value);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" && !event.shiftKey) {
-                              event.preventDefault();
-                              ask();
-                            }
-                          }}
-                          placeholder="Ask about spending, review, merchants, rules, or sources"
-                          ref={textareaRef}
-                          rows={4}
-                          value={draft}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatefulButton
-                      data-sound="send"
-                      disabled={!canSubmit}
-                      icon={<Send className="size-4" />}
-                      loadingText="Asking"
-                      onClick={() => ask()}
-                      state={submitting ? "loading" : stream.status === "error" ? "error" : "idle"}
-                      type="button"
-                    >
-                      Ask
-                    </StatefulButton>
-                  </div>
-
+              <div className={cn("shrink-0 bg-background px-4 pt-2 pb-4", view === "history" && "hidden")}>
+                <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-3 py-2 transition-colors focus-within:border-ring/60">
+                  <Textarea
+                    aria-label="Finance question"
+                    className="max-h-40 min-h-11 flex-1 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0"
+                    disabled={submitting}
+                    id="agent-panel-question"
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        ask();
+                      }
+                    }}
+                    placeholder="Ask about spending, a merchant, a goal…"
+                    ref={textareaRef}
+                    rows={1}
+                    value={draft}
+                  />
+                  <Button
+                    aria-label={submitting ? "Asking" : "Send question"}
+                    className="mb-0.5 shrink-0 rounded-xl"
+                    data-sound="send"
+                    disabled={!canSubmit}
+                    onClick={() => ask()}
+                    size="icon-sm"
+                    type="button"
+                  >
+                    {submitting ? <Spinner aria-hidden="true" size="sm" variant="ring" /> : <ArrowUp className="size-4" />}
+                  </Button>
                 </div>
+                <p className="mt-2 px-1 text-[11px] text-muted-foreground">Enter to send · Shift+Enter for a new line</p>
               </div>
             </m.aside>
           </>
@@ -418,11 +521,8 @@ function UserMessage({
 }) {
   return (
     <MessageScrollerItem messageId={messageId} scrollAnchor>
-      <section aria-label="Your question" className="flex flex-col items-end gap-1.5">
-        <span className="px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          You
-        </span>
-        <p className="max-w-[85%] break-words rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-5 text-primary-foreground shadow-sm">
+      <section aria-label="Your question" className="flex justify-end">
+        <p className="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl bg-accent px-3.5 py-2.5 text-sm leading-5 text-accent-foreground">
           {content}
         </p>
       </section>
@@ -443,14 +543,39 @@ function AssistantMessage({
 }) {
   return (
     <MessageScrollerItem messageId={messageId}>
-      <AgentAnswer
-        answer={content}
-        meta={meta}
-        question={question}
-        status="done"
-        variant="panel"
-      />
+      <AssistantRow>
+        <AgentAnswer
+          answer={content}
+          meta={meta}
+          question={question}
+          status="done"
+          variant="panel"
+        />
+      </AssistantRow>
     </MessageScrollerItem>
+  );
+}
+
+// Koban's answers read as prose beside the mascot, not as bubbles.
+function AssistantRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <KobanAvatar className="mt-0.5" size={22} />
+      <div className="flex min-w-0 flex-1 flex-col gap-4">{children}</div>
+    </div>
+  );
+}
+
+function KobanAvatar({ className, size }: { className?: string; size: number }) {
+  return (
+    <Image
+      alt=""
+      className={cn("koban-cat shrink-0 object-contain select-none", className)}
+      draggable={false}
+      height={size}
+      src="/icons/koban-1024-transparent.png"
+      width={size}
+    />
   );
 }
 

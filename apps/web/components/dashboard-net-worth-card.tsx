@@ -46,7 +46,7 @@ export function DashboardNetWorthCard({
 
   return (
     <DashboardCard title="Net worth" action={{ label: "Accounts", href: "/accounts" }} surface="iconiq">
-      <div className="flex items-end justify-between gap-3" data-testid="net-worth-card" data-range={activeRange}>
+      <div className="flex flex-wrap items-end justify-between gap-3" data-testid="net-worth-card" data-range={activeRange}>
         <div>
           <MoneyHero amount={currentNetWorth} currency={currency} />
           <div className="mt-1 text-xs text-muted-foreground">Net worth</div>

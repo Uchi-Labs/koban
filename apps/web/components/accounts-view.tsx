@@ -124,15 +124,14 @@ export function AccountsView({
   summaryStats
 }: AccountsViewProps) {
   return (
-    <main className="flex min-h-svh flex-col" data-testid="accounts-page">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-6 py-3.5">
+    <main className="@container/page flex min-h-svh flex-col" data-testid="accounts-page">
+      <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
         <span className="text-[13px] font-semibold tracking-tight">Accounts</span>
       </header>
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
         <section>
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Synced accounts</p>
-          <h1 className="app-page-title mt-1">Balance by account</h1>
+          <h1 className="app-page-title">Balance by account</h1>
           <p className="app-page-description mt-1.5">
             {accounts.length > 0
               ? `${accounts.length.toLocaleString()} synced accounts · last sync ${formatDateTime(ledger?.lastSyncedAt)}`
@@ -140,7 +139,7 @@ export function AccountsView({
           </p>
         </section>
 
-        <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[minmax(0,1.6fr)_minmax(24rem,0.9fr)] xl:items-start">
+        <div className="flex flex-col gap-6 @5xl/page:grid @5xl/page:grid-cols-[minmax(0,1.6fr)_minmax(24rem,0.9fr)] @5xl/page:items-start">
           <div className="flex min-w-0 flex-col gap-6">
             <AccountsNetWorthCard
               currency={dashboardSummary.currency}
@@ -254,15 +253,15 @@ export function AccountsView({
             </Card>
           </div>
 
-          <Card className="xl:sticky xl:top-6">
+          <Card className="@5xl/page:sticky @5xl/page:top-6">
             <CardHeader>
               <h2 className="text-base font-medium">Recent account activity</h2>
               <p className="text-sm text-muted-foreground">Latest synced transaction per account, useful for spotting stale connections.</p>
             </CardHeader>
             <CardContent className="flex flex-col gap-0.5">
               <ScrollArea
-                className="xl:max-h-[78vh]"
-                viewportClassName="scroll-fade-y h-fit xl:max-h-[78vh]"
+                className="@5xl/page:max-h-[78vh]"
+                viewportClassName="scroll-fade-y h-fit @5xl/page:max-h-[78vh]"
               >
                 <div className="flex flex-col gap-0.5">
                   {accountRows.map((row) => {
@@ -271,7 +270,7 @@ export function AccountsView({
                     return (
                       <Link
                         aria-label={`View transactions for ${row.account.name}`}
-                        className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none xl:grid-cols-[minmax(0,1.3fr)_auto]"
+                        className="group grid grid-cols-[1.4fr_1fr_1fr_1fr] items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none @5xl/page:grid-cols-[minmax(0,1.3fr)_auto]"
                         href={`/transactions?account_id=${encodeURIComponent(row.account.id)}`}
                         key={`${row.account.id}-activity`}
                       >
@@ -288,12 +287,12 @@ export function AccountsView({
                             </p>
                           </div>
                         </div>
-                        <div className="contents xl:hidden">
+                        <div className="contents @5xl/page:hidden">
                           <RowStat label="Latest activity" value={row.latestTransaction ? formatDate(row.latestTransaction.date) : "N/A"} />
                           <RowStat label="Transaction count" value={row.transactionCount.toLocaleString()} />
                           <RowStat label="Last updated" value={formatDateTime(row.account.lastUpdatedAt)} />
                         </div>
-                        <div className="hidden min-w-max flex-col items-end gap-0.5 text-xs xl:flex">
+                        <div className="hidden min-w-max flex-col items-end gap-0.5 text-xs @5xl/page:flex">
                           <p className="whitespace-nowrap text-muted-foreground">
                             <span className="font-medium text-foreground tabular-nums">
                               {row.latestTransaction ? formatDate(row.latestTransaction.date) : "N/A"}

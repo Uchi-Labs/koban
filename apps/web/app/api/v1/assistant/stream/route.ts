@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api-error";
 import { readJsonObject } from "@/lib/api-request";
 import { streamFinanceAnswer, type AgentStreamEvent } from "@/lib/finance-assistant";
+import { isPublicDemo } from "@/lib/public-demo";
+import { publicDemoVisitorKey, takePublicDemoQuestion } from "@/lib/public-demo-rate-limit";
 
 export const runtime = "nodejs";
 
@@ -21,6 +23,16 @@ export async function POST(request: NextRequest) {
 
   if (question.length > 500) {
     return NextResponse.json({ error: "Question must be 500 characters or fewer." }, { status: 400 });
+  }
+
+  if (isPublicDemo() && body.local_only !== true) {
+    const limit = takePublicDemoQuestion(publicDemoVisitorKey(request.headers));
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: limit.message },
+        { headers: { "Retry-After": String(limit.retryAfterSeconds) }, status: 429 }
+      );
+    }
   }
 
   const events = streamFinanceAnswer(question, { forceLocal: body.local_only === true });

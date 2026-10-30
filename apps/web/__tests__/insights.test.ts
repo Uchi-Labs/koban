@@ -17,6 +17,18 @@ describe("finance insights", () => {
     expect(detectUnusualCharges(rows, categories, "2026-07-13")[0]).toMatchObject({ kind: "unusual-charge", merchant: "Merchant" });
   });
 
+  it("judges a merchant with steady history against itself, not its category", () => {
+    const groceries = [txn("g1", "2026-06-01", -20), txn("g2", "2026-06-08", -25), txn("g3", "2026-06-15", -30)];
+    const warehouse = ["2026-04-12", "2026-05-10", "2026-06-14", "2026-07-12"].map((date, index) => ({
+      ...txn(`w${index}`, date, -[200, 205, 190, 198][index]!),
+      merchantName: "Warehouse Club"
+    }));
+    expect(detectUnusualCharges([...groceries, ...warehouse], categories, "2026-07-13")).toEqual([]);
+
+    const firstVisit = { ...txn("new", "2026-07-12", -240), merchantName: "New Bistro" };
+    expect(detectUnusualCharges([...groceries, firstVisit], categories, "2026-07-13")[0]).toMatchObject({ merchant: "New Bistro" });
+  });
+
   it("detects a new monthly-looking merchant", () => {
     const rows = [txn("a", "2026-05-13", -12), txn("b", "2026-06-13", -12), txn("c", "2026-07-13", -12)];
     expect(detectNewRecurringMerchants(rows, "2026-07-13")[0]).toMatchObject({ kind: "new-recurring" });
@@ -24,6 +36,19 @@ describe("finance insights", () => {
 
   it("projects a category over its monthly budget", () => {
     expect(detectBudgetTrajectory([txn("a", "2026-07-10", -200)], [food], "2026-07-10")[0]).toMatchObject({ kind: "budget-trajectory", tone: "negative" });
+  });
+
+  it("counts a bill seen in each of the last two months once instead of projecting it", () => {
+    const housing: Category = { ...food, budgetAmount: 1_500, id: "cat_housing", name: "Housing" };
+    const mortgage = ["2026-05-01", "2026-06-01", "2026-07-01"].map((date, index) => ({
+      ...txn(`m${index}`, date, -1_465),
+      categoryId: "cat_housing",
+      merchantName: "Mortgage"
+    }));
+    expect(detectBudgetTrajectory(mortgage, [housing], "2026-07-03")).toEqual([]);
+
+    const firstMonth = [{ ...mortgage[2]!, id: "only" }];
+    expect(detectBudgetTrajectory(firstMonth, [housing], "2026-07-03")[0]).toMatchObject({ kind: "budget-trajectory" });
   });
 
   it("builds daily spending quantiles while excluding transfers and inflows", () => {
@@ -133,7 +158,7 @@ function referenceDetectUnusualCharges(
       .map((row) => Math.abs(row.amount));
     const merchantUnusual = merchantHistory.length >= 3 && amount > percentile(merchantHistory, 0.95);
     const medianAmount = median(categoryHistory);
-    const categoryUnusual = categoryHistory.length >= 3 && medianAmount > 0 && amount > medianAmount * 3;
+    const categoryUnusual = merchantHistory.length < 3 && categoryHistory.length >= 3 && medianAmount > 0 && amount > medianAmount * 3;
     if (!merchantUnusual && !categoryUnusual) return [];
     const categoryName = categoryById.get(transaction.categoryId)?.name ?? "its category";
     return [{

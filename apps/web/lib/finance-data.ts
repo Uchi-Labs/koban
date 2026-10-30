@@ -495,7 +495,9 @@ export function createDashboardSummary({
     topCategories: Array.from(spendingByCategory.entries())
       .map(([categoryId, summary]) => ({ categoryId, ...summary, amount: roundMoney(summary.amount) }))
       .sort((left, right) => Math.abs(right.amount) - Math.abs(left.amount))
-      .slice(0, 5),
+      // Matches the dashboard's six top-category cells, so no cell is padded
+      // with a $0 placeholder for a category that did have spending.
+      .slice(0, 6),
     upcomingRecurringIds: recurringItems.slice(0, 5).map((item) => item.id),
     providerConnectionIds: providerConnections.map((connection) => connection.id)
   };

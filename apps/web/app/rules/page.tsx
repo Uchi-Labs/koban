@@ -2,6 +2,7 @@ import type { RuleView } from "@/components/rules-panel";
 import { RulesView } from "@/components/rules-view";
 import { listEnrichmentSuggestionItems, listTagStyles, listTransactionRules } from "@/lib/db/finance-db";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { getFinanceData } from "@/lib/finance-data";
 
 export default async function RulesPage() {
@@ -9,7 +10,7 @@ export default async function RulesPage() {
     getFinanceData(),
     listTransactionRules(),
     listEnrichmentSuggestionItems({ limit: 20 }),
-    getEffectiveLlmEnrichmentStatus(),
+    getEffectiveLlmEnrichmentStatus().then((status) => maskLlmStatusForPublicDemo(status)),
     listTagStyles()
   ]);
 

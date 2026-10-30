@@ -62,7 +62,7 @@ export function AccountDetailView({
 }: AccountDetailViewProps) {
   return (
     <main className="flex min-h-svh flex-col" data-testid="account-detail-page">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-6 py-3.5">
+      <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
         <Link
           className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[13px] font-semibold tracking-tight text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
           href="/accounts"

@@ -3,7 +3,6 @@
 import {
   ArrowLeft,
   BarChart3,
-  Bot,
   CreditCard,
   Layers,
   LayoutDashboard,
@@ -14,13 +13,14 @@ import {
   Repeat2,
   ScrollText,
   Search,
-  Settings,
-  Sparkles
+  Settings
 } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { AgentAnswer } from "@/components/agent-answer";
+import { startKobanTour } from "@/components/koban-tour";
 import { useAgentPanel } from "@/components/agent-panel-provider";
 import {
   Command,
@@ -41,10 +41,11 @@ import { looksLikeQuestion } from "@/lib/agent-question";
 import { useAgentStream } from "@/lib/hooks/use-agent-stream";
 import { EASE_OUT } from "@/lib/motion";
 import { playClose, playError, playOpen, playSelect, playSuccess, playSync } from "@/lib/ui-sound";
+import { cn } from "@/lib/utils";
 
 type Destination =
   | { href: string; icon: typeof LayoutDashboard; label: string }
-  | { action: "agent"; icon: typeof Bot; label: string };
+  | { action: "agent"; icon: typeof KobanMark; label: string };
 
 const destinations: Destination[] = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -55,9 +56,23 @@ const destinations: Destination[] = [
   { href: "/categories", icon: PieChart, label: "Categories" },
   { href: "/recurrings", icon: Repeat2, label: "Recurrings" },
   { href: "/rules", icon: ScrollText, label: "Rules" },
-  { action: "agent", icon: Bot, label: "Agent" },
+  { action: "agent", icon: KobanMark, label: "Agent" },
   { href: "/settings", icon: Settings, label: "Settings" }
 ];
+
+// Agent entry points use the Koban mascot, sized like the 16px lucide icons beside it.
+function KobanMark({ className }: { className?: string }) {
+  return (
+    <Image
+      alt=""
+      className={cn("koban-cat size-4 shrink-0 object-contain", className)}
+      draggable={false}
+      height={16}
+      src="/icons/koban-1024-transparent.png"
+      width={16}
+    />
+  );
+}
 
 function matchingDestinations(query: string) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -259,9 +274,7 @@ export function CommandPalette({
     const loadingDescription = "Running whole-app sync from the command palette.";
     const toastId = showToast({
       description: (
-        <span className="t-shimmer" data-text={loadingDescription}>
-          {loadingDescription}
-        </span>
+        <span className="t-shimmer">{loadingDescription}</span>
       ),
       duration: 0,
       status: "loading",
@@ -325,6 +338,10 @@ export function CommandPalette({
             onGo={go}
             onRunDestination={runDestination}
             onSync={() => void syncNow()}
+            onTour={() => {
+              onOpenChangeAction(false);
+              startKobanTour();
+            }}
             query={query}
             results={results}
             searching={searching}
@@ -415,6 +432,7 @@ function PaletteCommandList({
   onOpenChat,
   onRunDestination,
   onSync,
+  onTour,
   query,
   results,
   searching
@@ -426,6 +444,7 @@ function PaletteCommandList({
   onOpenChat: (id: string) => void;
   onRunDestination: (destination: Destination) => void;
   onSync: () => void;
+  onTour: () => void;
   query: string;
   results: SemanticResult[];
   searching: boolean;
@@ -438,7 +457,7 @@ function PaletteCommandList({
         <>
           <CommandGroup heading="Agent">
             <CommandItem data-sound="none" onSelect={onAsk} value={`ask-agent-${query}`}>
-              <Sparkles className="text-muted-foreground" />
+              <KobanMark />
               <span className="min-w-0 flex-1 truncate">Ask the agent: "{query.trim()}"</span>
               <CommandShortcut>⌘↵</CommandShortcut>
             </CommandItem>
@@ -512,7 +531,11 @@ function PaletteCommandList({
       <CommandSeparator />
 
       <CommandGroup heading="Actions">
-        <CommandItem data-sound="none" onSelect={onSync} value="action-sync">
+        <CommandItem data-sound="none" onSelect={onTour} value="action-tour Take the tour">
+          <KobanMark className="size-4" />
+          Take the tour
+        </CommandItem>
+        <CommandItem data-demo-hidden="" data-sound="none" onSelect={onSync} value="action-sync">
           <RefreshCw className="text-muted-foreground" />
           Sync everything
           <CommandShortcut>Providers + sources + AI</CommandShortcut>

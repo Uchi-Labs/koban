@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/finance-db";
 import { activeEmbeddingModel } from "@/lib/embeddings";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { isHostedAuthMode } from "@/lib/auth";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
 import { getFinanceData } from "@/lib/finance-data";
@@ -51,7 +52,7 @@ export default async function SettingsPage() {
     getSimpleFinSetupStatus(),
     getFinanceKitSetupStatus(),
     getSourceAdapterDiagnostics(),
-    getEffectiveLlmEnrichmentStatus(),
+    getEffectiveLlmEnrichmentStatus().then((status) => maskLlmStatusForPublicDemo(status)),
     getLatestAppSyncRun(),
     listAppSyncRuns(5),
     ensureAppSyncSchedule(),
