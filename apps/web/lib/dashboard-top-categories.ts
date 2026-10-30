@@ -14,6 +14,9 @@ export function buildTopCategoryCells(
 ): DashboardTopCategoryCell[] {
   const cells: DashboardTopCategoryCell[] = [];
   const includedCategoryIds = new Set<string>();
+  // Callers pass categories with budget overrides applied; those win over the
+  // built-in budget the summary captured.
+  const budgetById = new Map(categories.map((category) => [category.id, category.budgetAmount]));
 
   for (const summary of topCategories) {
     if (excludedCategoryIds.has(summary.categoryId) || includedCategoryIds.has(summary.categoryId)) {
@@ -23,7 +26,7 @@ export function buildTopCategoryCells(
     const amount = Math.abs(summary.amount);
     cells.push({
       amount,
-      budget: summary.budgetAmount ?? amount,
+      budget: budgetById.get(summary.categoryId) ?? summary.budgetAmount ?? amount,
       categoryId: summary.categoryId
     });
     includedCategoryIds.add(summary.categoryId);

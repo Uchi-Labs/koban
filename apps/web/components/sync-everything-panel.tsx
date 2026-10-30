@@ -128,9 +128,7 @@ export function SyncEverythingPanel({
     const loadingDescription = "Running Plaid, SimpleFIN, SnapTrade, evidence sources, semantic updates, and AI enrichment.";
     const toastId = showToast({
       description: (
-        <span className="t-shimmer" data-text={loadingDescription}>
-          {loadingDescription}
-        </span>
+        <span className="t-shimmer">{loadingDescription}</span>
       ),
       duration: 0,
       status: "loading",

@@ -326,6 +326,10 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
 
   const visible = entry.items.slice(0, 2);
   const overflow = entry.items.length - visible.length;
+  // Monday-first grid: a centered popover in an outer column hangs off the
+  // card, so anchor it to the cell's inner edge there.
+  const column = (new Date(`${date}T12:00:00.000Z`).getUTCDay() + 6) % 7;
+  const popoverAnchor = column <= 1 ? "left-0" : column >= 5 ? "right-0" : "left-1/2 -translate-x-1/2";
 
   function open() {
     setTooltipOpen(true);
@@ -359,7 +363,8 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
       <span
         aria-hidden="true"
         className={cn(
-          "pointer-events-none absolute -top-3.5 left-1/2 z-20 -translate-x-1/2 -translate-y-full rounded-lg bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground shadow-lg ring-1 ring-border transition-[opacity,transform] duration-150 motion-reduce:transition-none",
+          "pointer-events-none absolute -top-3.5 z-20 -translate-y-full rounded-lg bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground shadow-lg ring-1 ring-border transition-[opacity,transform] duration-150 motion-reduce:transition-none",
+          popoverAnchor,
           tooltipOpen ? "opacity-100" : "translate-y-[calc(-100%+3px)] opacity-0"
         )}
       >

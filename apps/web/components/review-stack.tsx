@@ -12,6 +12,9 @@ import { RollingDigits } from "@/components/ui/rolling-digits";
 import { formatCurrency } from "@/lib/format";
 import { merchantDomain } from "@/lib/merchant-domain";
 import { EASE_OUT, EASE_SMOOTH_OUT, SPRING_LAYOUT } from "@/lib/motion";
+import { ReviewContextComposer } from "@/components/review-context-composer";
+import { isPublicDemoClient } from "@/lib/agent-conversations-local";
+import { readDemoContext } from "@/lib/demo-context-local";
 import { cn } from "@/lib/utils";
 import type { TransactionView } from "@/lib/view-models";
 
@@ -28,6 +31,13 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  // Context saved during this session (and, in the demo, kept in the browser),
+  // shown in place of the transaction's original notes.
+  const [contextById, setContextById] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (isPublicDemoClient()) setContextById(readDemoContext());
+  }, []);
+  const contextFor = (transaction: TransactionView) => contextById[transaction.id] ?? transaction.notes;
   // Which card is leaving, and in which direction. Deliberately NOT cleared
   // after the swipe: AnimatePresence reads the exit prop from the removal
   // render, so the vector must survive that render. The id gate keeps it from
@@ -36,6 +46,9 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   const current = initialTransactions[history.length];
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const suggestedId = current ? suggestions[current.id] ?? current.categoryId : undefined;
+  const suggestedCategory = suggestedId ? categoryById.get(suggestedId) : undefined;
+  // Keep and Accept only differ when Koban suggests a different category.
+  const suggestionDiffers = Boolean(current && suggestedId && suggestedId !== current.categoryId);
   const reviewed = history.filter((item) => item.action !== "skip").length;
   const recategorized = history.filter((item) => item.action === "categorize" || (item.action === "accept" && item.categoryId !== item.previousCategoryId)).length;
   const reviewProgress = initialTransactions.length === 0 ? 100 : (history.length / initialTransactions.length) * 100;
@@ -101,10 +114,14 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
       if (target instanceof HTMLElement) {
         if (target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
       }
-      if (event.key === "j") { event.preventDefault(); void advance("skip"); }
-      else if (event.key === "k") { event.preventDefault(); setPickerOpen(true); }
-      else if (event.key === "Enter") { event.preventDefault(); void advance("accept", suggestedId); }
-      else if (event.key.toLowerCase() === "u") { event.preventDefault(); void undo(); }
+      // Arrows and WASD mirror the four buttons (and their arrow icons); J/K and
+      // Enter stay for anyone used to them.
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      if (key === "ArrowLeft" || key === "a" || key === "j") { event.preventDefault(); void advance("skip"); }
+      else if (key === "ArrowUp" || key === "w" || key === "k") { event.preventDefault(); setPickerOpen(true); }
+      else if (key === "ArrowDown" || key === "s") { event.preventDefault(); void advance("review"); }
+      else if (key === "ArrowRight" || key === "d" || key === "Enter") { event.preventDefault(); void advance("accept", suggestedId); }
+      else if (key === "u" || key === "z") { event.preventDefault(); void undo(); }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -190,6 +207,9 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
       </header>
 
       <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center" ref={stackRef}>
+        {/* The tour lights this block only: the cards behind the front one
+            peek up to 32px above it, so the padding keeps them inside. */}
+        <div className="-mt-8 pt-8" data-tour="review-stack">
         <LazyMotion features={domAnimation}>
           {/* The stack wrapper is the positioning context: the invisible
               in-flow copy of the front card sizes it, and every animated card
@@ -198,7 +218,7 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
           <div className="relative">
           {current ? (
             <div aria-hidden="true" className="invisible rounded-3xl border p-6">
-              <CardBody suggestedCategory={categoryById.get(suggestions[current.id] ?? current.categoryId) ?? current.category} suggestedId={suggestions[current.id] ?? current.categoryId} transaction={current} />
+              <CardBody context={contextFor(current)} suggestedCategory={categoryById.get(suggestions[current.id] ?? current.categoryId) ?? current.category} suggestedId={suggestions[current.id] ?? current.categoryId} transaction={current} />
             </div>
           ) : null}
           <AnimatePresence initial={false}>
@@ -254,7 +274,7 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
                     transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                     whileDrag={front ? { cursor: "grabbing", rotate: 1.5, scale: 1.015 } : undefined}
                   >
-                    <CardBody suggestedCategory={cardSuggestedCategory} suggestedId={cardSuggestedId} transaction={transaction} />
+                    <CardBody context={contextFor(transaction)} suggestedCategory={cardSuggestedCategory} suggestedId={cardSuggestedId} transaction={transaction} />
                   </m.article>
                 );
               })
@@ -278,20 +298,31 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
           </div>
         </LazyMotion>
 
-        <div className="mt-5 grid grid-cols-4 gap-2">
-          <Button disabled={!current || busy} onClick={() => void advance("skip")} type="button" variant="outline"><ArrowLeft className="size-4" /><span className="hidden sm:inline">Skip</span></Button>
-          <CategoryPicker categories={categories} onOpenChange={setPickerOpen} onSelect={(id) => void advance("categorize", id)} open={pickerOpen} value={current?.categoryId}>
-            <Button disabled={!current || busy} type="button" variant="outline"><ArrowUp className="size-4" /><span className="hidden sm:inline">Category</span></Button>
+        {current ? (
+          <ReviewContextComposer
+            existing={contextFor(current)}
+            key={current.id}
+            onSaved={(context) => setContextById((previous) => ({ ...previous, [current.id]: context }))}
+            transactionId={current.id}
+          />
+        ) : null}
+
+        {/* Arrow icons show the arrow keys; tooltips name the letter keys too.
+            Phones show words only, with no keyboard to match. */}
+        <div className={cn("mt-5 grid gap-2", suggestionDiffers ? "grid-cols-2 sm:grid-cols-[auto_auto_minmax(0,1fr)_auto]" : "grid-cols-3")}>
+          <Button aria-keyshortcuts="ArrowLeft A" disabled={!current || busy} onClick={() => void advance("skip")} title="Skip (← or A)" type="button" variant="outline"><ArrowLeft className="hidden size-4 sm:block" /><span>Skip</span></Button>
+          <CategoryPicker categories={categories} onOpenChange={setPickerOpen} onSelect={(id) => void advance("categorize", id)} open={pickerOpen} value={suggestedId || current?.categoryId}>
+            <Button aria-keyshortcuts="ArrowUp W" disabled={!current || busy} title="Choose a category (↑ or W)" type="button" variant="outline"><ArrowUp className="hidden size-4 sm:block" /><span>Category</span></Button>
           </CategoryPicker>
-          <Button disabled={!current || busy} onClick={() => void advance("review")} type="button" variant="outline"><ArrowDown className="size-4" /><span className="hidden sm:inline">As-is</span></Button>
-          <Button disabled={!current || busy} onClick={() => void advance("accept", suggestedId)} type="button"><ArrowRight className="size-4" /><span className="hidden sm:inline">Accept</span></Button>
+          {suggestionDiffers ? (
+            <Button aria-keyshortcuts="ArrowDown S" disabled={!current || busy} onClick={() => void advance("review")} className="min-w-0" title={`Keep ${current?.category.name ?? "the current category"} (↓ or S)`} type="button" variant="outline"><ArrowDown className="hidden size-4 sm:block" /><span className="truncate">Keep {current?.category.name}</span></Button>
+          ) : null}
+          <Button aria-keyshortcuts="ArrowRight D Enter" disabled={!current || busy} onClick={() => void advance("accept", suggestedId)} title={suggestionDiffers ? `Change to ${suggestedCategory?.name ?? "the suggestion"} (→ or D)` : "Accept this category (→ or D)"} type="button"><ArrowRight className="hidden size-4 sm:block" /><span>Accept</span></Button>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          {/* The wheel gesture had no affordance at all — nothing on screen said
-              the card was scrollable, so the only way to discover it was to
-              trigger it by accident. */}
-          <span className="hidden sm:inline">Scroll or drag to skip · J skip · K category · Enter accept · U undo</span>
-          <Button disabled={history.length === 0 || busy} onClick={() => void undo()} size="sm" type="button" variant="ghost"><RotateCcw className="size-3.5" />Undo</Button>
+        {/* Holds its space while hidden so the card above never shifts. */}
+        <div className="mt-2 flex h-8 justify-center">
+          <Button aria-keyshortcuts="U Z" className={cn("text-muted-foreground", history.length === 0 && "invisible")} disabled={history.length === 0 || busy} onClick={() => void undo()} size="sm" title="Undo (U)" type="button" variant="ghost"><RotateCcw className="size-3.5" />Undo</Button>
+        </div>
         </div>
         {message ? <p aria-live="polite" className="mt-2 text-center text-xs text-[var(--negative)]">{message}</p> : null}
       </div>
@@ -299,7 +330,8 @@ export function ReviewStack({ categories, initialTransactions, suggestions }: {
   );
 }
 
-function CardBody({ suggestedCategory, suggestedId, transaction }: {
+function CardBody({ context, suggestedCategory, suggestedId, transaction }: {
+  context: string | undefined;
   suggestedCategory: Category | undefined;
   suggestedId: string;
   transaction: TransactionView;
@@ -310,10 +342,32 @@ function CardBody({ suggestedCategory, suggestedId, transaction }: {
         {merchantDomain(transaction.merchant) ? <FaviconBadge size="lg" website={merchantDomain(transaction.merchant)!} /> : <span className="grid size-11 place-items-center rounded-full bg-muted text-sm font-semibold">{transaction.merchant.slice(0, 1)}</span>}
         <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold">{transaction.merchant}</h2><p className="truncate text-sm text-muted-foreground">{transaction.accountName} · {transaction.dateLabel}</p></div>
       </div>
-      <p className="my-10 text-center text-4xl font-semibold tracking-tight tabular-nums">{formatCurrency(Math.abs(transaction.amount), transaction.currency)}</p>
-      <div className="flex items-center justify-between gap-3 rounded-2xl bg-muted/45 p-3">
-        <div><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Suggested category</p><div className="mt-1">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div></div>
-        {suggestedId !== transaction.categoryId ? <span className="text-xs text-primary">New suggestion</span> : null}
+      <p className={cn("text-center text-4xl font-semibold tracking-tight tabular-nums", context?.trim() ? "mt-8 mb-6" : "my-10")}>{formatCurrency(Math.abs(transaction.amount), transaction.currency)}</p>
+      {/* Context from connectors, earlier notes, or what you add below the card. */}
+      {context?.trim() ? (
+        <div className="mb-3 px-1">
+          <p className="text-xs text-muted-foreground">Context</p>
+          <p className="mt-1 line-clamp-4 text-sm leading-relaxed whitespace-pre-line">{context.trim()}</p>
+        </div>
+      ) : null}
+      {/* When Koban suggests a change, the card shows it as current → suggested,
+          which is exactly what Keep (left side) and Accept (right side) choose between. */}
+      <div className="rounded-2xl bg-muted/45 p-3">
+        {suggestedId !== transaction.categoryId ? (
+          <>
+            <p className="text-xs text-muted-foreground">Koban suggests a change</p>
+            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+              <CategoryPill category={transaction.category} />
+              <ArrowRight aria-label="to" className="size-3.5 shrink-0 text-muted-foreground" />
+              {suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">Category</p>
+            <div className="mt-1.5">{suggestedCategory ? <CategoryPill category={suggestedCategory} /> : null}</div>
+          </>
+        )}
       </div>
     </>
   );

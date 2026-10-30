@@ -1,6 +1,7 @@
 import { RulesPanel, type RuleView } from "@/components/rules-panel";
 import { listEnrichmentSuggestionItems, listTagStyles, listTransactionRules } from "@/lib/db/finance-db";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { getFinanceData } from "@/lib/finance-data";
 
 export default async function RulesPage() {
@@ -8,13 +9,13 @@ export default async function RulesPage() {
     getFinanceData(),
     listTransactionRules(),
     listEnrichmentSuggestionItems({ limit: 20 }),
-    getEffectiveLlmEnrichmentStatus(),
+    getEffectiveLlmEnrichmentStatus().then((status) => maskLlmStatusForPublicDemo(status)),
     listTagStyles()
   ]);
 
   return (
     <main className="flex min-h-svh flex-col" data-testid="rules-page">
-      <header className="flex items-center border-b border-border px-6 py-3.5">
+      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
         <span className="text-[13px] font-semibold tracking-tight">Rules</span>
       </header>
       <RulesPanel

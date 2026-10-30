@@ -63,6 +63,7 @@ export function AccountSyncButton({ provider }: { provider: string }) {
   return (
     <StatefulButton
       className="shrink-0"
+      data-demo-hidden=""
       data-sound="sync"
       icon={<RefreshCw className="size-3.5" />}
       loadingText="Syncing"

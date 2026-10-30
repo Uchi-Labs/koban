@@ -9,6 +9,13 @@ import {
   isHostedAuthMode,
   loginPath
 } from "@/lib/auth";
+import {
+  isPublicDemo,
+  isPublicDemoEditAllowed,
+  isPublicDemoEditCandidate,
+  isPublicDemoRequestAllowed,
+  publicDemoRefusalMessage
+} from "@/lib/public-demo";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
 
 const publicPaths = new Set([
@@ -26,6 +33,10 @@ const publicPaths = new Set([
 export async function proxy(request: NextRequest) {
   const env = readWorkspaceEnv();
   const expectedToken = getConfiguredAuthToken(env);
+
+  if (isPublicDemo(env)) {
+    return await publicDemoResponse(request);
+  }
 
   if (isPublicRequest(request)) {
     return NextResponse.next();
@@ -66,6 +77,26 @@ export async function proxy(request: NextRequest) {
   }
 
   return redirectToLogin(request);
+}
+
+async function publicDemoResponse(request: NextRequest): Promise<NextResponse> {
+  const { pathname } = request.nextUrl;
+  if (!isPublicDemoRequestAllowed(request.method, pathname)) {
+    if (isPublicDemoEditCandidate(request.method, pathname)) {
+      const body: unknown = await request.clone().json().catch(() => null);
+      if (isPublicDemoEditAllowed(request.method, pathname, body)) {
+        return NextResponse.next();
+      }
+    }
+    return NextResponse.json({ error: publicDemoRefusalMessage(pathname) }, { status: 403 });
+  }
+  if (pathname === loginPath) {
+    const home = request.nextUrl.clone();
+    home.pathname = "/";
+    home.search = "";
+    return NextResponse.redirect(home);
+  }
+  return NextResponse.next();
 }
 
 function redirectToLogin(request: NextRequest): NextResponse {

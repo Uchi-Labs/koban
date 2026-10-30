@@ -10,6 +10,8 @@ import { closeFinanceDbForTests, replaceLedgerInDb } from "@/lib/db/finance-db";
 import {
   answerFinanceQuestion,
   sourceSetupActionsFromDiagnostics,
+  streamFinanceAnswer,
+  type AgentStreamEvent,
   summarizeAssistantSourceDiagnostics
 } from "@/lib/finance-assistant";
 import type { Ledger } from "@/lib/finance-data";
@@ -55,6 +57,33 @@ describe("finance assistant", () => {
       value: 300
     });
     expect(response.evidence.some((item) => item.merchant === "Airbnb")).toBe(true);
+  }, 15_000);
+
+  it("totals spending across every category, not just the charted top six", async () => {
+    useTempDb();
+    const ledger = createLedger();
+    const extraCategories = ["cat_housing", "cat_transportation", "cat_software", "cat_shopping", "cat_other"];
+    ledger.transactions = [
+      ...ledger.transactions,
+      ...extraCategories.map((categoryId, index) => ({
+        ...ledger.transactions[0],
+        amount: -10 * (index + 1),
+        categoryId,
+        description: `PURCHASE ${index}`,
+        id: `txn_extra_${index}`,
+        merchantName: `Merchant ${index}`
+      }))
+    ];
+    await replaceLedgerInDb(ledger);
+
+    const response = await answerFinanceQuestion("Where did my money go this month?", {
+      includeSourceDiagnostics: false,
+      llmEnv: {}
+    });
+
+    // 300 + 80 + 10 + 20 + 30 + 40 + 50 across seven categories; the chart keeps six.
+    expect(response.chart?.data).toHaveLength(6);
+    expect(response.metrics.find((metric) => metric.label === "Spending")?.value).toBe("$530");
   }, 15_000);
 
   it("reports source sync gaps without inventing source records", async () => {
@@ -224,6 +253,52 @@ describe("finance assistant", () => {
       }
     ]);
   });
+
+  it("streams a show_visual call as a visual above the model's reply", async () => {
+    useTempDb();
+    await replaceLedgerInDb(createLedger());
+    let offeredTools: string[] = [];
+    let payload: {
+      monthly_history?: { as_of?: string; budgets: { monthly_total: number }; months: Array<{ month: string; spending: number }> };
+    } = {};
+    const chart = '<svg width="200" height="80"><rect width="120" height="20" fill="var(--chart-1)"/></svg>';
+
+    const events: AgentStreamEvent[] = [];
+    for await (const event of streamFinanceAnswer("Where did my money go this month?", {
+      llmEnv: {
+        AI_FINANCES_LLM_API_KEY: "test-key",
+        AI_FINANCES_LLM_MODEL: "gpt-test",
+        AI_FINANCES_LLM_PROVIDER: "openai_compatible"
+      },
+      llmClient: createAssistantLlmClient({
+        streamText: async (input: LlmTextGenerationInput) => {
+          offeredTools = Object.keys(input.tools ?? {});
+          payload = JSON.parse(String(input.messages.find((message) => message.role === "user")?.content ?? "{}"));
+          return {
+            getText: async () => "Coffee led the month.",
+            parts: (async function* () {
+              yield { input: { html: chart, title: "Spending by category" }, toolName: "show_visual", type: "tool-call" as const };
+              yield { input: { html: "x".repeat(70_000), title: "Too big" }, toolName: "show_visual", type: "tool-call" as const };
+              yield { text: "Coffee led the month.", type: "text" as const };
+            })(),
+            textStream: (async function* () {})()
+          };
+        }
+      })
+    })) {
+      events.push(event);
+    }
+
+    expect(offeredTools).toEqual(["show_visual"]);
+    expect(payload.monthly_history?.months).toHaveLength(12);
+    expect(payload.monthly_history?.as_of).toBe("2026-05-21");
+    expect(payload.monthly_history?.budgets.monthly_total).toEqual(expect.any(Number));
+    const visuals = events.filter((event) => event.type === "visual");
+    expect(visuals).toHaveLength(1);
+    expect(visuals[0]).toMatchObject({ visual: { html: chart, title: "Spending by category" } });
+    expect(events.findIndex((event) => event.type === "visual")).toBeLessThan(events.findIndex((event) => event.type === "delta"));
+    expect(events.filter((event) => event.type === "delta").map((event) => (event as { text: string }).text).join("")).toBe("Coffee led the month.");
+  }, 15_000);
 
   it("keeps source status answers local even when an LLM provider is configured", async () => {
     useTempDb();

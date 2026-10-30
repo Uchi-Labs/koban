@@ -48,7 +48,7 @@ export function ManekiMoment({ caption, className, size = 72, priority = false }
         >
           <Image
             alt=""
-            className="object-contain"
+            className="koban-cat object-contain"
             draggable={false}
             fill
             priority={priority}

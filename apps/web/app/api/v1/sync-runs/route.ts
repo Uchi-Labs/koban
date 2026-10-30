@@ -8,6 +8,7 @@ import {
   listAppSyncRuns
 } from "@/lib/db/finance-db";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
 import { getSourceAdapterDiagnostics, summarizeSourceReadiness } from "@/lib/source-adapters";
 import { getPlaidSetupStatus } from "@/lib/plaid-server";
@@ -27,7 +28,7 @@ export async function GET() {
     listAppSyncRuns(5),
     ensureAppSyncSchedule()
   ]);
-  const llmProvider = await getEffectiveLlmEnrichmentStatus();
+  const llmProvider = maskLlmStatusForPublicDemo(await getEffectiveLlmEnrichmentStatus());
   const sourceReadiness = summarizeSourceReadiness(sources);
 
   return NextResponse.json({

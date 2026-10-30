@@ -4,7 +4,7 @@ export default function RulesLoading() {
   return (
     <main aria-label="Loading rules" className="flex min-h-svh flex-col" role="status">
       <span className="sr-only">Loading rules</span>
-      <header className="flex items-center border-b border-border px-6 py-3.5">
+      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
         <Skeleton className="h-4 w-14" />
       </header>
       <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6">

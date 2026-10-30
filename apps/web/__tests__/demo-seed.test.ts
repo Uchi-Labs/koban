@@ -16,15 +16,30 @@ describe("demo seed", () => {
     expect(second).toEqual(first);
     expect(first.ledger.accounts).toHaveLength(15);
     expect(first.ledger.transactions.length).toBeGreaterThan(2_000);
-    expect(first.subscriptionNames).toHaveLength(11);
-    expect(first.investmentPositions).toHaveLength(8);
+    expect(first.subscriptionNames).toHaveLength(10);
+    expect(first.investmentPositions).toHaveLength(7);
     expect(first.goals).toHaveLength(3);
     expect(first.ledger.transactions.some((transaction) => !transaction.reviewed)).toBe(true);
     expect(new Set(first.ledger.transactions.map((transaction) => transaction.date.slice(0, 7)))).toHaveLength(24);
     expect(new Set(first.ledger.accounts.map((account) => account.type))).toEqual(new Set(["checking", "savings", "credit_card", "investment", "loan", "cash"]));
-    expect(createRecurringItems(first.ledger.transactions).length).toBeGreaterThanOrEqual(8);
-    expect(createRecurringItems(first.ledger.transactions).length).toBeLessThanOrEqual(15);
+    expect(createRecurringItems(first.ledger.transactions).length).toBeGreaterThanOrEqual(10);
+    expect(createRecurringItems(first.ledger.transactions).length).toBeLessThanOrEqual(20);
     expect(() => assertDemoDataset(first)).not.toThrow();
+  });
+
+  it("ends a reconciled 24-month ledger on any as-of date without future rows", () => {
+    for (const asOfDate of ["2026-10-01", "2026-10-27", "2027-02-28", "2026-12-31"]) {
+      const dataset = createDemoDataset(asOfDate);
+      const months = new Set(dataset.ledger.transactions.map((transaction) => transaction.date.slice(0, 7)));
+
+      expect(dataset.ledger.transactions.every((transaction) => transaction.date <= asOfDate)).toBe(true);
+      expect((dataset.ledger.balanceSnapshots ?? []).every((snapshot) => snapshot.asOfDate <= asOfDate)).toBe(true);
+      expect(months).toHaveLength(24);
+      expect(months.has(asOfDate.slice(0, 7))).toBe(true);
+      expect(dataset.ledger.lastSyncedAt?.startsWith(asOfDate)).toBe(true);
+      expect(() => assertDemoDataset(dataset)).not.toThrow();
+    }
+    expect(() => createDemoDataset("2026-13-40")).toThrow(/YYYY-MM-DD/);
   });
 
   it("pairs every internal transfer symmetrically", () => {

@@ -232,10 +232,11 @@ export function ConnectionsSettings({
             Add connection
           </Button>
         </CardHeader>
-        <CardContent className="p-0">
+        {/* The table's own width picks wide grid vs stacked rows; it narrows when the agent docks. */}
+        <CardContent className="@container/connections p-0">
           <div
             aria-hidden
-            className="hidden grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase md:grid"
+            className="hidden grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase @4xl/connections:grid"
           >
             <span>Institution</span>
             <span>Type</span>
@@ -263,7 +264,7 @@ export function ConnectionsSettings({
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2" data-demo-hidden="">
         <div>
           <h2 className="text-sm font-medium">Provider setup & diagnostics</h2>
           <p className="text-xs text-muted-foreground">Credentials, health checks, and companion setup stay tucked away until needed.</p>
@@ -306,7 +307,7 @@ function ConnectionRow({
   const syncing = busyAction === `sync:${row.provider}`;
 
   return (
-    <article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/20 motion-reduce:transition-none md:grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)]">
+    <article className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/20 motion-reduce:transition-none @4xl/connections:grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)]">
       <div className="flex min-w-0 items-center gap-3">
         <ConnectionAvatar icon={Icon} name={row.name} />
         <span className="min-w-0">
@@ -314,7 +315,7 @@ function ConnectionRow({
           {row.errorMessage ? <span className="block truncate text-xs text-destructive">{row.errorMessage}</span> : null}
         </span>
       </div>
-      <div className="justify-self-end md:col-start-6 md:row-start-1">
+      <div className="justify-self-end @4xl/connections:col-start-6 @4xl/connections:row-start-1">
         <RowActions
           busy={Boolean(busyAction)}
           onSync={onSync}
@@ -322,11 +323,11 @@ function ConnectionRow({
           syncing={syncing}
         />
       </div>
-      <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-12 md:contents">
-        <Badge className="font-normal md:justify-self-start" variant="outline">{providerLabels[row.provider]}</Badge>
+      <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 pl-12 @4xl/connections:contents">
+        <Badge className="font-normal @4xl/connections:justify-self-start" variant="outline">{providerLabels[row.provider]}</Badge>
         <ConnectionStatusDot status={row.status} />
-        <span className="text-xs text-muted-foreground md:text-sm md:text-foreground tabular-nums">
-          <span className="md:hidden">Accounts </span>{row.accountCount.toLocaleString()}
+        <span className="text-xs text-muted-foreground @4xl/connections:text-sm @4xl/connections:text-foreground tabular-nums">
+          <span className="@4xl/connections:hidden">Accounts </span>{row.accountCount.toLocaleString()}
         </span>
         <span className="text-xs text-muted-foreground tabular-nums">{formatLastSynced(row.lastSyncedAt)}</span>
       </div>

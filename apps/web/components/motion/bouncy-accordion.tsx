@@ -157,6 +157,7 @@ function BouncyAccordionRow({
           disabled={item.disabled}
           aria-expanded={open}
           aria-controls={contentId}
+          data-press="none"
           onClick={onToggle}
           className={cn(
             "flex min-h-[54px] w-full items-center gap-4 px-5 text-left outline-none transition-colors",

@@ -120,8 +120,9 @@ function GoalCreateForm() {
   return (
     <Card id="new-goal" size="sm">
       <CardContent>
-        <form className="flex flex-col gap-3" onSubmit={create}>
-          <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2">
+        <form className="@container/goalform flex flex-col gap-3" onSubmit={create}>
+          {/* On a narrow card the Create button drops to its own full-width row. */}
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 @lg/goalform:grid-cols-[auto_1fr_auto_auto]">
             <div className="relative">
               <Button
                 aria-label="Choose goal emoji"
@@ -192,7 +193,7 @@ function GoalCreateForm() {
               />
             </span>
 
-            <Button disabled={busy} size="sm" type="submit">
+            <Button className="col-span-3 @lg/goalform:col-span-1" disabled={busy} size="sm" type="submit">
               <Plus className="size-4" />
               {busy ? "Creating…" : "Create goal"}
             </Button>

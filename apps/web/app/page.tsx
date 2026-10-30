@@ -6,6 +6,7 @@ import { DashboardNetWorthCard } from "@/components/dashboard-net-worth-card";
 import { DashboardReviewCard } from "@/components/dashboard-review-card";
 import { DashboardCard } from "@/components/dashboard-card";
 import { NetWorthAccountsDialog } from "@/components/net-worth-accounts-dialog";
+import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
@@ -41,14 +42,17 @@ export default async function DashboardPage() {
     source,
     transactions
   } = financeData;
-  const insights = deriveInsights(transactions, applyBudgetOverrides(categories, budgetOverrides)).filter((item) => !dismissedInsights.has(item.id));
+  // Custom categories and edited budgets live in the override map; apply it once
+  // so the budget total, top categories, and insights agree with /categories.
+  const budgetedCategories = applyBudgetOverrides(categories, budgetOverrides);
+  const insights = deriveInsights(transactions, budgetedCategories).filter((item) => !dismissedInsights.has(item.id));
   const reviewRows = getTransactionViews(
     transactions.filter(isReviewActionableTransaction).slice(0, 10),
     { accounts, categories }
   );
   const recurringViews = getUpcomingRecurringViews(recurringItems, categories);
   const categoryById = new Map(categories.map((category) => [category.id, category]));
-  const monthlyBudget = categories.reduce((total, category) => total + (category.budgetAmount ?? 0), 0);
+  const monthlyBudget = budgetedCategories.reduce((total, category) => total + (category.archived ? 0 : category.budgetAmount ?? 0), 0);
   const monthlySpending = Math.abs(dashboardSummary.monthlySpending);
   const monthlyBudgetDelta = monthlySpending - monthlyBudget;
   const { latestTransactionDate, netWorthTrends, spendingTrend } = buildDashboardTrends(
@@ -63,14 +67,14 @@ export default async function DashboardPage() {
   const projectedMonthlySpending = monthlySpendingProjection.amount;
   const reviewSectionLabel = reviewRows[0]?.dateLabel ?? "Latest";
   const investmentBalance = accountGroups.find((group) => group.id === "group_investments")?.totalBalance ?? 0;
-  const topCategoryCells = buildTopCategoryCells(dashboardSummary.topCategories, categories);
+  const topCategoryCells = buildTopCategoryCells(dashboardSummary.topCategories, budgetedCategories);
 
   const overBudget = monthlyBudgetDelta >= 0;
   const projectionIsEarly = monthlySpendingProjection.confidence === "early";
   const projectedOverBudget = !projectionIsEarly && projectedMonthlySpending > monthlyBudget && monthlyBudget > 0;
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="dashboard-page">
+    <main className="@container/dashboard mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="dashboard-page">
       <div className="mb-5 flex items-center gap-3">
         <TextReveal
           as="h1"
@@ -85,12 +89,19 @@ export default async function DashboardPage() {
             Synced accounts
           </Badge>
         ) : null}
+        {/* Phones have no sidebar, so the theme switch rides on the first screen they see. */}
+        <ThemeToggle
+          className="ml-auto size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none md:hidden"
+          iconClassName="size-4"
+          start="top-right"
+          variant="circle-blur"
+        />
       </div>
 
-      {/* Content sits beside a 256px sidebar, so the 2-up grid only has room once the
-          viewport clears ~1024px (md's 768px leaves cards ~250px wide with the sidebar
-          open) -- below that, cards stack single-column instead of cramming. */}
-      <section className="grid gap-3 lg:grid-cols-2" aria-label="Dashboard overview">
+      {/* Two columns only once the dashboard itself is ~56rem wide: beside the
+          sidebar, and the agent when it docks, a viewport breakpoint would
+          leave each card too narrow for its stat strip. */}
+      <section className="grid gap-3 @4xl/dashboard:grid-cols-2" aria-label="Dashboard overview">
         <DashboardCard title="Monthly spending" action={{ label: "Transactions", href: "/transactions" }} surface="iconiq">
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
@@ -162,7 +173,8 @@ export default async function DashboardPage() {
           trends={netWorthTrends}
         />
 
-        <DashboardCard title="Transactions to review" action={{ label: "View all", href: "/transactions?review=actionable" }} surface="iconiq">
+        {/* self-start: sized by its rows, not stretched to the taller column beside it. */}
+        <DashboardCard action={{ label: "View all", href: "/transactions?review=actionable" }} className="self-start" surface="iconiq" title="Transactions to review">
           <DashboardReviewCard
             initialRows={reviewRows}
             lastSyncedAt={dashboardSummary.asOf}
@@ -173,14 +185,15 @@ export default async function DashboardPage() {
 
         <div className="grid content-start gap-3">
           <DashboardCard title="Top categories" action={{ label: "View all", href: "/categories" }} surface="iconiq">
-            <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+            {/* Columns follow the card's own width, which shrinks when the agent docks beside the page. */}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-6 gap-y-4">
               {topCategoryCells.map((cell) => {
                 const category = categoryById.get(cell.categoryId);
                 const remaining = Math.max(0, cell.budget - cell.amount);
 
                 return (
-                  <div className="grid gap-1.5" key={cell.categoryId}>
-                    <div className="flex items-center justify-between gap-2">
+                  <div className="grid min-w-0 gap-1.5" key={cell.categoryId}>
+                    <div className="flex min-w-0 items-center justify-between gap-2">
                       {category ? (
                         <CategoryPill className="min-w-0 max-w-full" category={category} />
                       ) : (
@@ -226,17 +239,15 @@ export default async function DashboardPage() {
                   return (
                     <Link href="/recurrings" key={item.id}>
                       <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
-                        <div className="flex items-center gap-3 px-3 py-2.5">
+                        <div className="@container flex items-center gap-3 px-3 py-2.5">
                           <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
                           {domain ? <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} /> : null}
                           <div className="flex min-w-0 flex-1 flex-col">
                             <span className="truncate text-sm font-medium text-foreground">{item.merchant}</span>
                             <span className="truncate text-xs text-muted-foreground">{item.frequency}</span>
                           </div>
-                          <Badge appearance="dot" className="hidden font-normal sm:inline-flex" dotColor="muted" variant="recurring">
-                            Recurring
-                          </Badge>
-                          <CategoryPill className="hidden min-[390px]:inline-flex" category={item.category} />
+                          {/* The row, not the viewport, decides: it narrows when the agent docks. */}
+                          <CategoryPill className="hidden max-w-36 min-w-0 @min-[26rem]:inline-flex" category={item.category} />
                           <span className="min-w-[5rem] text-right text-sm font-medium tabular-nums text-foreground">
                             {formatCurrency(Math.abs(item.amount), item.currency)}
                           </span>

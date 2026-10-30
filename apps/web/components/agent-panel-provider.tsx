@@ -9,6 +9,11 @@ import type {
   AgentConversationSummary,
   AgentConversationTurnSummary
 } from "@/lib/agent-conversations";
+import {
+  isConversationRequest,
+  isPublicDemoClient,
+  localConversationRequest
+} from "@/lib/agent-conversations-local";
 import { useAgentStream } from "@/lib/hooks/use-agent-stream";
 
 interface AgentPanelContextValue {
@@ -54,6 +59,9 @@ export function AgentPanelProvider({ children }: { children: React.ReactNode }) 
   const [busyConversationId, setBusyConversationId] = React.useState<string | null>(null);
   const [insertedConversationId, setInsertedConversationId] = React.useState<string | null>(null);
   const [persistenceError, setPersistenceError] = React.useState("");
+  // Bumped whenever a chat is opened, so the panel leaves its History view
+  // even when the chat opened is the one it already holds.
+  const [showChatSignal, setShowChatSignal] = React.useState(0);
   const stream = useAgentStream();
   const activeConversationIdRef = React.useRef<string | null>(null);
   const activeRunRef = React.useRef<AgentRun | null>(null);
@@ -399,6 +407,8 @@ export function AgentPanelProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
+    setShowChatSignal((current) => current + 1);
+
     if (id === activeConversationIdRef.current) {
       setOpen(true);
       return;
@@ -549,8 +559,20 @@ export function AgentPanelProvider({ children }: { children: React.ReactNode }) 
       </React.Suspense>
       {children}
       <AgentPanel
+        chats={{
+          activeConversationId,
+          busyConversationId,
+          conversations,
+          insertedConversationId,
+          loading: conversationsLoading,
+          onDeleteConversation: deleteConversation,
+          onNewChat: startNewConversation,
+          onOpenConversation: openConversation,
+          onRenameConversation: renameConversation
+        }}
         conversationLoading={conversationLoading}
         draftPrefill={prefill}
+        showChatSignal={showChatSignal}
         key={requestId}
         onAskAction={(question) => void askConversation(question)}
         onCloseAction={closeAgent}
@@ -685,6 +707,10 @@ async function titleConversation(
 }
 
 async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
+  if (isPublicDemoClient() && isConversationRequest(url)) {
+    return localConversationRequest<T>(url, init);
+  }
+
   const response = await fetch(url, init);
 
   if (!response.ok) {
@@ -705,8 +731,9 @@ async function requestJson<T = unknown>(url: string, init?: RequestInit): Promis
   return response.json() as Promise<T>;
 }
 
+// The list truncates with an ellipsis, so keep the whole question up to a sane cap.
 function conversationPreviewTitle(question: string) {
-  return question.replace(/\s+/g, " ").trim().slice(0, 32);
+  return question.replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
 function appendTurns(

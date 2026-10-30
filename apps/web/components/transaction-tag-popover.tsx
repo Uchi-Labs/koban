@@ -80,9 +80,9 @@ export function TransactionTagPopover({
             data-slot="transaction-tag-popover"
             finalFocus={{ current: null }}
             initialFocus={inputRef}
-            className="relative z-50 flex w-60 max-w-[min(18rem,calc(100vw-2rem))] origin-(--transform-origin) flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
+            className="relative z-50 flex w-60 max-w-[min(18rem,calc(100vw-2rem))] origin-(--transform-origin) flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
           >
-            <div className="border-b border-border/60 px-2.5 py-2">
+            <div className="border-b border-border/60 px-3.5 py-2.5">
               <input
                 aria-label="Add tags"
                 className="w-full bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
@@ -95,7 +95,7 @@ export function TransactionTagPopover({
             </div>
             <ScrollArea
               className="max-h-[16rem]"
-              viewportClassName="scroll-fade-y h-fit max-h-[16rem] overscroll-contain p-1"
+              viewportClassName="scroll-fade-y h-fit max-h-[16rem] overscroll-contain p-1.5"
               role="listbox"
             >
               {filtered.length === 0 && !trimmed ? (
@@ -106,7 +106,7 @@ export function TransactionTagPopover({
                 return (
                   <button
                     aria-selected={isSelected}
-                    className="flex min-h-8 w-full cursor-default items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm outline-hidden transition-colors select-none hover:bg-accent hover:text-accent-foreground"
+                    className="flex min-h-8 w-full cursor-default items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm outline-hidden transition-colors select-none hover:bg-accent hover:text-accent-foreground"
                     key={tag.name}
                     onClick={() => onToggle(tag.name)}
                     role="option"
@@ -132,7 +132,7 @@ export function TransactionTagPopover({
               })}
               {trimmed && !exactMatch ? (
                 <button
-                  className="flex min-h-8 w-full cursor-default items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm text-muted-foreground outline-hidden transition-colors select-none hover:bg-accent hover:text-accent-foreground"
+                  className="flex min-h-8 w-full cursor-default items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground outline-hidden transition-colors select-none hover:bg-accent hover:text-accent-foreground"
                   onClick={() => onToggle(trimmed)}
                   type="button"
                 >
@@ -146,7 +146,7 @@ export function TransactionTagPopover({
               ) : null}
             </ScrollArea>
             <Link
-              className="flex items-center gap-2 border-t border-border/60 px-3 py-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="flex items-center gap-2 border-t border-border/60 px-3.5 py-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
               href={settingsHref}
             >
               <SlidersHorizontal className="size-3.5" />

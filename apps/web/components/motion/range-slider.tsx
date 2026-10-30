@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import { type KeyboardEvent, type PointerEvent, useCallback, useState } from "react";
+import { type KeyboardEvent, type PointerEvent, useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 // Slider tracking needs a critically damped local spring so thumbs follow
@@ -65,8 +65,11 @@ export function RangeSlider({
     onValueChange?.(next);
   }, [controlled, high, low, max, min, onValueChange, step]);
 
+  // Values map onto the inset track, not the padded pill, so a thumb sits
+  // exactly under the pointer that drags it.
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const valueFromPointer = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = (trackRef.current ?? event.currentTarget).getBoundingClientRect();
     const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
     return min + ratio * span;
   }, [min, span]);
@@ -133,55 +136,64 @@ export function RangeSlider({
       onPointerMove={handlePointerMove}
       onPointerUp={endPointer}
     >
-      <motion.div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 w-full"
-        animate={{ x: `${lowPercent}%` }}
-        transition={glideTransition}
+      {/* The fill and thumbs slide full-width layers by transform; at 100% a
+          layer sits a whole track-width to the right and would widen the page.
+          Clip to the track, with room for the edge thumbs and the pressed scale. */}
+      <div
+        className="pointer-events-none absolute inset-y-0 inset-x-3.5 overflow-clip [overflow-clip-margin:0.75rem]"
+        ref={trackRef}
       >
+        <span aria-hidden="true" className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-foreground/12" />
         <motion.div
-          className="h-full origin-left rounded-xl bg-primary/15"
-          animate={{ scaleX: rangeScale }}
-          transition={glideTransition}
-        />
-      </motion.div>
-      {ticks.map((tick) => (
-        <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/20"
-          key={tick}
-          style={{ left: `${((tick - min) / span) * 100}%` }}
-        />
-      ))}
-      {([low, high] as const).map((current, index) => {
-        const percent = ((current - min) / span) * 100;
-        const thumbIndex = index as 0 | 1;
-        return (
+          className="pointer-events-none absolute inset-y-0 left-0 flex w-full items-center"
+          animate={{ x: `${lowPercent}%` }}
+          transition={glideTransition}
+        >
           <motion.div
-            animate={{ x: `${percent}%` }}
-            className="pointer-events-none absolute inset-y-0 left-0 w-full"
-            key={index}
+            className="h-[3px] w-full origin-left rounded-full bg-primary"
+            animate={{ scaleX: rangeScale }}
             transition={glideTransition}
-          >
-            <div className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
-              <motion.div
-                animate={{ scaleY: activeThumb === thumbIndex ? 1.35 : 1 }}
-                aria-disabled={disabled || undefined}
-                aria-label={`${index === 0 ? "Minimum" : "Maximum"} ${ariaLabel}`}
-                aria-valuemax={max}
-                aria-valuemin={min}
-                aria-valuenow={current}
-                className="pointer-events-auto h-5 w-1.5 rounded-sm bg-foreground shadow-sm outline-none ring-foreground/30 focus-visible:ring-4"
-                data-thumb-index={index}
-                onKeyDown={(event) => handleKeyDown(thumbIndex, current, event)}
-                role="slider"
-                tabIndex={disabled ? -1 : 0}
-                transition={reduce ? { duration: 0 } : SPRING_BOUNCY}
-              />
-            </div>
-          </motion.div>
-        );
-      })}
+          />
+        </motion.div>
+        {ticks.map((tick) => (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/20"
+            key={tick}
+            style={{ left: `${((tick - min) / span) * 100}%` }}
+          />
+        ))}
+        {([low, high] as const).map((current, index) => {
+          const percent = ((current - min) / span) * 100;
+          const thumbIndex = index as 0 | 1;
+          return (
+            <motion.div
+              animate={{ x: `${percent}%` }}
+              className="pointer-events-none absolute inset-y-0 left-0 w-full"
+              key={index}
+              transition={glideTransition}
+            >
+              <div className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
+                <motion.div
+                  animate={{ scale: activeThumb === thumbIndex ? 1.2 : 1 }}
+                  aria-disabled={disabled || undefined}
+                  aria-label={`${index === 0 ? "Minimum" : "Maximum"} ${ariaLabel}`}
+                  aria-valuemax={max}
+                  aria-valuemin={min}
+                  aria-valuenow={current}
+                  className="pointer-events-auto size-3.5 rounded-full border-2 border-primary bg-background shadow-sm outline-none ring-primary/30 focus-visible:ring-4"
+                  data-thumb-index={index}
+                  onKeyDown={(event) => handleKeyDown(thumbIndex, current, event)}
+                  role="slider"
+                  tabIndex={disabled ? -1 : 0}
+                  transition={reduce ? { duration: 0 } : SPRING_BOUNCY}
+                />
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
     </div>
   );
 }

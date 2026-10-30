@@ -212,7 +212,7 @@ export function applyAvatarGroupShift(root: HTMLElement | null, activeIndex: num
   const scale = readNumber("--avatar-scale", 1.05);
   const timingFunction =
     phase === "out"
-      ? readEase("--avatar-ease-out", "cubic-bezier(0.34, 3.85, 0.64, 1)")
+      ? readEase("--avatar-ease-out", "cubic-bezier(0.16, 1, 0.3, 1)")
       : readEase("--avatar-ease-in", "cubic-bezier(0.22, 1, 0.36, 1)");
 
   avatars.forEach((element, index) => {

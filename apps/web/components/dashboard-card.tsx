@@ -37,6 +37,7 @@ export function DashboardCard({
           className
         )}
         data-dashboard-card={layered ? "layered" : "flat"}
+        data-tour={title}
         size="sm"
       >
         <div
@@ -67,6 +68,7 @@ export function DashboardCard({
   return (
     <IconiqCard
       data-dashboard-card={layered ? "layered" : "flat"}
+      data-tour={title}
       className={cn(
         "gap-0 rounded-xl py-0",
         layered

@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Sparkles } from "lucide-react";
+import { Search } from "lucide-react";
 import { AnimatePresence, LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import React, { useMemo, useRef } from "react";
@@ -329,8 +329,7 @@ export function NewCategoryDialog({
               title={aiSuggestionEnabled ? "Suggest a name and emoji" : aiSuggestionMessage}
               type="button"
             >
-              <Sparkles className="size-3.5" />
-              {busy === "suggest" ? "Thinking…" : "Suggest"}
+              {busy === "suggest" ? "Suggesting…" : "Suggest"}
             </button>
           </div>
         </form>

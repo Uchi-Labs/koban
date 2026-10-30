@@ -2,6 +2,7 @@ import type { Category, Transaction } from "@ai-finances/schema";
 import { CategoryWorkbench, type CategoryDetail, type CategorySummary } from "@/components/category-workbench";
 import { applyBudgetOverrides, getCategoryBudgetOverrides } from "@/lib/category-budgets";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { filterTransactionsForIncludedAccounts, getFinanceData } from "@/lib/finance-data";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { getCategory } from "@/lib/view-models";
@@ -10,7 +11,7 @@ const TIMELINE_MONTHS = 24;
 
 export default async function CategoriesPage() {
   const [{ accounts, categories: rawCategories, dashboardSummary, transactions }, aiProvider, budgetOverrides] =
-    await Promise.all([getFinanceData(), getEffectiveLlmEnrichmentStatus(), getCategoryBudgetOverrides()]);
+    await Promise.all([getFinanceData(), getEffectiveLlmEnrichmentStatus().then((status) => maskLlmStatusForPublicDemo(status)), getCategoryBudgetOverrides()]);
 
   const categories = applyBudgetOverrides(rawCategories, budgetOverrides);
   const metricTransactions = filterTransactionsForIncludedAccounts(accounts, transactions);

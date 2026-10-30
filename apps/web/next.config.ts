@@ -37,8 +37,11 @@ const securityHeaders = [
       "img-src 'self' data: blob: https://www.google.com https://icons.duckduckgo.com",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' https://cdn.plaid.com https://s3.tradingview.com",
-      "connect-src 'self' https://*.plaid.com https://*.tradingview.com wss://*.tradingview.com",
+      // On-device dictation (lib/dictation.ts): Transformers.js and ONNX Runtime
+      // from jsDelivr in a blob module worker, model files from Hugging Face.
+      "script-src 'self' 'wasm-unsafe-eval' https://cdn.plaid.com https://s3.tradingview.com https://cdn.jsdelivr.net",
+      "worker-src 'self' blob:",
+      "connect-src 'self' https://*.plaid.com https://*.tradingview.com wss://*.tradingview.com https://cdn.jsdelivr.net https://huggingface.co https://*.huggingface.co https://*.hf.co",
       "frame-src https://cdn.plaid.com https://*.tradingview.com",
       "upgrade-insecure-requests"
     ].join("; ")

@@ -85,6 +85,14 @@ export function CategoryPicker({
     [controlledOpen, onOpenChange]
   );
 
+  // Open on the current category rather than the first row, so Enter keeps it
+  // and the arrows move from where the transaction already is.
+  React.useEffect(() => {
+    if (!open) return;
+    const currentIndex = filterCategories(categories, "").findIndex((category) => category.id === value);
+    setActiveIndex(Math.max(0, currentIndex));
+  }, [categories, open, value]);
+
   React.useEffect(() => {
     const active = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
     active?.scrollIntoView({ block: "nearest" });

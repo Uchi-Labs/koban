@@ -31,6 +31,13 @@ describe("agent stream NDJSON parser", () => {
     ]);
   });
 
+  it("keeps visual events so a model-drawn chart reaches the answer", () => {
+    expect(parseAgentStreamLine('{"type":"visual","visual":{"id":"v1","title":"Food by month","html":"<svg></svg>"}}')).toEqual({
+      type: "visual",
+      visual: { html: "<svg></svg>", id: "v1", title: "Food by month" }
+    });
+  });
+
   it("ignores blank lines and parses terminal events", () => {
     expect(parseAgentStreamLine("\n")).toBeNull();
     expect(parseAgentStreamLine('{"type":"done"}')).toEqual({ type: "done" });

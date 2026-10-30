@@ -18,8 +18,12 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", mo
 // One shared column grid, applied identically to the header row and every data row, so
 // every column edge lands on the same x regardless of that row's content (fixed px tracks
 // only — an `auto`-sized last column would resize per row and cascade misalignment into
-// every fr-based column before it).
-const RECURRING_ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_128px_96px_116px_72px_128px] gap-3 xl:grid-cols-[28px_minmax(0,1fr)_96px_76px_100px_56px_84px]";
+// every fr-based column before it). Columns drop by the table's own width (it narrows when
+// the agent docks): category from 36rem, last charged and observed from 60rem.
+const RECURRING_ROW_GRID =
+  "grid grid-cols-[28px_minmax(0,1fr)_96px_92px] gap-3 @xl/recurring:grid-cols-[28px_minmax(0,1fr)_100px_96px_minmax(0,9.5rem)] @5xl/recurring:grid-cols-[28px_minmax(0,1fr)_104px_100px_116px_72px_minmax(0,9.5rem)]";
+const RECURRING_CATEGORY_CELL = "hidden min-w-0 @xl/recurring:block";
+const RECURRING_WIDE_CELL = "hidden @5xl/recurring:block";
 type RecurringRowStyle = CSSProperties & { "--merchant-accent": string };
 
 /**
@@ -91,16 +95,16 @@ export default async function RecurringsPage() {
   const donutSegments = Array.from(segmentByCategory.values()).sort((left, right) => right.monthly - left.monthly);
 
   return (
-    <main className="flex min-h-svh flex-col" data-testid="recurrings-page">
-      <header className="flex items-center border-b border-border px-6 py-3.5">
+    <main className="@container/page flex min-h-svh flex-col" data-testid="recurrings-page">
+      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
         <span className="text-[13px] font-semibold tracking-tight">Recurrings</span>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[70rem] flex-1 items-start gap-6 p-6 xl:max-w-[78rem] xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 xl:mx-0 xl:max-w-none">
+      {/* Side by side only when the page itself is wide; it narrows when the agent docks. */}
+      <div className="mx-auto grid w-full max-w-[70rem] flex-1 items-start gap-6 p-6 @6xl/page:max-w-[78rem] @6xl/page:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] @[90rem]/page:max-w-[96rem]">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 @6xl/page:mx-0 @6xl/page:max-w-none">
           <section className="text-center">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Repeated merchants</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Recurring candidates</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Recurring candidates</h1>
             <p className="mx-auto mt-1.5 max-w-xl text-sm text-muted-foreground">
               Inferred from posted transaction cadence — projected charge dates are review targets, not confirmed subscriptions.
             </p>
@@ -116,7 +120,7 @@ export default async function RecurringsPage() {
           </section>
         </div>
 
-        <Card className="min-w-0">
+        <Card className="@container/recurring min-w-0">
           <CardHeader>
             <h2 className="text-base font-medium">Detected recurring charges</h2>
             <p className="text-sm text-muted-foreground">Sorted by expected charge date, with the account and observed transaction count shown for auditability.</p>
@@ -128,9 +132,9 @@ export default async function RecurringsPage() {
                 <span>Merchant</span>
                 <span className="text-right">Amount</span>
                 <span className="text-right">Next expected</span>
-                <span className="text-right">Last charged</span>
-                <span className="text-right">Observed</span>
-                <span>Category</span>
+                <span className={`${RECURRING_WIDE_CELL} text-right`}>Last charged</span>
+                <span className={`${RECURRING_WIDE_CELL} text-right`}>Observed</span>
+                <span className={RECURRING_CATEGORY_CELL}>Category</span>
               </div>
             ) : null}
             {candidateRows.map((candidate) => (
@@ -153,9 +157,9 @@ export default async function RecurringsPage() {
                   <p className="text-[11px] text-muted-foreground">{candidate.frequency}</p>
                 </div>
                 <div className="text-right tabular-nums">{candidate.nextDateLabel}</div>
-                <div className="text-right tabular-nums">{candidate.lastChargedAt ? formatDate(candidate.lastChargedAt) : "N/A"}</div>
-                <div className="text-right tabular-nums">{candidate.observedCount.toLocaleString()}</div>
-                <div className="min-w-0">
+                <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.lastChargedAt ? formatDate(candidate.lastChargedAt) : "N/A"}</div>
+                <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.observedCount.toLocaleString()}</div>
+                <div className={RECURRING_CATEGORY_CELL}>
                   <CategoryPill category={candidate.category} className="max-w-full" />
                 </div>
               </Link>
@@ -183,8 +187,11 @@ function MetricCard({
     <Card size="sm">
       <CardContent className="flex items-center gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">{icon}</span>
-        <span className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</span>
-        <strong className="text-lg font-semibold tabular-nums">{value}</strong>
+        {/* Stacked so a long figure never runs into its label in a narrow tile. */}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-xs text-muted-foreground">{label}</span>
+          <strong className="truncate text-lg leading-tight font-semibold whitespace-nowrap tabular-nums">{value}</strong>
+        </span>
       </CardContent>
     </Card>
   );

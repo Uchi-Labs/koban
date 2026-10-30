@@ -3,9 +3,10 @@
 import { m, useReducedMotion, type Variants } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { AgentMeta, AgentStreamStatus } from "@/lib/hooks/use-agent-stream";
+import { AgentVisualFrame } from "@/components/agent-visual-frame";
 import { EvidenceCitation } from "@/components/ui/evidence-citation";
+import { readAgentVisuals } from "@/lib/agent-visual";
 import { Alert } from "@/components/ui/alert";
-import { ThinkingIndicator } from "@/components/ui/thinking-indicator";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -36,17 +37,21 @@ export function AgentAnswer({
   }
 
   const evidence = compact ? meta?.evidence.slice(0, 3) ?? [] : meta?.evidence ?? [];
+  const visuals = readAgentVisuals(meta?.visuals);
+  // A model answer is its own text and visuals; the canned metrics, chart,
+  // evidence, and insights are the local agent's stand-ins and would not match it.
+  const modelAnswered = meta?.mode === "llm_finance_agent";
   const blocks: Array<{ id: string; node: ReactNode }> = [];
-  if (meta?.metrics.length) {
+  if (!modelAnswered && meta?.metrics.length) {
     blocks.push({ id: "metrics", node: <MetricsGrid compact={compact} metrics={meta.metrics} /> });
   }
-  if (meta?.chart) {
+  if (!modelAnswered && meta?.chart) {
     blocks.push({ id: "chart", node: <AssistantChart chart={meta.chart} compact={compact} /> });
   }
-  if (evidence.length > 0) {
+  if (!modelAnswered && evidence.length > 0) {
     blocks.push({ id: "evidence", node: <EvidenceList compact={compact} evidence={evidence} /> });
   }
-  if (!compact && meta?.insights.length) {
+  if (!modelAnswered && !compact && meta?.insights.length) {
     blocks.push({ id: "insights", node: <InsightsList insights={meta.insights} /> });
   }
 
@@ -56,27 +61,39 @@ export function AgentAnswer({
       className={cn("flex min-w-0 flex-col", compact ? "gap-3" : "gap-4")}
     >
       {question ? <span className="sr-only">Question: {question}</span> : null}
+      {visuals.map((visual) => (
+        <m.div
+          animate={{ opacity: 1 }}
+          initial={reduce ? false : { opacity: 0 }}
+          key={visual.id}
+          transition={{ duration: 0.25, ease: revealEase }}
+        >
+          <AgentVisualFrame visual={visual} />
+        </m.div>
+      ))}
       <div
         className={cn(
           "min-w-0 whitespace-pre-wrap text-sm leading-6 text-foreground",
-          compact ? "px-1" : "rounded-2xl border border-border/60 bg-card/65 p-4 shadow-sm"
+          compact && "px-1"
         )}
         data-testid="agent-answer-text"
       >
         {status === "streaming" && !answer ? (
-          <ThinkingIndicator words={["Reading your ledger…", "Checking context…", "Working…"]} />
+          <AgentWorking />
         ) : (
-          renderAnswerParagraphs(answer)
+          renderAnswerParagraphs(
+            answer,
+            status === "streaming" ? (
+              <span
+                aria-hidden
+                className="agent-stream-caret ml-0.5 text-primary"
+                data-receiving={receivingTokens ? "true" : "false"}
+              >
+                ▍
+              </span>
+            ) : null
+          )
         )}
-        {status === "streaming" && answer ? (
-          <span
-            aria-hidden
-            className="agent-stream-caret ml-0.5 text-primary"
-            data-receiving={receivingTokens ? "true" : "false"}
-          >
-            ▍
-          </span>
-        ) : null}
       </div>
 
       {status === "error" ? (
@@ -127,20 +144,20 @@ function useTokenActivity(answer: string, status: AgentStreamStatus) {
   return receiving;
 }
 
-function renderAnswerParagraphs(answer: string) {
+// Paragraphs are keyed by position and always rendered as <p>, so a streaming
+// answer only ever grows its last paragraph; keying by text remounted that
+// paragraph on every chunk. The caret rides at the end of the last line.
+function renderAnswerParagraphs(answer: string, caret: ReactNode) {
   if (!answer) {
     return null;
   }
 
   const paragraphs = answer.split(/\n{2,}/).filter((paragraph) => paragraph.trim().length > 0);
 
-  if (paragraphs.length <= 1) {
-    return answer;
-  }
-
-  return paragraphs.map((paragraph) => (
-    <p className="mb-3 last:mb-0" key={paragraph}>
+  return paragraphs.map((paragraph, index) => (
+    <p className="mb-3 last:mb-0" key={index}>
       {paragraph}
+      {index === paragraphs.length - 1 ? caret : null}
     </p>
   ));
 }
@@ -285,5 +302,31 @@ function InsightsList({ insights }: { insights: NonNullable<AgentMeta["insights"
         ))}
       </div>
     </div>
+  );
+}
+
+// The quiet "still working" line: what it is doing and for how long, in place
+// of a shimmer. The clock makes a slow answer read as progress, not a hang.
+const AGENT_WORKING_STEPS = ["Reading your ledger", "Checking transaction context", "Working it out"];
+
+function AgentWorking() {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000)), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const step = AGENT_WORKING_STEPS[Math.min(AGENT_WORKING_STEPS.length - 1, Math.floor(elapsedSeconds / 4))];
+  const clock = `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
+
+  return (
+    <span className="inline-flex items-center gap-2 text-muted-foreground" role="status">
+      <span aria-hidden="true" className="agent-working-dot" />
+      <span className="agent-working-text">{step}</span>
+      <span aria-hidden="true">·</span>
+      <span className="tabular-nums">{clock}</span>
+    </span>
   );
 }

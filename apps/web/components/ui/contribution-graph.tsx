@@ -366,7 +366,7 @@ const ContributionGraphBlockTooltip = () => {
           : "140ms, 140ms, 160ms, 200ms",
         transitionTimingFunction: prefersReducedMotion
           ? "ease"
-          : "cubic-bezier(0.22, 1, 0.36, 1), cubic-bezier(0.22, 1, 0.36, 1), ease, cubic-bezier(0.34, 1.56, 0.64, 1)",
+          : "cubic-bezier(0.22, 1, 0.36, 1), cubic-bezier(0.22, 1, 0.36, 1), ease, cubic-bezier(0.22, 1, 0.36, 1)",
       }}
     >
       <div className="relative rounded-lg border border-border bg-popover px-2.5 py-1 text-popover-foreground shadow-[0_8px_26px_-8px_color-mix(in_oklab,var(--foreground)_28%,transparent)]">

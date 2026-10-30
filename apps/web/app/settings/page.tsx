@@ -10,7 +10,6 @@ import { SourceAdaptersPanel } from "@/components/source-adapters-panel";
 import { SoundSettingsPanel } from "@/components/sound-settings-panel";
 import { SyncEverythingPanel } from "@/components/sync-everything-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ThemeToggle } from "@/components/motion/theme-toggle";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import { isDemoModeEnabled } from "@/lib/demo-mode";
@@ -23,6 +22,7 @@ import {
 } from "@/lib/db/finance-db";
 import { activeEmbeddingModel } from "@/lib/embeddings";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { isPublicDemo, maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { isHostedAuthMode } from "@/lib/auth";
 import { isEnrichmentProviderReady } from "@/lib/llm-enrichment";
 import { getFinanceData } from "@/lib/finance-data";
@@ -55,7 +55,7 @@ export default async function SettingsPage() {
     getSimpleFinSetupStatus(),
     getFinanceKitSetupStatus(),
     getSourceAdapterDiagnostics(),
-    getEffectiveLlmEnrichmentStatus(),
+    getEffectiveLlmEnrichmentStatus().then((status) => maskLlmStatusForPublicDemo(status)),
     getLatestAppSyncRun(),
     listAppSyncRuns(5),
     ensureAppSyncSchedule(),
@@ -263,12 +263,6 @@ export default async function SettingsPage() {
             Connect banks and context sources, control syncing, and manage local data.
           </p>
         </div>
-        <ThemeToggle
-          className="size-8 shrink-0 rounded-full border border-border bg-card text-foreground shadow-xs transition-colors hover:bg-muted motion-reduce:transition-none"
-          iconClassName="size-4"
-          start="top-right"
-          variant="circle-blur"
-        />
       </header>
 
       <Tabs defaultValue="connections" className="gap-5">
@@ -298,7 +292,7 @@ export default async function SettingsPage() {
 
         <TabsContent value="sync-ai" className="flex flex-col gap-5">
           <SyncEverythingPanel initialSchedule={syncSchedulePayload} initialStatus={syncStatusPayload} />
-          <AiProviderPanel initialProvider={aiProviderPayload} />
+          {isPublicDemo() ? null : <AiProviderPanel initialProvider={aiProviderPayload} />}
         </TabsContent>
 
         <TabsContent value="security" className="flex flex-col gap-5">

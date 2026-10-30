@@ -2,10 +2,13 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   generateObject,
   generateText,
+  isStepCount,
   NoObjectGeneratedError,
   streamText as streamAiText,
   type FinishReason,
-  type LanguageModel
+  type LanguageModel,
+  type TextStreamPart,
+  type ToolSet
 } from "ai";
 import type { z } from "zod";
 import { createChatGptLanguageModel } from "@/lib/ai/chatgpt-oauth";
@@ -21,7 +24,13 @@ export interface LlmTextGenerationInput {
   maxOutputTokens: number;
   messages: LlmChatMessage[];
   provider: LlmProviderStatus;
+  /** Tools the model may call while streaming; each call is reported in `parts`. */
+  tools?: ToolSet;
 }
+
+export type LlmStreamPart =
+  | { text: string; type: "text" }
+  | { input: unknown; toolName: string; type: "tool-call" };
 
 export interface LlmObjectGenerationInput<TSchema extends z.ZodTypeAny> {
   env: WorkspaceEnv;
@@ -40,6 +49,7 @@ export interface LlmTextGenerationResult {
 
 export interface LlmTextStreamResult {
   getText: () => Promise<string>;
+  parts: AsyncIterable<LlmStreamPart>;
   textStream: AsyncIterable<string>;
 }
 
@@ -145,7 +155,8 @@ export const aiSdkLlmClient: LlmGenerationClient = {
     fetcher,
     maxOutputTokens,
     messages,
-    provider
+    provider,
+    tools
   }: LlmTextGenerationInput) {
     const result = streamAiText({
       allowSystemInMessages: true,
@@ -154,16 +165,31 @@ export const aiSdkLlmClient: LlmGenerationClient = {
       messages,
       model: await buildConfiguredLanguageModel(provider, env, fetcher),
       timeout: { totalMs: provider.timeoutMs },
+      ...(tools ? { stopWhen: isStepCount(4), tools } : {}),
+      ...chatGptMultiStepOptions(provider),
       ...samplingOptions(provider)
     });
     const textPromise = Promise.resolve(result.text);
 
     return {
       getText: () => textPromise,
+      parts: streamParts(result.fullStream),
       textStream: result.textStream
     };
   }
 };
+
+async function* streamParts(fullStream: AsyncIterable<TextStreamPart<ToolSet>>): AsyncGenerator<LlmStreamPart> {
+  for await (const part of fullStream) {
+    if (part.type === "text-delta") {
+      yield { text: part.text, type: "text" };
+    } else if (part.type === "tool-call") {
+      yield { input: part.input, toolName: part.toolName, type: "tool-call" };
+    } else if (part.type === "error") {
+      throw part.error;
+    }
+  }
+}
 
 function buildConfiguredLanguageModel(
   provider: LlmProviderStatus,
@@ -200,6 +226,16 @@ function buildConfiguredLanguageModel(
   }).chatModel(provider.model));
 }
 
+// The subscription backend never stores responses, so a second step (after a
+// tool call) cannot point back at the first step's reasoning by id. Telling the
+// SDK store is off and asking for encrypted reasoning makes it resend the
+// reasoning in full instead.
+function chatGptMultiStepOptions(provider: LlmProviderStatus) {
+  return provider.credentialSource === "chatgpt_oauth"
+    ? { providerOptions: { openai: { include: ["reasoning.encrypted_content"], store: false } } }
+    : {};
+}
+
 function samplingOptions(provider: LlmProviderStatus): { temperature?: number } {
   return provider.model && usesCompletionTokenParameter(provider.model) ? {} : { temperature: 0.1 };
 }
@@ -227,11 +263,11 @@ function aiSdkBaseUrl(provider: LlmProviderStatus): string {
 }
 
 function supportsOpenAiStructuredOutputs(model: string): boolean {
-  return /^(?:gpt-5|gpt-4\.1|gpt-4o|o[134])(?:[.\-]|$)/i.test(model);
+  return /^(?:gpt-(?:[5-9]|\d{2,})|gpt-4\.1|gpt-4o|o[134])(?:[.\-]|$)/i.test(model);
 }
 
 function usesCompletionTokenParameter(model: string): boolean {
-  return /^gpt-5(?:[.\-]|$)/i.test(model);
+  return /^gpt-(?:[5-9]|\d{2,})(?:[.\-]|$)/i.test(model);
 }
 
 function transformGpt5RequestBody(body: Record<string, unknown>): Record<string, unknown> {
