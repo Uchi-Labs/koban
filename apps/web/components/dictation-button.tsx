@@ -4,11 +4,17 @@ import { Mic, Square } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { VoiceWaveform } from "@/components/ui/voice-waveform";
 import { isDictationSupported, loadDictationModel, transcribeRecording, type DictationProgress } from "@/lib/dictation";
 import { cn } from "@/lib/utils";
 
 const maxRecordingMs = 60_000;
+
+/** What the button is doing, for the host to show as text; the button itself is icon-only. */
+export type DictationStatus =
+  | { kind: "idle" }
+  | { kind: "recording"; modelPercent: number | null; seconds: number }
+  | { kind: "transcribing"; modelPercent: number | null }
+  | { kind: "error"; message: string };
 
 type DictationState =
   | { kind: "idle" }
@@ -19,11 +25,13 @@ type DictationState =
 /**
  * Tap to record, tap again to stop; the transcript is handed to `onText`.
  * The speech model starts downloading as soon as recording starts, so most of
- * a first-time download overlaps with speaking.
+ * a first-time download overlaps with speaking. Status text goes to
+ * `onStatusChange` so the host can place it outside the input row.
  */
-export function DictationButton({ className, disabled, onText }: {
+export function DictationButton({ className, disabled, onStatusChange, onText }: {
   className?: string;
   disabled?: boolean;
+  onStatusChange: (status: DictationStatus) => void;
   onText: (text: string) => void;
 }) {
   const [supported, setSupported] = React.useState(false);
@@ -47,6 +55,19 @@ export function DictationButton({ className, disabled, onText }: {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
   }, []);
+
+  const downloading = progress !== null && progress.totalBytes > 0 && progress.loadedBytes < progress.totalBytes;
+  const modelPercent = downloading ? Math.round((progress.loadedBytes / progress.totalBytes) * 100) : null;
+
+  React.useEffect(() => {
+    onStatusChange(
+      state.kind === "recording"
+        ? { kind: "recording", modelPercent, seconds: elapsed }
+        : state.kind === "transcribing"
+          ? { kind: "transcribing", modelPercent }
+          : state
+    );
+  }, [elapsed, modelPercent, onStatusChange, state]);
 
   async function start() {
     setState({ kind: "idle" });
@@ -113,43 +134,42 @@ export function DictationButton({ className, disabled, onText }: {
     );
   }
 
-  const downloading = progress !== null && progress.totalBytes > 0 && progress.loadedBytes < progress.totalBytes;
-  const percent = downloading ? Math.round((progress.loadedBytes / progress.totalBytes) * 100) : null;
+  if (state.kind === "recording") {
+    return (
+      <Button
+        aria-label="Stop dictation"
+        className={cn("text-(--negative) hover:text-(--negative)", className)}
+        onClick={stop}
+        size="icon-sm"
+        title="Stop and transcribe"
+        type="button"
+        variant="ghost"
+      >
+        <Square className="size-3.5 fill-current" />
+      </Button>
+    );
+  }
+
+  if (state.kind === "transcribing") {
+    return (
+      <Button aria-label="Transcribing" className={className} disabled size="icon-sm" type="button" variant="ghost">
+        <Spinner decorative size="sm" variant="ring" />
+      </Button>
+    );
+  }
 
   return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      {state.kind === "recording" ? (
-        <Button aria-label="Stop dictation" onClick={stop} size="sm" title="Stop and transcribe" type="button" variant="outline">
-          <VoiceWaveform bars={5} className="text-(--negative)" height={14} label="Listening" />
-          <span className="tabular-nums">{`0:${String(elapsed).padStart(2, "0")}`}</span>
-          <Square className="size-3 fill-current" />
-        </Button>
-      ) : state.kind === "transcribing" ? (
-        <span className="inline-flex h-8 items-center gap-2 px-2 text-xs text-muted-foreground" role="status">
-          <Spinner decorative size="sm" variant="ring" />
-          {percent !== null ? `Getting the voice model ready, ${percent}%` : "Transcribing…"}
-        </span>
-      ) : (
-        <Button
-          aria-label="Dictate context"
-          disabled={disabled}
-          onClick={() => void start()}
-          size="icon-sm"
-          title="Dictate (runs on your device)"
-          type="button"
-          variant="ghost"
-        >
-          <Mic className="size-4" />
-        </Button>
-      )}
-      {state.kind === "recording" && percent !== null ? (
-        <span className="text-xs text-muted-foreground tabular-nums">Voice model {percent}%</span>
-      ) : null}
-      {state.kind === "error" ? (
-        <span className="text-xs text-(--negative)" role="alert">
-          {state.message}
-        </span>
-      ) : null}
-    </span>
+    <Button
+      aria-label="Dictate context"
+      className={className}
+      disabled={disabled}
+      onClick={() => void start()}
+      size="icon-sm"
+      title="Dictate (runs on your device)"
+      type="button"
+      variant="ghost"
+    >
+      <Mic className="size-4" />
+    </Button>
   );
 }
