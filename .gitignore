@@ -8,6 +8,7 @@ data/local/
 
 # agent working docs (handoffs, plans, research, reference screenshots)
 .agent/
+.agents/work/
 
 # build & deps
 node_modules/
@@ -22,6 +23,8 @@ build/
 test-results/
 playwright-report/
 apps/web/tests/e2e/.e2e-data/
+apps/web/tests/e2e/.e2e-*/
+apps/web/test-results-*/
 
 # local agent state
 .claude/

@@ -36,6 +36,7 @@ import {
 } from "@/lib/category-style";
 import { normalizeCurrencyCode } from "@/lib/currency";
 import { runInDbWriteScope } from "@/lib/db/db-write-context";
+import { createDbWriteQueue, type DbWriteQueue } from "@/lib/db/db-write-queue";
 import type { FinanceDbDriver } from "@/lib/db/finance-db-driver";
 import { PgFinanceDbDriver } from "@/lib/db/pg-driver";
 import {
@@ -258,8 +259,8 @@ interface SyncStateRow {
   value: string;
 }
 
-export type FinanceDbLlmProviderName = "none" | "ollama" | "openai_compatible";
-export type FinanceDbLlmCredentialSource = "none" | "openai_api_key" | "chatgpt_oauth" | "ollama" | "local";
+export type FinanceDbLlmProviderName = "none" | "ollama" | "openai_compatible" | "claude_subscription";
+export type FinanceDbLlmCredentialSource = "none" | "openai_api_key" | "chatgpt_oauth" | "claude_subscription" | "ollama" | "local";
 
 export interface FinanceDbLlmProviderStatus {
   baseUrl?: string;
@@ -283,6 +284,7 @@ export interface FinanceDbLlmEvidenceSummary {
 }
 
 export interface FinanceDbLlmEnrichmentContext {
+  categories?: Category[];
   evidenceByTransactionId: Map<string, FinanceDbLlmEvidenceSummary[]>;
   existingRules: TransactionRule[];
   limit: number;
@@ -799,7 +801,7 @@ export interface LocalAppDataResetSummary {
 interface FinanceDbGlobalState {
   promise: Promise<FinanceDb> | null;
   recoveryEvent: { originalPath: string; recoveredAt: string } | null;
-  writeQueue: Promise<void>;
+  writeQueue: DbWriteQueue;
 }
 
 const financeDbGlobal = globalThis as typeof globalThis & {
@@ -810,7 +812,16 @@ function getFinanceDbState(): FinanceDbGlobalState {
   return (financeDbGlobal.__aiFinancesFinanceDb ??= {
     promise: null,
     recoveryEvent: null,
-    writeQueue: Promise.resolve()
+    writeQueue: createFinanceDbWriteQueue()
+  });
+}
+
+function createFinanceDbWriteQueue(): DbWriteQueue {
+  return createDbWriteQueue({
+    onOperationSettled: invalidateShellDataCache,
+    onTimeout: (error) => console.error(`[finance-db] ${error.message}`),
+    runInScope: runInDbWriteScope,
+    timeoutMs: DB_WRITE_TIMEOUT_MS
   });
 }
 
@@ -966,7 +977,17 @@ export async function upsertAccountBalanceSnapshots(snapshots: AccountBalanceSna
     return 0;
   }
 
-  return enqueueDbWrite(() => upsertAccountBalanceSnapshotsNow(snapshots));
+  // Split across separate queued writes so one multi-year backfill cannot hold
+  // the write queue past its timeout and strand every other writer behind it.
+  // Each chunk commits on its own; a failure part-way leaves the earlier dates
+  // written, which is safe because the snapshot id is deterministic per
+  // account-day and a re-run upserts over them.
+  let written = 0;
+  for (let index = 0; index < snapshots.length; index += BALANCE_SNAPSHOT_WRITE_CHUNK) {
+    const chunk = snapshots.slice(index, index + BALANCE_SNAPSHOT_WRITE_CHUNK);
+    written += await enqueueDbWrite(() => upsertAccountBalanceSnapshotsNow(chunk));
+  }
+  return written;
 }
 
 export async function replacePlaidLedgerSnapshot(input: PlaidLedgerSnapshotInput): Promise<PlaidLedgerSnapshotRecord> {
@@ -1834,6 +1855,43 @@ async function replaceLedgerInDbNow(ledger: Ledger): Promise<void> {
 
   await db.exec("BEGIN");
   try {
+    const survivingTransactionIds = normalizedLedger.transactions.map((transaction) => transaction.id);
+    let userEvidenceLinks: Array<{
+      confidence: number;
+      created_at: string;
+      relationship: EvidenceRelationship;
+      source_item_id: string;
+      status: "accepted" | "dismissed";
+      transaction_id: string;
+    }> = [];
+    if (survivingTransactionIds.length > 0) {
+      // Lock parents and all links before snapshotting decisions, including
+      // suggested links another caller could otherwise accept during deletion.
+      await db.query(
+        "SELECT id FROM transactions WHERE id = ANY($1) FOR UPDATE",
+        [survivingTransactionIds]
+      );
+      await db.query(
+        "SELECT transaction_id FROM transaction_evidence_links WHERE transaction_id = ANY($1) FOR UPDATE",
+        [survivingTransactionIds]
+      );
+      userEvidenceLinks = (await db.query<{
+        confidence: number;
+        created_at: string;
+        relationship: EvidenceRelationship;
+        source_item_id: string;
+        status: "accepted" | "dismissed";
+        transaction_id: string;
+      }>(
+        `SELECT transaction_id, source_item_id, relationship, confidence, status, created_at
+        FROM transaction_evidence_links
+        WHERE transaction_id = ANY($1)
+          AND status IN ('accepted', 'dismissed')
+        FOR UPDATE`,
+        [survivingTransactionIds]
+      )).rows;
+    }
+
     // Full-ledger replace: clear only the providers represented by the incoming
     // snapshot. Provider-specific lanes not owned by this ledger remain intact.
     const replacedProviders = [...new Set(normalizedLedger.providerConnections.map((connection) => connection.provider))];
@@ -1922,6 +1980,35 @@ async function replaceLedgerInDbNow(ledger: Ledger): Promise<void> {
 
     await clearDanglingTransactionPairs(db);
     await applyTransactionRulesNow(db);
+
+    for (const link of userEvidenceLinks) {
+      await db.query(
+        `INSERT INTO transaction_evidence_links (
+          transaction_id,
+          source_item_id,
+          relationship,
+          confidence,
+          status,
+          created_at
+        )
+        SELECT $1, $2, $3, $4, $5, $6
+        WHERE EXISTS (SELECT 1 FROM transactions WHERE id = $1)
+          AND EXISTS (SELECT 1 FROM source_items WHERE id = $2)
+        ON CONFLICT (transaction_id, source_item_id, relationship) DO UPDATE SET
+          confidence = EXCLUDED.confidence,
+          status = EXCLUDED.status,
+          created_at = EXCLUDED.created_at`,
+        [
+          link.transaction_id,
+          link.source_item_id,
+          link.relationship,
+          link.confidence,
+          link.status,
+          link.created_at
+        ]
+      );
+    }
+
     await replaceTransactionSemanticDocuments(db, normalizedLedger);
 
     await writeSyncState(db, {
@@ -2080,13 +2167,36 @@ async function upsertAccountBalanceSnapshotsNow(snapshots: AccountBalanceSnapsho
     (await db.query<{ id: string }>("SELECT id FROM accounts")).rows.map((row) => row.id)
   );
 
+  const writable = snapshots.filter((snapshot) => knownAccountIds.has(snapshot.accountId));
+
   await db.exec("BEGIN");
   try {
     let written = 0;
 
-    for (const snapshot of snapshots) {
-      if (!knownAccountIds.has(snapshot.accountId)) {
-        continue;
+    // Multi-row inserts rather than one statement per snapshot. A balance
+    // backfill carries a daily point per account per year, so the per-row loop
+    // this replaces spent thousands of sequential round trips inside a single
+    // queued write and passed the write timeout, taking the process down.
+    for (let index = 0; index < writable.length; index += BALANCE_SNAPSHOT_INSERT_ROWS) {
+      const chunk = writable.slice(index, index + BALANCE_SNAPSHOT_INSERT_ROWS);
+      const values: string[] = [];
+      const params: unknown[] = [];
+
+      for (const snapshot of chunk) {
+        const base = params.length;
+        values.push(
+          `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`
+        );
+        params.push(
+          snapshot.id,
+          snapshot.accountId,
+          snapshot.asOfDate,
+          snapshot.capturedAt,
+          moneyToMinor(snapshot.ledgerBalance),
+          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
+          snapshot.currency,
+          snapshot.source
+        );
       }
 
       await db.query(
@@ -2099,7 +2209,7 @@ async function upsertAccountBalanceSnapshotsNow(snapshots: AccountBalanceSnapsho
           available_balance_minor,
           currency,
           source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ) VALUES ${values.join(", ")}
         ON CONFLICT (id) DO UPDATE SET
           as_of_date = EXCLUDED.as_of_date,
           captured_at = EXCLUDED.captured_at,
@@ -2107,18 +2217,9 @@ async function upsertAccountBalanceSnapshotsNow(snapshots: AccountBalanceSnapsho
           available_balance_minor = EXCLUDED.available_balance_minor,
           currency = EXCLUDED.currency,
           source = EXCLUDED.source`,
-        [
-          snapshot.id,
-          snapshot.accountId,
-          snapshot.asOfDate,
-          snapshot.capturedAt,
-          moneyToMinor(snapshot.ledgerBalance),
-          snapshot.availableBalance === undefined ? null : moneyToMinor(snapshot.availableBalance),
-          snapshot.currency,
-          snapshot.source
-        ]
+        params
       );
-      written++;
+      written += chunk.length;
     }
 
     await db.exec("COMMIT");
@@ -2684,6 +2785,53 @@ export async function updateDbTransaction(
   return updatedTransaction;
 }
 
+const transactionTagLimit = 20;
+
+export class TransactionTagLimitError extends Error {
+  readonly limit = transactionTagLimit;
+
+  constructor() {
+    super(`Transactions can have at most ${transactionTagLimit} tags.`);
+    this.name = "TransactionTagLimitError";
+  }
+}
+
+export async function modifyTransactionTags(
+  transactionId: string,
+  changes: { add: string[]; remove: string[] }
+): Promise<Transaction | null> {
+  if (!financeDbExists()) return null;
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    await db.exec("BEGIN");
+    try {
+      const existing = await db.query<TransactionRow>(
+        "SELECT * FROM transactions WHERE id = $1 FOR UPDATE", [transactionId]
+      );
+      const row = existing.rows[0];
+      if (!row) {
+        await db.exec("COMMIT");
+        return null;
+      }
+      const removed = new Set(normalizeTagChangeValues(changes.remove));
+      const retained = normalizeTagChangeValues(transactionFromRow(row).tags)
+        .filter((tag) => !removed.has(tag));
+      const added = normalizeTagChangeValues(changes.add)
+        .filter((tag) => !removed.has(tag));
+      const tags = Array.from(new Set([...retained, ...added]));
+      if (tags.length > transactionTagLimit) {
+        throw new TransactionTagLimitError();
+      }
+      const transaction = await updateDbTransactionNow(transactionId, { tags });
+      await db.exec("COMMIT");
+      return transaction;
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
 export async function ensureTransactionSemanticDocuments(ledger: Ledger): Promise<void> {
   const normalizedLedger = normalizeLedgerAmounts(ledger).ledger;
   await enqueueDbWrite(async () => {
@@ -3234,9 +3382,9 @@ export async function refreshAppSyncScheduleClaim(
   claimedBy: string,
   refreshedAt = new Date().toISOString()
 ): Promise<boolean> {
-  return enqueueDbWrite(async () => {
-    const db = await getFinanceDb();
-    const result = await db.query<{ id: string }>(
+  const db = await getFinanceDb();
+  const refresh = async (query: FinanceDb["query"]): Promise<boolean> => {
+    const result = await query<{ id: string }>(
       `UPDATE sync_schedules
       SET
         claimed_at = $3,
@@ -3248,7 +3396,17 @@ export async function refreshAppSyncScheduleClaim(
     );
 
     return result.rows.length === 1;
-  });
+  };
+
+  // A live Postgres lease must not wait behind a long ledger writer: if it
+  // misses the 15-minute claim TTL another process can steal the schedule and
+  // run the same provider concurrently. PGlite has one local writer and keeps
+  // the normal queue discipline.
+  if (db.dialect === "postgres") {
+    return refresh(db.queryCoordinationMetadata.bind(db));
+  }
+
+  return enqueueDbWrite(() => refresh(db.query.bind(db)));
 }
 
 export async function updateAppSyncSchedule(
@@ -3417,7 +3575,7 @@ export async function recordSourceSyncRun(input: SourceSyncRunInput): Promise<So
   });
 }
 
-export async function refreshSourceEvidenceMatches(): Promise<SourceEvidenceRefreshResult> {
+export async function refreshSourceEvidenceMatches(signal?: AbortSignal): Promise<SourceEvidenceRefreshResult> {
   if (!financeDbExists()) {
     return {
       evidenceLinksSuggested: 0,
@@ -3425,17 +3583,29 @@ export async function refreshSourceEvidenceMatches(): Promise<SourceEvidenceRefr
     };
   }
 
-  return enqueueDbWrite(async () => {
+  return enqueueDbWrite(async (queueSignal) => {
+    const operationSignal = signal ? AbortSignal.any([signal, queueSignal]) : queueSignal;
+    operationSignal.throwIfAborted();
     const db = await getFinanceDb();
-    const result = await db.query<{ id: string }>(
-      "SELECT id FROM source_items ORDER BY updated_at DESC, id DESC"
-    );
-    const sourceItemIds = result.rows.map((row) => row.id);
+    await db.exec("BEGIN");
+    try {
+      const result = await db.query<{ id: string }>(
+        "SELECT id FROM source_items ORDER BY updated_at DESC, id DESC"
+      );
+      operationSignal.throwIfAborted();
+      const sourceItemIds = result.rows.map((row) => row.id);
+      const evidenceLinksSuggested = await matchSourceItemsToTransactionsNow(db, sourceItemIds, operationSignal);
+      operationSignal.throwIfAborted();
+      await db.exec("COMMIT");
 
-    return {
-      evidenceLinksSuggested: await matchSourceItemsToTransactionsNow(db, sourceItemIds),
-      sourceItemCount: sourceItemIds.length
-    };
+      return {
+        evidenceLinksSuggested,
+        sourceItemCount: sourceItemIds.length
+      };
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
   });
 }
 
@@ -3516,13 +3686,24 @@ export async function getSourceStoreSourceSummaries(): Promise<Map<string, Sourc
 }
 
 export async function listSourceItems({
+  amount,
+  from,
+  kind,
   limit = 50,
   query,
-  sourceId
+  sourceId,
+  to
 }: {
+  // Matched to the cent regardless of sign: receipts state positive totals
+  // while ledger outflows are negative.
+  amount?: number;
+  // Inclusive YYYY-MM-DD bounds on occurred_at, which is stored as ISO text.
+  from?: string;
+  kind?: string;
   limit?: number;
   query?: string;
   sourceId?: string;
+  to?: string;
 } = {}): Promise<SourceItem[]> {
   if (!financeDbExists()) {
     return [];
@@ -3535,12 +3716,15 @@ export async function listSourceItems({
   const normalizedQuery = query?.trim();
 
   if (sourceId) {
+    // A source id also covers its per-mailbox profiles (source_gmail__personal).
     values.push(sourceId);
-    where.push(`source_id = $${values.length}`);
+    where.push(`(source_id = $${values.length} OR left(source_id, length($${values.length}) + 2) = $${values.length} || '__')`);
   }
 
-  if (normalizedQuery) {
-    values.push(`%${normalizedQuery}%`);
+  // Every word must appear somewhere, so "honda invoice" matches an item whose
+  // title names Honda and whose summary says invoice.
+  for (const term of normalizedQuery?.split(/\s+/).filter(Boolean).slice(0, 8) ?? []) {
+    values.push(`%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`);
     where.push(`(
       title ILIKE $${values.length}
       OR summary ILIKE $${values.length}
@@ -3548,6 +3732,28 @@ export async function listSourceItems({
       OR external_id ILIKE $${values.length}
       OR kind ILIKE $${values.length}
     )`);
+  }
+
+  if (from) {
+    values.push(from);
+    where.push(`occurred_at >= $${values.length}`);
+  }
+
+  if (to) {
+    const dayAfter = new Date(`${to}T00:00:00.000Z`);
+    dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+    values.push(dayAfter.toISOString().slice(0, 10));
+    where.push(`occurred_at < $${values.length}`);
+  }
+
+  if (amount !== undefined) {
+    values.push(Math.round(Math.abs(amount) * 100));
+    where.push(`abs(amount_minor) = $${values.length}`);
+  }
+
+  if (kind) {
+    values.push(kind);
+    where.push(`kind = $${values.length}`);
   }
 
   values.push(cappedLimit);
@@ -4485,8 +4691,11 @@ export async function generateEnrichmentSuggestionsWithLlm(
     );
     const llmEvidenceByTransactionId = groupLlmEvidenceByTransactionId(llmEvidenceRows.rows);
 
+    const categories = await listCategoriesInDb(db, { includeArchived: false });
+
     return {
       cappedLimit,
+      categories,
       evidenceByTransactionId,
       existingRules,
       llmEvidenceByTransactionId,
@@ -4503,6 +4712,7 @@ export async function generateEnrichmentSuggestionsWithLlm(
   // and rule edit queued behind an advisory background job. Nothing here writes,
   // so nothing here needs the lock.
   const llmRun = await dependencies.generateLlmEnrichmentSuggestions({
+    categories: readPhase.categories,
     evidenceByTransactionId: readPhase.llmEvidenceByTransactionId,
     existingRules: readPhase.existingRules,
     limit: Math.min(readPhase.cappedLimit, 50),
@@ -5115,7 +5325,7 @@ async function getSemanticEmbeddingSummary() {
 
 export async function closeFinanceDbForTests(): Promise<void> {
   const state = getFinanceDbState();
-  await state.writeQueue.catch(() => undefined);
+  await state.writeQueue.drain();
   categoryRegistrySeeded = false;
   if (!state.promise) {
     return;
@@ -5125,14 +5335,14 @@ export async function closeFinanceDbForTests(): Promise<void> {
   await db.close();
   state.promise = null;
   state.recoveryEvent = null;
-  state.writeQueue = Promise.resolve();
+  state.writeQueue = createFinanceDbWriteQueue();
 }
 
 export function getFinanceDbWriteQueueForTests(): Promise<void> {
-  return getFinanceDbState().writeQueue;
+  return getFinanceDbState().writeQueue.drain();
 }
 
-export function enqueueDbWriteForTests<T>(operation: () => Promise<T>): Promise<T> {
+export function enqueueDbWriteForTests<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
   return enqueueDbWrite(operation);
 }
 
@@ -5204,58 +5414,19 @@ export async function deleteSyncStateValue(key: string): Promise<void> {
 // never on slow-but-progressing work.
 const DB_WRITE_TIMEOUT_MS = 90_000;
 
-class DbWriteTimeoutError extends Error {
-  constructor(enqueuedAt: string | undefined) {
-    super(
-      `Database write exceeded ${DB_WRITE_TIMEOUT_MS}ms and was abandoned so the write queue could advance.` +
-        (enqueuedAt ? `\nEnqueued from:\n${enqueuedAt}` : "")
-    );
-    this.name = "DbWriteTimeoutError";
-  }
-}
+/**
+ * Balance-snapshot write sizing.
+ *
+ * Rows per INSERT statement, and snapshots per queued write. A provider
+ * backfill supplies one point per account per day, so a few accounts over a
+ * few years is tens of thousands of rows; both limits exist to keep any single
+ * queued write far inside DB_WRITE_TIMEOUT_MS.
+ */
+const BALANCE_SNAPSHOT_INSERT_ROWS = 250;
+const BALANCE_SNAPSHOT_WRITE_CHUNK = 2_000;
 
-function enqueueDbWrite<T>(operation: () => Promise<T>): Promise<T> {
-  const state = getFinanceDbState();
-  // Captured at enqueue time: when a write hangs, the ONLY thing worth knowing is
-  // which call site owns it, and by the time the timeout fires the stack is gone.
-  const enqueuedAt = new Error("db write enqueued").stack;
-
-  // Every write invalidates the read caches — the queue is the only mutation
-  // path, so this guarantees no page ever renders pre-write ledger data.
-  const scopedOperation = () => {
-    const run = runInDbWriteScope(operation).finally(() => {
-      invalidateShellDataCache();
-    });
-
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const error = new DbWriteTimeoutError(enqueuedAt);
-        console.error(`[finance-db] ${error.message}`);
-        reject(error);
-      }, DB_WRITE_TIMEOUT_MS);
-
-      // Do not hold the event loop open just to police a write.
-      timer.unref?.();
-
-      run.then(
-        (value) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (error: unknown) => {
-          clearTimeout(timer);
-          reject(error);
-        }
-      );
-    });
-  };
-
-  const nextOperation = state.writeQueue.then(scopedOperation, scopedOperation);
-  state.writeQueue = nextOperation.then(
-    () => undefined,
-    () => undefined
-  );
-  return nextOperation;
+function enqueueDbWrite<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  return getFinanceDbState().writeQueue.enqueue(operation);
 }
 
 async function getFinanceDb(): Promise<FinanceDb> {
@@ -6545,7 +6716,11 @@ async function upsertEvidenceLink(
   return result.rows[0]?.status ?? link.status;
 }
 
-async function matchSourceItemsToTransactionsNow(db: FinanceDb, sourceItemIds: string[]): Promise<number> {
+async function matchSourceItemsToTransactionsNow(
+  db: FinanceDb,
+  sourceItemIds: string[],
+  signal?: AbortSignal
+): Promise<number> {
   if (sourceItemIds.length === 0) {
     return 0;
   }
@@ -6570,6 +6745,7 @@ async function matchSourceItemsToTransactionsNow(db: FinanceDb, sourceItemIds: s
     ),
     db.query<TransactionRow>("SELECT * FROM transactions ORDER BY date DESC, id DESC")
   ]);
+  signal?.throwIfAborted();
   const acceptedLinks = await db.query<{ source_item_id: string; transaction_id: string }>(
     `SELECT source_item_id, transaction_id
     FROM transaction_evidence_links
@@ -6577,6 +6753,7 @@ async function matchSourceItemsToTransactionsNow(db: FinanceDb, sourceItemIds: s
       AND status = 'accepted'`,
     [sourceItemIds]
   );
+  signal?.throwIfAborted();
   const acceptedBySourceItem = new Map(
     acceptedLinks.rows.map((row) => [row.source_item_id, row.transaction_id])
   );
@@ -6585,6 +6762,7 @@ async function matchSourceItemsToTransactionsNow(db: FinanceDb, sourceItemIds: s
   let suggestedCount = 0;
 
   for (const row of sourceItems.rows) {
+    signal?.throwIfAborted();
     const sourceItem = sourceItemFromRow(row);
     const acceptedTransactionId = acceptedBySourceItem.get(sourceItem.id);
 
@@ -6631,6 +6809,7 @@ async function matchSourceItemsToTransactionsNow(db: FinanceDb, sourceItemIds: s
       RETURNING transaction_id`,
       [sourceItem.id, match.relationship, match.transactionId]
     );
+    signal?.throwIfAborted();
     staleResult.rows.forEach((staleRow) => affectedTransactionIds.add(staleRow.transaction_id));
 
     const status = await upsertEvidenceLink(db, {
@@ -6648,7 +6827,8 @@ async function matchSourceItemsToTransactionsNow(db: FinanceDb, sourceItemIds: s
   }
 
   for (const transactionId of affectedTransactionIds) {
-    await refreshTransactionSemanticDocument(db, transactionId);
+    signal?.throwIfAborted();
+    await refreshTransactionSemanticDocument(db, transactionId, signal);
   }
 
   return suggestedCount;
@@ -7141,7 +7321,10 @@ function parseLlmProviderHealthSnapshot(
     ? record.timeoutMs
     : 20_000;
 
-  if (!status || (provider !== "none" && provider !== "ollama" && provider !== "openai_compatible")) {
+  if (
+    !status ||
+    (provider !== "none" && provider !== "ollama" && provider !== "openai_compatible" && provider !== "claude_subscription")
+  ) {
     return null;
   }
 
@@ -7260,8 +7443,13 @@ async function replaceSourceItemSemanticDocuments(db: FinanceDb): Promise<void> 
   );
 }
 
-async function refreshTransactionSemanticDocument(db: FinanceDb, transactionId: string): Promise<void> {
+async function refreshTransactionSemanticDocument(
+  db: FinanceDb,
+  transactionId: string,
+  signal?: AbortSignal
+): Promise<void> {
   const transactionResult = await db.query<TransactionRow>("SELECT * FROM transactions WHERE id = $1", [transactionId]);
+  signal?.throwIfAborted();
   const transactionRow = transactionResult.rows[0];
 
   if (!transactionRow) {
@@ -7270,8 +7458,10 @@ async function refreshTransactionSemanticDocument(db: FinanceDb, transactionId: 
 
   const transaction = transactionFromRow(transactionRow);
   const accountResult = await db.query<AccountRow>("SELECT * FROM accounts WHERE id = $1", [transaction.accountId]);
+  signal?.throwIfAborted();
   const account = accountResult.rows[0] ? accountFromRow(accountResult.rows[0]) : undefined;
   const evidenceSummaries = await readTransactionEvidenceSummaries(db, transactionId);
+  signal?.throwIfAborted();
   await upsertSemanticDocument(db, createTransactionSemanticDocument(transaction, account, evidenceSummaries));
 }
 
@@ -8471,6 +8661,10 @@ function normalizeTags(tags: string[]): string[] {
   );
 }
 
+function normalizeTagChangeValues(tags: string[]): string[] {
+  return Array.from(new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)));
+}
+
 function replaceTagName(tags: string[], oldName: string, newName: string): string[] {
   const oldKey = oldName.toLowerCase();
   const seen = new Set<string>();
@@ -8513,4 +8707,93 @@ function sourceItemId(sourceId: string, externalId: string): string {
 
 function vectorLiteral(values: number[]): string {
   return `[${values.map((value) => value.toFixed(6)).join(",")}]`;
+}
+
+export interface ReviewQueueEvidence {
+  confidence: number;
+  relationship: EvidenceRelationship;
+  sourceLabel: string;
+  summary: string;
+  title: string;
+}
+
+export interface ReviewQueueContext {
+  evidence: ReviewQueueEvidence[];
+  notes: string[];
+  reason?: string;
+}
+
+/**
+ * Why each queued transaction landed where it did, what documents back it, and
+ * any context the user has already written. One round trip for the whole page:
+ * the review stack renders a hundred cards and a per-card query would be a
+ * hundred queries.
+ *
+ * User-authored notes are read from their source items rather than the link
+ * table, because the note text lives on the item.
+ */
+export async function listReviewQueueContext(
+  transactionIds: string[]
+): Promise<Map<string, ReviewQueueContext>> {
+  const context = new Map<string, ReviewQueueContext>();
+
+  if (!financeDbExists() || transactionIds.length === 0) {
+    return context;
+  }
+
+  const db = await getFinanceDb();
+  const ensure = (id: string): ReviewQueueContext => {
+    const existing = context.get(id);
+    if (existing) return existing;
+    const created: ReviewQueueContext = { evidence: [], notes: [] };
+    context.set(id, created);
+    return created;
+  };
+
+  const reasons = await db.query<{ reason: string; transaction_id: string }>(
+    `SELECT DISTINCT ON (transaction_id)
+       transaction_id,
+       reason
+     FROM enrichment_suggestions
+     WHERE transaction_id = ANY($1) AND reason <> ''
+     ORDER BY transaction_id, confidence DESC, updated_at DESC`,
+    [transactionIds]
+  );
+  for (const row of reasons.rows) {
+    const entry = ensure(row.transaction_id);
+    entry.reason = row.reason;
+  }
+
+  const evidence = await db.query<{
+    confidence: number;
+    kind: string;
+    relationship: EvidenceRelationship;
+    source_id: string;
+    summary: string;
+    title: string;
+    transaction_id: string;
+  }>(
+    `SELECT l.transaction_id, l.relationship, l.confidence, si.title, si.summary, si.kind, si.source_id
+     FROM transaction_evidence_links l
+     JOIN source_items si ON si.id = l.source_item_id
+     WHERE l.transaction_id = ANY($1) AND l.status <> 'dismissed'
+     ORDER BY l.transaction_id, l.confidence DESC`,
+    [transactionIds]
+  );
+  for (const row of evidence.rows) {
+    const entry = ensure(row.transaction_id);
+    if (row.kind === "context_note" || row.kind === "voice_transcript") {
+      entry.notes.push(row.summary || row.title);
+      continue;
+    }
+    entry.evidence.push({
+      confidence: Number(row.confidence) || 0,
+      relationship: row.relationship,
+      sourceLabel: row.source_id.replace(/^source_/, "").replace(/_/g, " "),
+      summary: row.summary,
+      title: row.title
+    });
+  }
+
+  return context;
 }

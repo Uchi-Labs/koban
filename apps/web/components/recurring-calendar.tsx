@@ -6,6 +6,7 @@ import Link from "next/link";
 import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
+import { RollingDigits } from "@/components/ui/rolling-digits";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/format";
 import { merchantBrandColor, merchantDomain } from "@/lib/merchant-domain";
-import { EASE_OUT } from "@/lib/motion";
+import { EASE_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { addMonths, daysInCalendarMonth, mondayIndexOfFirst, occurrencesInMonth } from "@/lib/recurring-calendar";
 import { cn } from "@/lib/utils";
 
@@ -179,13 +180,34 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
             <ChevronRight className="size-4" />
           </Button>
         </div>
+        {/* Rolls digit by digit when the figure changes -- stepping months, or
+            hovering a day to see that day's charge. Same idiom as the dashboard
+            hero figures (MoneyRollingWhole in category-workbench.tsx), using the
+            shared ROLLING_DIGITS_HERO preset so every big money figure in the app
+            moves identically. RollingDigits handles prefers-reduced-motion itself,
+            swapping instantly instead of animating. Cents are kept here, unlike
+            the dashboard heroes, because a recurring total is an exact amount. */}
         <span
-          className="cursor-default text-4xl font-semibold tracking-tight tabular-nums"
+          className="flex cursor-default items-baseline text-4xl font-semibold tracking-tight tabular-nums"
           onMouseEnter={() => setTotalHovered(true)}
           onMouseLeave={() => setTotalHovered(false)}
           title={isCurrentMonth ? `${formatCurrency(remaining)} still to charge this month` : undefined}
         >
-          {formatCurrency(hoveredDay ? hoveredDay.total : showRemaining ? remaining : total)}
+          <span>$</span>
+          <RollingDigits
+            animationDelay={ROLLING_DIGITS_HERO.animationDelay}
+            coalesceUpdates
+            direction="dynamic"
+            enterDamping={ROLLING_DIGITS_HERO.enterDamping}
+            enterStiffness={ROLLING_DIGITS_HERO.enterStiffness}
+            enterY={ROLLING_DIGITS_HERO.enterY}
+            format={(rounded) =>
+              rounded.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })
+            }
+            gap={0}
+            startOnView={false}
+            value={hoveredDay ? hoveredDay.total : showRemaining ? remaining : total}
+          />
         </span>
         {hoveredDay ? (
           // Hover-to-name: the chip calls out the hovered day's charge(s), like the
@@ -226,7 +248,46 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
           ))}
         </div>
         {/* key remounts the grid per month so the fade-in replays on navigation */}
-        <div className="grid grid-cols-7 gap-1.5 animate-in fade-in-0 duration-200 motion-reduce:animate-none" key={month}>
+        {/* The day detail panel is positioned against THIS grid, not against a
+            day cell, which is what stops it being clipped.
+
+            It used to hang off the cell at `left-1/2 -translate-x-1/2`, and with
+            several charges it grows to `w-max` -- far wider than a one-seventh
+            column -- so on any cell off dead-centre it overflowed the calendar.
+            The previous fix was `overflow-x-clip` on this grid, which stopped
+            the resulting page scrollbar by SLICING the panel: charges rendered
+            as "cific Felt Factory" and "PILOT MONEY". Anchoring to the grid and
+            capping the width at the grid itself means it cannot exceed the
+            calendar in the first place, so nothing needs clipping. */}
+        <div
+          className="relative grid grid-cols-7 gap-1.5 animate-in fade-in-0 duration-200 motion-reduce:animate-none"
+          key={month}
+        >
+          {/* One panel for the whole grid, driven by the parent's hoveredDay.
+              Centred on the grid and capped at its width, so it is readable at
+              390px and can never spill past the calendar. Below the grid rather
+              than above it, so it never covers the days you are pointing at.
+              Single-charge days are already fully described by the header chip,
+              so this only appears when there is a list worth reading. */}
+          {hoveredDay && hoveredDay.items.length > 1 ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-full left-1/2 z-30 mt-2 flex w-max max-w-full -translate-x-1/2 flex-col gap-1 rounded-lg border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground shadow-lg"
+            >
+              {hoveredDay.items.map((item) => (
+                <span className="flex items-center gap-3" key={item.id}>
+                  <span className="min-w-0 flex-1 truncate text-left">{item.name}</span>
+                  <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                    {formatCurrency(item.amount, item.currency)}
+                  </span>
+                </span>
+              ))}
+              <span className="mt-0.5 flex items-center gap-3 border-t border-border/60 pt-1">
+                <span className="flex-1 text-left text-muted-foreground">Total</span>
+                <span className="ml-auto shrink-0 font-semibold tabular-nums">{formatCurrency(hoveredDay.total)}</span>
+              </span>
+            </span>
+          ) : null}
           {Array.from({ length: leadingBlanks }, (_, index) => (
             <span aria-hidden="true" key={`blank-${index}`} />
           ))}
@@ -308,7 +369,6 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
   onLeave?: () => void;
   onOpen?: () => void;
 }) {
-  const [tooltipOpen, setTooltipOpen] = useState(false);
 
   const shared = cn(
     "relative flex h-12 items-center justify-center rounded-xl border border-border/40 bg-muted/40",
@@ -328,12 +388,10 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
   const overflow = entry.items.length - visible.length;
 
   function open() {
-    setTooltipOpen(true);
     onHover?.();
   }
 
   function close() {
-    setTooltipOpen(false);
     onLeave?.();
   }
 
@@ -351,42 +409,6 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
       style={{ backgroundColor: `color-mix(in oklab, ${entry.items[0].color} 22%, var(--muted))` }}
       type="button"
     >
-      {/* Custom floating popover (replaces native title). Single charge = one
-          row; multiple charges expand into the full list so hover answers
-          "what are these?" without opening the day dialog. Opaque surface so it
-          reads as a layer above neighboring cells instead of riding on their
-          icons. */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute -top-3.5 left-1/2 z-20 -translate-x-1/2 -translate-y-full rounded-lg bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground shadow-lg ring-1 ring-border transition-[opacity,transform] duration-150 motion-reduce:transition-none",
-          tooltipOpen ? "opacity-100" : "translate-y-[calc(-100%+3px)] opacity-0"
-        )}
-      >
-        {entry.items.length === 1 ? (
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            <span className="max-w-36 truncate">{entry.items[0].name}</span>
-            <span className="tabular-nums text-muted-foreground">
-              {formatCurrency(entry.items[0].amount, entry.items[0].currency)}
-            </span>
-          </span>
-        ) : (
-          <span className="flex w-max min-w-36 flex-col gap-1">
-            {entry.items.map((item) => (
-              <span className="flex items-center gap-3 whitespace-nowrap" key={item.id}>
-                <span className="max-w-36 flex-1 truncate text-left">{item.name}</span>
-                <span className="ml-auto tabular-nums text-muted-foreground">
-                  {formatCurrency(item.amount, item.currency)}
-                </span>
-              </span>
-            ))}
-            <span className="mt-0.5 flex items-center gap-3 border-t border-border/60 pt-1 whitespace-nowrap">
-              <span className="flex-1 text-left text-muted-foreground">Total</span>
-              <span className="ml-auto font-semibold tabular-nums">{formatCurrency(entry.total)}</span>
-            </span>
-          </span>
-        )}
-      </span>
       <span className="flex items-center -space-x-1.5">
         {visible.map((item) => (
           <ItemAvatar color={item.color} name={item.name} key={item.id} size="sm" />

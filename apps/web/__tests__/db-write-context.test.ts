@@ -64,6 +64,17 @@ describe("Postgres DB write scope routing", () => {
     expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "COMMIT"]);
   });
 
+  it("routes coordination metadata through the pool while a queued transaction is active", async () => {
+    const { clientQuery, driver, poolQuery } = createDriverHarness();
+
+    await runInDbWriteScope(() => driver.exec("BEGIN"));
+    await driver.queryCoordinationMetadata("UPDATE sync_schedules SET claimed_at = $1", ["now"]);
+    await driver.exec("COMMIT");
+
+    expect(poolQuery).toHaveBeenCalledWith("UPDATE sync_schedules SET claimed_at = $1", ["now"]);
+    expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "COMMIT"]);
+  });
+
   it("warns and uses legacy client routing when BEGIN starts outside the write scope", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { clientQuery, driver, poolQuery } = createDriverHarness();
@@ -80,6 +91,18 @@ describe("Postgres DB write scope routing", () => {
     );
     expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "SELECT legacy_transaction", "ROLLBACK"]);
     expect(poolQuery).not.toHaveBeenCalledWith("SELECT legacy_transaction", undefined);
+  });
+
+  it("keeps coordination metadata off a legacy transaction client", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { clientQuery, driver, poolQuery } = createDriverHarness();
+
+    await driver.exec("BEGIN");
+    await driver.queryCoordinationMetadata("UPDATE sync_schedules SET claimed_at = $1", ["now"]);
+    await driver.exec("ROLLBACK");
+
+    expect(poolQuery).toHaveBeenCalledWith("UPDATE sync_schedules SET claimed_at = $1", ["now"]);
+    expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "ROLLBACK"]);
   });
 
   it("returns in-scope queries to the pool after COMMIT", async () => {

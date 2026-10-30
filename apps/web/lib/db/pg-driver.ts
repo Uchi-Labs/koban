@@ -64,6 +64,14 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
     return { rows: result.rows as T[] };
   }
 
+  async queryCoordinationMetadata<T>(
+    sql: string,
+    params?: readonly unknown[]
+  ): Promise<FinanceDbQueryResult<T>> {
+    const result = await this.pool.query<QueryResultRow>(sql, params ? [...params] : undefined);
+    return { rows: result.rows as T[] };
+  }
+
   // A query rides the open transaction only when it comes from the write
   // queue that owns it; concurrent page reads go to the pool so they neither
   // pipeline on one client (pg deprecation) nor serialize behind sync writes.

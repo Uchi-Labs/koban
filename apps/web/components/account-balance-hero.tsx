@@ -116,7 +116,11 @@ export function AccountBalanceHero({
           )}
           {trends.length > 0 ? (
             <LazyMotion features={domAnimation}>
-              <div aria-label="Balance history range" className="flex items-center gap-0.5 rounded-2xl bg-muted p-[3px]">
+              <div
+                aria-label="Balance history range"
+                className="flex items-center gap-0.5 rounded-2xl bg-muted p-[3px]"
+                data-slot="segmented-control"
+              >
                 {rangeOrder.map((range) => {
                   const available = trends.some((trend) => trend.label === range);
                   const active = activeRange === range;
@@ -136,6 +140,7 @@ export function AccountBalanceHero({
                         <m.span
                           aria-hidden="true"
                           className="absolute inset-0 rounded-2xl bg-background shadow-sm"
+                          data-slot="segmented-control-pill"
                           layoutId="balance-range-pill"
                           transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                         />

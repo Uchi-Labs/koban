@@ -34,6 +34,12 @@ Everything else is optional and off until configured:
 
 With nothing configured, the app is fully functional and fully local — no financial data leaves your machine.
 
+## External agents
+
+Install the standalone CLI with `node scripts/install-koban.mjs`, then run `koban --help` from any directory. Use commands such as `koban transactions list`, `koban transactions tag ID --add groceries`, and `koban sources status`. Claude Code connects through `koban mcp`.
+
+See [the CLI guide](packages/agent-interface/README.md) for installation, configuration, Claude Code registration and workflow examples. Run `koban doctor` to check the connection.
+
 ## Development
 
 ```bash

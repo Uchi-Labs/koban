@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createAuthSession, extractUnverifiedClaims } from "chatgpt-oauth";
+import { createAuthSession, DisabledError, extractUnverifiedClaims } from "chatgpt-oauth";
 import type { AuthSession, CredentialStore, PendingLogin, Session, TokenSet } from "chatgpt-oauth";
 import { createChatGPT } from "chatgpt-oauth/ai-sdk";
 import type { LanguageModel } from "ai";
@@ -213,16 +213,34 @@ async function seedChatGptCredentialsIfNeeded(env: WorkspaceEnv): Promise<void> 
   }
 }
 
+/**
+ * `status` throws DisabledError once the kill switch is on, where it used to
+ * return normally. "Is ChatGPT connected" is asked from the settings page on
+ * every install, including the ones that never enabled it, and the answer there
+ * is no rather than a raised error.
+ */
+async function readStoredSession(): Promise<Session | null> {
+  try {
+    return await chatgptAuth.status(chatgptSubject);
+  } catch (error) {
+    if (error instanceof DisabledError) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 /** The stored session for the default subject, seeding from env/codex on first read. */
 export async function getStoredChatGptOAuthSession(env: WorkspaceEnv = readWorkspaceEnv()): Promise<Session | null> {
-  const existing = await chatgptAuth.status(chatgptSubject);
+  const existing = await readStoredSession();
 
-  if (existing) {
+  if (existing || !isChatGptOAuthEnabled()) {
     return existing;
   }
 
   await seedChatGptCredentialsIfNeeded(env);
-  return chatgptAuth.status(chatgptSubject);
+  return readStoredSession();
 }
 
 export async function chatGptOAuthStatus(env: WorkspaceEnv = readWorkspaceEnv()): Promise<{

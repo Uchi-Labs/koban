@@ -13,6 +13,9 @@ export async function GET() {
       id: adapter.id,
       kind: adapter.kind,
       display_name: adapter.displayName,
+      account: adapter.mailAccount ? {
+        profile: adapter.mailAccount.profile, email: adapter.mailAccount.email, label: adapter.mailAccount.label
+      } : undefined,
       role: adapter.role,
       binary: adapter.binary,
       cache: adapter.cache

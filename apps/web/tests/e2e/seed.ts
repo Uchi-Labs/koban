@@ -10,8 +10,11 @@ import {
 import type { Ledger } from "@/lib/finance-data";
 import { internalAmountSignConvention } from "@/lib/ledger-normalization";
 
-const e2eDbRelativePath = path.join("tests", "e2e", ".e2e-data", "pglite");
-const e2eDataRoot = path.join(process.cwd(), "tests", "e2e", ".e2e-data");
+const namespace = process.env.KOBAN_E2E_NAMESPACE;
+if (namespace && !/^[a-z][a-z0-9-]{0,40}$/.test(namespace)) throw new Error("Invalid E2E namespace.");
+const dataDirectory = namespace ? `.e2e-${namespace}` : ".e2e-data";
+const e2eDbRelativePath = path.join("tests", "e2e", dataDirectory, "pglite");
+const e2eDataRoot = path.join(process.cwd(), "tests", "e2e", dataDirectory);
 const e2eDbPath = path.join(e2eDataRoot, "pglite");
 const e2eLedgerBackupPath = path.join(e2eDataRoot, "ledger-backup.json");
 const syncedAt = "2026-06-30T12:00:00.000Z";
@@ -97,6 +100,7 @@ export default async function globalSetup(): Promise<void> {
 
 export async function seedE2eDatabase(): Promise<void> {
   process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
+  process.env.KOBAN_MAIL_ACCOUNTS_FILE = path.join(e2eDataRoot, "mail-accounts.json");
   process.env.AI_FINANCES_PGLITE_DIR = e2eDbRelativePath;
   process.env.AI_FINANCES_LEDGER_BACKUP_PATH = e2eLedgerBackupPath;
 

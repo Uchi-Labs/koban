@@ -42,6 +42,11 @@ export function parseTransactionAmountFilters(searchParams: URLSearchParams) {
   };
 }
 
+export function isCalendarDate(value: string): boolean {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
+}
+
 export function parseBoundedLimit(value: unknown, defaultLimit: number, maxLimit = 250): number {
   const parsed = parseNumericLimit(value, defaultLimit);
   return Math.min(Math.max(Math.trunc(parsed), 1), maxLimit);

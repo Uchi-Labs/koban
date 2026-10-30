@@ -4,7 +4,11 @@
 // color contract: it speaks {hue, saturation, alpha, layer} internally but the
 // registry stores CSS color strings, so this adapts to `value`/`onChange(hex)`.
 
-import { BlossomColorPicker as Blossom } from "@dayflow/blossom-color-picker-react";
+import {
+  BlossomColorPicker as Blossom,
+  lightnessToSliderValue,
+  parseColor
+} from "@dayflow/blossom-color-picker-react";
 import { useReducedMotion } from "motion/react";
 import * as React from "react";
 import "@dayflow/blossom-color-picker/styles.css";
@@ -39,14 +43,33 @@ export function BlossomPicker({ ariaLabel, className, onChange, petalSize, value
   // saturation, so a hex -> {hue, saturation, layer} inversion would be lossy and
   // would fight the user's own drag. Seeding the layer/hue from the current value
   // is enough; onChange is the source of truth from there.
+  /**
+   * Seeded with the colour string itself, which Blossom accepts directly
+   * (`ColorInput = string | {h,s,l}` in its types) and converts internally.
+   *
+   * Two earlier attempts got this wrong in different directions, both because
+   * they tried to hand-build Blossom's value object. The first looked the hex
+   * up in PALETTE_HEX and derived a hue from the array index, so any colour
+   * outside the twelve category swatches missed and fell back to a fixed hue of
+   * 330 -- every petal opened pink. The second passed real HSL in, ignoring
+   * this file's own warning that Blossom's `saturation` is a SLIDER POSITION
+   * rather than HSL saturation; the mismatched pair rendered near-black. The
+   * component already knows how to read a colour, so hand it the colour.
+   */
   const defaultValue = React.useMemo(() => {
     const hex = value && /^oklch\(/i.test(value) ? oklchToHex(value) : value;
-    const index = hex ? PALETTE_HEX.indexOf(hex.toLowerCase()) : -1;
+    const { h, s, l } = parseColor(hex ?? FALLBACK_HEX);
+
     return {
       alpha: 100,
-      hue: index >= 0 ? Math.round((index / PALETTE_HEX.length) * 360) : 330,
-      layer: "outer" as const,
-      saturation: 50
+      hue: Math.round(h),
+      lightness: Math.round(l),
+      // Blossom's inner ring holds the pale tints, the outer ring the full ones.
+      layer: l > 70 ? ("inner" as const) : ("outer" as const),
+      originalSaturation: Math.round(s),
+      // NOT the HSL saturation. This field is a slider position, and the
+      // package ships the conversion for exactly this reason.
+      saturation: lightnessToSliderValue(l)
     };
     // Seed once — later `value` changes come from this picker itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps

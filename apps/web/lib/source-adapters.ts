@@ -25,6 +25,9 @@ import {
   fetchMicrosoftSourceRecords,
   microsoftSourceOAuthStatus
 } from "@/lib/microsoft-source-oauth";
+import { fetchShopSourceItems, normalizeShopOrders, shopSessionStatus } from "@/lib/shop-source";
+import { listMailAccountsSync, outlookConfigPath, readIcloudCredentials, type MailAccount } from "@/lib/mail-accounts";
+import { fetchIcloudSourceItems } from "@/lib/icloud-source";
 import { Effect, Schedule } from "effect";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +37,7 @@ const outlookAuthCommand = "outlook-email-pp-cli auth login --device-code";
 const sourceRefreshRetryPolicy = Schedule.exponential("50 millis").pipe(Schedule.compose(Schedule.recurs(2)));
 
 export interface SourceAdapterDefinition {
+  mailAccount?: MailAccount;
   authCheckArgs?: string[];
   authCommand?: string;
   binary: string;
@@ -193,7 +197,7 @@ export const sourceAdapterDefinitions = [
     installCommand: "npx -y @mvanhorn/printing-press-library install amazon-orders --cli-only",
     authCommand: "amazon-orders-pp-cli auth login --chrome",
     setupSteps: ["amazon-orders-pp-cli auth login --chrome", "amazon-orders-pp-cli sync --since 365d --agent"],
-    syncCommand: "amazon-orders-pp-cli orders list --time-filter months-6 --agent",
+    syncCommand: "amazon-orders-pp-cli orders list --time-filter months-6 --json --no-input",
     evidenceKinds: ["order", "receipt"]
   },
   {
@@ -246,8 +250,48 @@ export const sourceAdapterDefinitions = [
     ],
     syncCommand: "outlook-email-pp-cli messages list --data-source local --top 250 --agent",
     evidenceKinds: ["email", "receipt", "calendar_event"]
+  },
+  {
+    id: "source_shop_orders",
+    kind: "shop_orders",
+    displayName: "Shop orders",
+    role: "Order, merchant, item, total, and receipt context from Shop order history.",
+    binary: "built-in",
+    installCommand: "Built into Koban",
+    authCommand: "koban sources login shop",
+    setupSteps: ["koban sources login shop", "koban sources sync shop"],
+    syncCommand: "koban sources sync shop",
+    evidenceKinds: ["order", "receipt"]
+  },
+  {
+    id: "source_icloud_mail", kind: "icloud_mail", displayName: "iCloud Mail",
+    binary: "built-in", installCommand: "Built into Koban",
+    authCommand: "koban connectors add icloud --profile personal --email you@icloud.com --password-file PATH",
+    setupSteps: ["Generate an app-specific password in your Apple Account, then add an iCloud profile."],
+    syncCommand: "koban sources sync icloud --profile personal",
+    role: "Read-only email receipt and purchase context from iCloud Mail.",
+    evidenceKinds: ["email", "receipt"]
   }
 ] satisfies SourceAdapterDefinition[];
+
+export function allSourceAdapterDefinitions(): SourceAdapterDefinition[] {
+  const accounts = listMailAccountsSync();
+  const kindFor = { gmail: "gmail", outlook: "outlook_email", icloud: "icloud_mail" } as const;
+  const defaults = sourceAdapterDefinitions.filter((definition) => definition.kind !== "icloud_mail" || !accounts.some((account) => account.provider === "icloud"));
+  return [...defaults, ...accounts.map((account) => {
+    const template = sourceAdapterDefinitions.find((definition) => definition.kind === kindFor[account.provider])!;
+    const authCommand = `koban connectors login ${account.provider} --profile ${account.profile}${account.provider === "icloud" ? " --password-file PATH" : ""}`;
+    return {
+      ...template, id: account.id, mailAccount: account,
+      displayName: `${template.displayName} · ${account.label}`,
+      authCheckArgs: account.provider === "gmail" ? ["status", "--account", account.email, "--json", "--no-input"]
+        : account.provider === "outlook" ? ["--config", outlookConfigPath(account), "auth", "status"] : undefined,
+      authCommand,
+      setupSteps: [authCommand],
+      syncCommand: `koban sources sync ${account.provider} --profile ${account.profile}`
+    } satisfies SourceAdapterDefinition;
+  })];
+}
 
 export async function getSourceAdapterDiagnostics(): Promise<SourceAdapterDiagnostics> {
   await ensureSourceCatalog();
@@ -257,10 +301,11 @@ export async function getSourceAdapterDiagnostics(): Promise<SourceAdapterDiagno
     microsoftSourceOAuthStatus()
   ]);
   const adapters = await Promise.all(
-    sourceAdapterDefinitions.map(async (adapter) => {
-      const cliInstalled = await commandExists(adapter.binary);
+    allSourceAdapterDefinitions().map(async (adapter) => {
+      const shopSession = adapter.kind === "shop_orders" ? await shopSessionStatus() : undefined;
+      const cliInstalled = (adapter.kind === "shop_orders" || adapter.kind === "icloud_mail") ? true : await commandExists(adapter.binary);
       const webAuth =
-        adapter.kind === "outlook_email"
+        adapter.kind === "outlook_email" && !adapter.mailAccount
           ? {
               accountEmail: microsoftOAuth.accountEmail,
               accountName: microsoftOAuth.accountName,
@@ -272,8 +317,16 @@ export async function getSourceAdapterDiagnostics(): Promise<SourceAdapterDiagno
           : undefined;
       const installed = cliInstalled || webAuth?.connected === true;
       const [authState, cache] = await Promise.all([
-        cliInstalled && !webAuth?.connected ? checkAdapterAuthState(adapter) : Promise.resolve(undefined),
-        cliInstalled ? probeSourceAdapterCache(adapter) : Promise.resolve(undefined)
+        adapter.kind === "icloud_mail"
+          ? adapter.mailAccount
+            ? readIcloudCredentials(adapter.mailAccount.id).then(() => ({ status: "stale" as const, errorMessage: undefined }), () => ({ status: "not_configured" as const, errorMessage: "iCloud app-specific password is missing." }))
+            : Promise.resolve({ status: "not_configured" as const, errorMessage: "Add a named iCloud Mail account." })
+          : adapter.kind === "shop_orders"
+          ? Promise.resolve(shopSession?.configured
+              ? { status: "stale" as const }
+              : { errorMessage: "Shop session is not configured.", status: "not_configured" as const })
+          : cliInstalled && !webAuth?.connected ? checkAdapterAuthState(adapter) : Promise.resolve(undefined),
+        cliInstalled && adapter.kind !== "shop_orders" && adapter.kind !== "icloud_mail" && !adapter.mailAccount ? probeSourceAdapterCache(adapter) : Promise.resolve(undefined)
       ]);
       const state = states.get(adapter.id);
 
@@ -281,6 +334,10 @@ export async function getSourceAdapterDiagnostics(): Promise<SourceAdapterDiagno
       const authStatus = webAuth?.connected ? "connected" : authState?.status;
       const status = installed ? mergeAdapterStatus(state?.status, authStatus, storage) : "not_configured";
       const setup = buildSourceSetupChecklist(adapter, installed, status, storage);
+      if (adapter.kind === "shop_orders" && shopSession?.configured && storage.sourceItemCount === 0) {
+        setup.missing = ["Import Shop order history to verify the saved session."];
+        setup.nextAction = "Run koban sources sync shop.";
+      }
 
       return {
         ...adapter,
@@ -382,7 +439,7 @@ export function syncSourceAdapter(sourceId: string): Promise<SourceSyncResult> {
 function syncSourceAdapterEffect(sourceId: string): Effect.Effect<SourceSyncResult, SourceRefreshError, never> {
   return Effect.gen(function* () {
     yield* sourcePromise(() => ensureSourceCatalog(), "Source catalog initialization failed.");
-    const definition = sourceAdapterDefinitions.find((adapter) => adapter.id === sourceId);
+    const definition = allSourceAdapterDefinitions().find((adapter) => adapter.id === sourceId);
 
     if (!definition) {
       return yield* Effect.fail(new SourceRefreshError({ message: `Unknown source adapter: ${sourceId}` }));
@@ -390,7 +447,9 @@ function syncSourceAdapterEffect(sourceId: string): Effect.Effect<SourceSyncResu
 
     const installed = yield* sourcePromise(
       async () =>
-        definition.kind === "outlook_email" && (await microsoftSourceOAuthStatus()).connected
+        (definition.kind === "shop_orders" || definition.kind === "icloud_mail")
+          ? true
+          : definition.kind === "outlook_email" && !definition.mailAccount && (await microsoftSourceOAuthStatus()).connected
           ? true
           : commandExists(definition.binary),
       `Source adapter installation check failed for ${definition.displayName}.`
@@ -578,7 +637,7 @@ export function syncSourceAdaptersEffect(
   sourceIds?: string[]
 ): Effect.Effect<SourceSyncBatchResult, SourceRefreshError, never> {
   return Effect.gen(function* () {
-    const ids = sourceIds?.length ? sourceIds : sourceAdapterDefinitions.map((adapter) => adapter.id);
+    const ids = sourceIds?.length ? sourceIds : allSourceAdapterDefinitions().map((adapter) => adapter.id);
     const results = yield* Effect.forEach(ids, (sourceId) => syncSourceAdapterEffect(sourceId), { concurrency: 2 });
 
     // A sync is the one in-app action that can change whether an adapter is
@@ -639,14 +698,14 @@ export async function importSourceAdapterPayload(
   input: SourceImportInput
 ): Promise<SourceSyncResult> {
   await ensureSourceCatalog();
-  const definition = sourceAdapterDefinitions.find((adapter) => adapter.id === sourceId);
+  const definition = allSourceAdapterDefinitions().find((adapter) => adapter.id === sourceId);
 
   if (!definition) {
     throw new SourceAdapterError(`Unknown source adapter: ${sourceId}`);
   }
 
   const startedAt = new Date().toISOString();
-  const installed = await commandExists(definition.binary);
+  const installed = definition.binary === "built-in" || await commandExists(definition.binary);
 
   try {
     const items = parseAndNormalizeSourceImport(definition, input);
@@ -713,7 +772,7 @@ export async function importSourceAdapterPayload(
 }
 
 export function previewSourceAdapterPayload(sourceId: string, input: SourceImportInput): SourceImportPreviewResult {
-  const definition = sourceAdapterDefinitions.find((adapter) => adapter.id === sourceId);
+  const definition = allSourceAdapterDefinitions().find((adapter) => adapter.id === sourceId);
 
   if (!definition) {
     throw new SourceAdapterError(`Unknown source adapter: ${sourceId}`);
@@ -1295,7 +1354,7 @@ export function normalizeGmailMessages(payload: unknown, sourceId = "source_gmai
       const internalDate = firstString(record, ["internalDate", "internal_date"]);
       const occurredAt =
         normalizeEpochMilliseconds(internalDate) ??
-        normalizeDate(gmailHeader(record, "Date") ?? firstString(record, ["date", "received_at", "created_at"]));
+        normalizeDate(gmailHeader(record, "Date") ?? firstString(record, ["internalDateIso", "date", "received_at", "created_at"]));
       const preview = firstString(record, ["snippet", "bodyPreview", "preview", "summary"]);
       const summary = [sender ? `From: ${sender}` : undefined, preview].filter(Boolean).join(". ");
       const receiptText = [subject, preview].filter(Boolean).join(" ");
@@ -2602,7 +2661,7 @@ function fetchAdapterItemsEffect(
 
 async function ensureSourceCatalog(): Promise<void> {
   await ensureExternalSourceCatalog(
-    sourceAdapterDefinitions.map((adapter) => ({
+    allSourceAdapterDefinitions().map((adapter) => ({
       command: adapter.binary,
       configured: false,
       displayName: adapter.displayName,
@@ -2614,35 +2673,68 @@ async function ensureSourceCatalog(): Promise<void> {
 }
 
 async function fetchAdapterItems(adapter: SourceAdapterDefinition): Promise<AdapterFetchResult> {
+  if (adapter.mailAccount?.provider === "gmail") {
+    const { rateLimited, threads } = await fetchGmailThreads(adapter.mailAccount.email);
+    const items = normalizeGmailMessages(threads, adapter.id);
+    return {
+      items,
+      sourceStatus: items.length ? "connected" : "stale",
+      ...(rateLimited ? { errorMessage: gmailRateLimitedMessage(items.length), refreshFailed: true } : {})
+    };
+  }
+  if (adapter.mailAccount?.provider === "outlook") {
+    const configPath = outlookConfigPath(adapter.mailAccount);
+    const refreshError = await refreshOutlookToken(configPath);
+    let payload: unknown;
+    try {
+      payload = await runJsonCommand("outlook-email-pp-cli", [
+        "--config", configPath, "messages", "list",
+        "--data-source", "live", "--no-cache", "--top", "250", "--json", "--no-input",
+        "--select-fields", "id,subject,from,sender,receivedDateTime,bodyPreview"
+      ], 30_000);
+    } catch (error) {
+      // An expired token surfaces as a bare 401; the refresh failure says why.
+      throw refreshError ?? error;
+    }
+    const items = normalizeOutlookMessages(payload, adapter.id);
+    return { items, sourceStatus: items.length ? "connected" : "stale" };
+  }
   switch (adapter.kind) {
+    case "icloud_mail": {
+      if (!adapter.mailAccount) throw new SourceAdapterError("Add an iCloud profile before syncing.");
+      const result = await fetchIcloudSourceItems(adapter.mailAccount);
+      return { items: result.items, sourceStatus: result.items.length ? "connected" : "stale", refreshFailed: result.hasMore || result.partial,
+        errorMessage: result.hasMore ? "iCloud sync read the newest 250 messages; more mailbox history remains." : result.partial ? "Some iCloud messages could not be fetched or parsed completely." : undefined };
+    }
+    case "shop_orders": {
+      const result = await fetchShopSourceItems();
+      return {
+        errorMessage: result.hasMore ? "Shop sync reached the 250-order safety cap; more order history remains." : undefined,
+        items: result.items,
+        refreshFailed: result.hasMore,
+        sourceStatus: result.items.length > 0 ? "connected" : "stale"
+      };
+    }
     case "gmail": {
-      const payload = await runJsonCommand(
-        adapter.binary,
-        [
-          "gmail",
-          "search",
-          "newer_than:365d (receipt OR order OR invoice)",
-          "--json",
-          "--results-only",
-          "--gmail-no-send",
-          "--no-input",
-          "--select",
-          "id,threadId,snippet,payload.headers,internalDate"
-        ],
-        30_000
-      );
-      const items = normalizeAdapterItems(adapter, payload);
+      const { rateLimited, threads } = await fetchGmailThreads();
+      const items = normalizeAdapterItems(adapter, threads);
       return {
         errorMessage:
           items.length === 0
             ? `No local Gmail receipt/order messages returned. Run ${gmailAuthCommand}, then retry Gmail sync or import JSON/JSONL/CSV/EML/MBOX/ICS/ZIP output.`
-            : undefined,
+            : rateLimited ? gmailRateLimitedMessage(items.length) : undefined,
         items,
         sourceStatus: items.length > 0 ? "connected" : "stale"
       };
     }
     case "amazon_orders": {
-      return fetchAdapterItemsWithCacheFallback(adapter, ["orders", "list", "--time-filter", "months-6", "--agent"], {
+      const paged = await fetchAmazonOrderPages(adapter);
+
+      if (paged) {
+        return paged;
+      }
+
+      return fetchAdapterItemsWithCacheFallback(adapter, ["orders", "list", "--time-filter", "months-6", "--json", "--no-input"], {
         emptyMessage:
           "No local Amazon order rows returned. Run amazon-orders-pp-cli auth login --chrome, then amazon-orders-pp-cli sync --since 365d --agent or import JSON/JSONL/CSV output."
       });
@@ -2696,6 +2788,10 @@ async function fetchAdapterItems(adapter: SourceAdapterDefinition): Promise<Adap
 
 function normalizeAdapterItems(adapter: SourceAdapterDefinition, payload: unknown): SourceItemInput[] {
   switch (adapter.kind) {
+    case "icloud_mail":
+      return normalizeOutlookMessages(payload, adapter.id);
+    case "shop_orders":
+      return normalizeShopOrders(payload, adapter.id);
     case "gmail":
       return normalizeGmailMessages(payload, adapter.id);
     case "amazon_orders":
@@ -2709,6 +2805,53 @@ function normalizeAdapterItems(adapter: SourceAdapterDefinition, payload: unknow
     default:
       throw new SourceAdapterError(`Unsupported source adapter kind: ${adapter.kind}`);
   }
+}
+
+// Amazon serves order history about ten orders per page; without --start-index
+// a sync saw only the newest page. --agent implies --compact, which strips each
+// order down to its status, so plain --json is used. A failed first page defers to the cached
+// path; a failure after that keeps the pages already read.
+const amazonPageSize = 10;
+const amazonMaxPages = 10;
+const amazonPageDelayMs = 1_500;
+
+async function fetchAmazonOrderPages(adapter: SourceAdapterDefinition): Promise<AdapterFetchResult | undefined> {
+  const items = new Map<string, SourceItemInput>();
+
+  for (let page = 0; page < amazonMaxPages; page += 1) {
+    if (page > 0) {
+      await new Promise((resolve) => setTimeout(resolve, amazonPageDelayMs));
+    }
+
+    let payload: unknown;
+    try {
+      payload = await runJsonCommand(adapter.binary, [
+        "orders", "list", "--time-filter", "months-6", "--start-index", String(page * amazonPageSize), "--json", "--no-input"
+      ], 30_000);
+    } catch {
+      if (items.size === 0) {
+        return undefined;
+      }
+
+      return {
+        errorMessage: `Amazon order history stopped responding after ${items.size} orders; older orders were skipped this sync.`,
+        items: [...items.values()],
+        refreshFailed: true,
+        sourceStatus: "connected"
+      };
+    }
+
+    const before = items.size;
+    for (const item of normalizeAdapterItems(adapter, payload)) {
+      items.set(item.externalId, item);
+    }
+
+    if (asArrayPayload(payload).length < amazonPageSize || items.size === before) {
+      break;
+    }
+  }
+
+  return items.size > 0 ? { items: [...items.values()], sourceStatus: "connected" } : undefined;
 }
 
 async function fetchAdapterItemsWithCacheFallback(
@@ -3051,6 +3194,160 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+export interface SourceLiveSearchInput {
+  // Inclusive YYYY-MM-DD bounds.
+  from: string;
+  limit?: number;
+  query?: string;
+  to: string;
+}
+
+export interface SourceLiveSearchResult {
+  items: SourceItemInput[];
+  run: SourceSyncRunRecord;
+  sourceId: string;
+}
+
+// Searches a registered mailbox directly for a date window, for finding the
+// email behind one transaction instead of importing a whole year. Matches are
+// stored like synced items (upsert only), so they can be attached as evidence.
+export async function searchSourceLive(sourceId: string, input: SourceLiveSearchInput): Promise<SourceLiveSearchResult> {
+  await ensureSourceCatalog();
+  const definition = allSourceAdapterDefinitions().find((adapter) => adapter.id === sourceId);
+
+  if (!definition) {
+    throw new SourceAdapterError(`Unknown source adapter: ${sourceId}`);
+  }
+
+  const account = definition.mailAccount;
+
+  if (account?.provider !== "gmail" && account?.provider !== "outlook") {
+    throw new SourceAdapterError("Live search supports registered Gmail and Outlook profiles.");
+  }
+
+  const limit = Math.min(Math.max(Math.trunc(input.limit ?? 25), 1), 50);
+  const endExclusive = nextCalendarDay(input.to);
+  const startedAt = new Date().toISOString();
+  let items: SourceItemInput[];
+
+  if (account.provider === "gmail") {
+    const query = [input.query?.trim(), `after:${input.from.replaceAll("-", "/")}`, `before:${endExclusive.replaceAll("-", "/")}`]
+      .filter(Boolean)
+      .join(" ");
+    const payload = await runJsonCommand("gog", [
+      "gmail", "search", query, "--account", account.email, "--max", String(limit),
+      "--json", "--gmail-no-send", "--readonly", "--no-input"
+    ], 30_000);
+    const record = asRecord(payload);
+    items = normalizeGmailMessages(Array.isArray(record?.threads) ? record.threads : asArrayPayload(payload), sourceId);
+  } else {
+    // Graph rejects $search combined with $filter or $orderby here, and the CLI
+    // quotes search text so KQL date operators cannot pass through; filter the
+    // window server-side and match words locally.
+    const configPath = outlookConfigPath(account);
+    const refreshError = await refreshOutlookToken(configPath);
+    let payload: unknown;
+    try {
+      payload = await runJsonCommand("outlook-email-pp-cli", [
+        "--config", configPath, "messages", "list", "--data-source", "live", "--no-cache", "--top", "250",
+        "--filter", `receivedDateTime ge ${input.from}T00:00:00Z and receivedDateTime lt ${endExclusive}T00:00:00Z`,
+        "--json", "--no-input", "--select-fields", "id,subject,from,sender,receivedDateTime,bodyPreview"
+      ], 30_000);
+    } catch (error) {
+      throw refreshError ?? error;
+    }
+    const terms = input.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+    items = normalizeOutlookMessages(payload, sourceId)
+      .filter((item) => {
+        const text = [item.title, item.summary, item.merchantName].join(" ").toLowerCase();
+        return terms.every((term) => text.includes(term));
+      })
+      .slice(0, limit);
+  }
+
+  const run = await recordSourceSyncRun({
+    finishedAt: new Date().toISOString(),
+    items,
+    runStatus: "succeeded",
+    sourceId,
+    sourceStatus: "connected",
+    startedAt
+  });
+
+  return { items, run, sourceId };
+}
+
+function nextCalendarDay(date: string): string {
+  const next = new Date(`${date}T00:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
+}
+
+// Microsoft access tokens last about an hour and the Outlook CLI does not
+// refresh them on read. Its refresh also requests the CLI's default read-write
+// scopes unless told otherwise, which Microsoft rejects for a read-only grant.
+const outlookReadScopes = "Mail.Read User.Read offline_access";
+
+async function refreshOutlookToken(configPath: string): Promise<SourceAdapterError | undefined> {
+  try {
+    await execFileAsync("outlook-email-pp-cli", ["--config", configPath, "auth", "refresh", "--scopes", outlookReadScopes], {
+      timeout: 30_000
+    });
+    return undefined;
+  } catch {
+    return new SourceAdapterError("Outlook sign-in expired and could not be refreshed. Run koban connectors login outlook, then sync again.");
+  }
+}
+
+// gog's search returns thread summaries ({ threads, nextPageToken }) carrying
+// subject, from and date; selecting message fields such as payload.headers
+// yields empty records. Google caps this project's per-user query cost: a
+// 250-thread search is rejected while 50-100 fit, so pages stay small with a
+// pause between them, and a rate-limited later page keeps earlier results.
+const gmailPageSize = 50;
+const gmailMaxPages = 2;
+const gmailPageDelayMs = 10_000;
+
+async function fetchGmailThreads(email?: string): Promise<{ rateLimited: boolean; threads: unknown[] }> {
+  const threads: unknown[] = [];
+  let pageToken: string | undefined;
+
+  for (let page = 0; page < gmailMaxPages; page += 1) {
+    if (page > 0) {
+      await new Promise((resolve) => setTimeout(resolve, gmailPageDelayMs));
+    }
+
+    let payload: unknown;
+    try {
+      payload = await runJsonCommand("gog", [
+        "gmail", "search", "newer_than:365d (receipt OR order OR invoice)",
+        ...(email ? ["--account", email] : []),
+        "--max", String(gmailPageSize), ...(pageToken ? ["--page", pageToken] : []),
+        "--json", "--gmail-no-send", "--readonly", "--no-input"
+      ], 30_000);
+    } catch (error) {
+      if (threads.length > 0 && error instanceof Error && /rateLimitExceeded|quota exceeded/i.test(error.message)) {
+        return { rateLimited: true, threads };
+      }
+      throw error;
+    }
+
+    const record = asRecord(payload);
+    threads.push(...(Array.isArray(record?.threads) ? record.threads : asArrayPayload(payload)));
+    pageToken = typeof record?.nextPageToken === "string" && record.nextPageToken ? record.nextPageToken : undefined;
+
+    if (!pageToken) {
+      break;
+    }
+  }
+
+  return { rateLimited: false, threads };
+}
+
+function gmailRateLimitedMessage(count: number): string {
+  return `Gmail's per-user rate limit stopped the import after ${count} messages; the rest were skipped this sync.`;
 }
 
 async function runJsonCommand(binary: string, args: string[], timeout: number): Promise<unknown> {
@@ -3427,7 +3724,9 @@ function asArrayPayload(payload: unknown, depth = 0): unknown[] {
     }
   }
 
-  for (const key of ["data", "result", "payload", "response"]) {
+  // "results" is an array for some CLIs and a { value: [...] } envelope for the
+  // Outlook CLI, so it is checked again here as an object.
+  for (const key of ["data", "result", "results", "payload", "response"]) {
     const nested = asArrayPayload(record[key], depth + 1);
 
     if (nested.length > 0) {

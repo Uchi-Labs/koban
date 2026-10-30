@@ -20,6 +20,13 @@ class PgliteFinanceDbDriver implements FinanceDbDriver {
   async query<T>(sql: string, params?: readonly unknown[]): Promise<FinanceDbQueryResult<T>> {
     return this.db.query<T>(sql, params ? [...params] : undefined);
   }
+
+  async queryCoordinationMetadata<T>(
+    sql: string,
+    params?: readonly unknown[]
+  ): Promise<FinanceDbQueryResult<T>> {
+    return this.query<T>(sql, params);
+  }
 }
 
 export async function openPgliteFinanceDb(dbPath: string): Promise<FinanceDbDriver> {

@@ -145,7 +145,8 @@ export function getBetterAuth(env: AuthEnvironment = readWorkspaceEnv()): Better
     secret,
     baseUrl ?? "",
     googleClientId ?? "",
-    googleClientSecret ?? ""
+    googleClientSecret ?? "",
+    env.BETTER_AUTH_TRUSTED_ORIGINS ?? ""
   ]);
 
   if (betterAuthInstance) {
@@ -162,6 +163,8 @@ export function getBetterAuth(env: AuthEnvironment = readWorkspaceEnv()): Better
     appName: "Koban",
     basePath: betterAuthBasePath,
     baseURL: baseUrl || undefined,
+    trustedOrigins: resolveTrustedOrigins(env),
+    secret,
     database: betterAuthPool,
     databaseHooks: {
       user: {
@@ -212,6 +215,48 @@ export function getBetterAuth(env: AuthEnvironment = readWorkspaceEnv()): Better
   betterAuthInstance = auth;
   betterAuthConfigKey = configKey;
   return auth;
+}
+
+/**
+ * Origins Better Auth will accept a sign-in from.
+ *
+ * Without this it trusts only BETTER_AUTH_URL, so an unset base URL rejects
+ * every credential POST with "Invalid origin", and a base URL naming one
+ * loopback spelling rejects the other: 127.0.0.1 and localhost are different
+ * origins to a browser even though they are the same machine.
+ *
+ * Both loopback spellings are trusted on any port. They are only reachable
+ * from the user's own machine, so this widens nothing an attacker can reach,
+ * and it stops the dev server's port or host spelling from breaking login.
+ * Deployed hosts come from BETTER_AUTH_URL plus the comma-separated
+ * BETTER_AUTH_TRUSTED_ORIGINS, and neither includes a wildcard host.
+ */
+export function resolveTrustedOrigins(env: AuthEnvironment): string[] {
+  const origins = new Set<string>([
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+    "https://localhost:*",
+    "https://127.0.0.1:*"
+  ]);
+
+  const baseUrl = env.BETTER_AUTH_URL?.trim();
+  if (baseUrl) {
+    try {
+      origins.add(new URL(baseUrl).origin);
+    } catch {
+      // A malformed base URL is the deployer's problem to fix; it must not
+      // take the loopback entries down with it.
+    }
+  }
+
+  for (const entry of (env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(",")) {
+    const trimmed = entry.trim();
+    if (trimmed) {
+      origins.add(trimmed);
+    }
+  }
+
+  return [...origins];
 }
 
 function getPasskeyOptions(env: AuthEnvironment): PasskeyOptions {

@@ -51,6 +51,13 @@ import { SyncStatusIsland } from "@/components/ui/sync-status-island";
 import { ActionSwapIcon, ActionSwapText } from "@/components/ui/action-swap";
 import { Button } from "@/components/ui/button";
 import { ToastProvider, useToast } from "@/components/ui/toast";
+import {
+  clampSidebarWidth,
+  parseSidebarWidth,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_WIDTH_COOKIE,
+  SIDEBAR_WIDTH_COOKIE_MAX_AGE
+} from "@/lib/sidebar-width";
 import { deriveSyncIslandState, SYNC_ISLAND_PHASE_COUNT } from "@/lib/sync-island-state";
 import { cn } from "@/lib/utils";
 
@@ -86,28 +93,8 @@ const mobileNavItems = [
   { label: "Cash flow", href: "/cash-flow", icon: ArrowLeftRight }
 ];
 
-const SIDEBAR_MIN_WIDTH = 208;
-const SIDEBAR_MAX_WIDTH = 320;
-const SIDEBAR_DEFAULT_WIDTH = 256;
+/** Where the width lived before it became a cookie; migrated once, then cleared. */
 const SIDEBAR_WIDTH_STORAGE_KEY = "koban:sidebar-width";
-
-function clampSidebarWidth(px: number) {
-  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, px));
-}
-
-function readStoredSidebarWidth() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-  if (!stored) {
-    return null;
-  }
-
-  const parsed = Number.parseInt(stored, 10);
-  return Number.isFinite(parsed) ? clampSidebarWidth(parsed) : null;
-}
 
 function SidebarResizeHandle({
   onReset,
@@ -196,6 +183,8 @@ interface AppShellProps {
   accounts: Account[];
   children: React.ReactNode;
   demoMode?: boolean;
+  /** Sidebar width in px from the `sidebar_width` cookie; null when never resized. */
+  initialSidebarWidth?: number | null;
   lastSyncedAt?: string;
   reviewActionableCount: number;
   source: "empty" | "koban";
@@ -216,6 +205,7 @@ function AppShellContent({
   accountGroups,
   accounts,
   demoMode,
+  initialSidebarWidth,
   lastSyncedAt,
   reviewActionableCount,
   source,
@@ -240,16 +230,34 @@ function AppShellContent({
   });
 
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState<number | null>(() => readStoredSidebarWidth());
+  // Seeded from the server-read cookie, never from browser storage, so this
+  // render is identical to the HTML React is hydrating against.
+  const [sidebarWidth, setSidebarWidth] = useState<number | null>(initialSidebarWidth ?? null);
   const [resizingSidebar, setResizingSidebar] = useState(false);
 
   const persistSidebarWidth = React.useCallback((px: number | null) => {
-    if (px === null) {
-      window.localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(px));
-    }
+    document.cookie =
+      px === null
+        ? `${SIDEBAR_WIDTH_COOKIE}=; path=/; max-age=0`
+        : `${SIDEBAR_WIDTH_COOKIE}=${px}; path=/; max-age=${SIDEBAR_WIDTH_COOKIE_MAX_AGE}`;
   }, []);
+
+  // One-time move of a width saved before it became a cookie. Runs after mount,
+  // so it cannot affect hydration; anyone who never resized has nothing stored
+  // and this is a single no-op read.
+  React.useEffect(() => {
+    const legacy = parseSidebarWidth(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    if (legacy === null) {
+      return;
+    }
+
+    window.localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
+
+    if (initialSidebarWidth == null) {
+      setSidebarWidth(legacy);
+      persistSidebarWidth(legacy);
+    }
+  }, [initialSidebarWidth, persistSidebarWidth]);
 
   const changePaletteOpen = React.useCallback((open: boolean) => {
     setPaletteOpen((current) => {

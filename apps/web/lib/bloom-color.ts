@@ -149,6 +149,17 @@ function rgbToHsl({ r, g, b }: Rgb): Hsl {
   return { h, s, l };
 }
 
+/**
+ * Hue, saturation and lightness of a hex colour, or null if it will not parse.
+ *
+ * The inverse of hslToHex. Needed by anything that has to seed a hue-based
+ * control from an arbitrary stored colour rather than from a fixed palette.
+ */
+export function hexToHsl(hex: string): Hsl | null {
+  const rgb = hexToRgb(hex);
+  return rgb ? rgbToHsl(rgb) : null;
+}
+
 export function hslToHex(h: number, s: number, l: number): string {
   return rgbToHex(hslToRgb({ h, s, l }));
 }

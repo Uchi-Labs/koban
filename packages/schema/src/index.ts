@@ -212,11 +212,13 @@ export interface DashboardSummary {
 }
 
 export type ExternalSourceKind =
+  | "icloud_mail"
   | "gmail"
   | "outlook_email"
   | "amazon_orders"
   | "instacart"
   | "airbnb"
+  | "shop_orders"
   | "user_note"
   | "voice_note";
 
