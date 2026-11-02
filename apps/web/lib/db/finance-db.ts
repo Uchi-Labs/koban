@@ -15,6 +15,7 @@ import type {
   InvestmentPosition,
   ProviderConnection,
   SourceItem,
+  SourceItemLine,
   TagStyle,
   Transaction,
   TransactionEvidenceLink,
@@ -336,6 +337,7 @@ interface EvidenceSummaryRow {
 }
 
 interface EvidenceSummaryBatchRow extends EvidenceSummaryRow {
+  source_item_id: string;
   transaction_id: string;
 }
 
@@ -3731,6 +3733,10 @@ export async function listSourceItems({
       OR COALESCE(merchant_name, '') ILIKE $${values.length}
       OR external_id ILIKE $${values.length}
       OR kind ILIKE $${values.length}
+      OR EXISTS (
+        SELECT 1 FROM source_item_lines l
+        WHERE l.source_item_id = source_items.id AND l.name ILIKE $${values.length}
+      )
     )`);
   }
 
@@ -3775,8 +3781,193 @@ export async function listSourceItems({
     LIMIT $${values.length}`,
     values
   );
+  const lines = await readSourceItemLines(db, result.rows.map((row) => row.id));
 
-  return result.rows.map(sourceItemFromRow);
+  return result.rows.map((row) => withLines(sourceItemFromRow(row), lines.get(row.id)));
+}
+
+function withLines(item: SourceItem, lines: SourceItemLine[] | undefined): SourceItem {
+  return lines && lines.length > 0 ? { ...item, lines } : item;
+}
+
+// A link is trusted, and its source's lines count as the transaction's, when the user accepted it
+// or the matcher scored it at the same bar the categorizer trusts (see readTransactionEvidence).
+const trustedEvidenceLink = "(l.status = 'accepted' OR (l.status = 'suggested' AND l.confidence >= 0.74))";
+
+export interface TransactionLineItems {
+  lines: SourceItemLine[];
+  sourceItem: SourceItem;
+}
+
+/** The itemized lines behind one transaction, from each trusted context source that states them. */
+export async function listTransactionLineItems(transactionId: string): Promise<TransactionLineItems[]> {
+  if (!financeDbExists()) {
+    return [];
+  }
+
+  const db = await getFinanceDb();
+  const result = await db.query<SourceItemRow>(
+    `SELECT s.id, s.source_id, s.external_id, s.kind, s.occurred_at, s.title, s.summary,
+            s.merchant_name, s.amount_minor, s.currency
+     FROM transaction_evidence_links l
+     JOIN source_items s ON s.id = l.source_item_id
+     WHERE l.transaction_id = $1 AND ${trustedEvidenceLink}
+       AND EXISTS (SELECT 1 FROM source_item_lines x WHERE x.source_item_id = s.id)
+     ORDER BY CASE l.status WHEN 'accepted' THEN 0 ELSE 1 END, l.confidence DESC`,
+    [transactionId]
+  );
+  const lines = await readSourceItemLines(db, result.rows.map((row) => row.id));
+
+  return result.rows.map((row) => ({ lines: lines.get(row.id) ?? [], sourceItem: sourceItemFromRow(row) }));
+}
+
+export interface LineItemMatch {
+  line: SourceItemLine;
+  sourceItem: SourceItem;
+  /** The ledger transaction the line was paid in, when a trusted link names one. */
+  transaction?: Pick<Transaction, "amount" | "date" | "description" | "id" | "merchantName">;
+}
+
+export interface LineItemQueryResult {
+  /** Price paid across every match whose price is known. */
+  total: number;
+  /** Matches with no price stated; they are listed but not in the total. */
+  unpricedCount: number;
+  matchCount: number;
+  sourceItemCount: number;
+  currency?: SourceItem["currency"];
+  matches: LineItemMatch[];
+  truncated: boolean;
+}
+
+/**
+ * Line items across every context source whose name contains each word of `query`, in a date
+ * range, with the total paid. This is how a question about a product ("oat milk this year") gets
+ * an answer from receipts instead of from charge descriptions.
+ */
+export async function queryLineItems({
+  from,
+  limit = 50,
+  query,
+  to
+}: {
+  from?: string;
+  limit?: number;
+  query: string;
+  to?: string;
+}): Promise<LineItemQueryResult> {
+  const empty: LineItemQueryResult = { matchCount: 0, matches: [], sourceItemCount: 0, total: 0, truncated: false, unpricedCount: 0 };
+  const terms = query.trim().split(/\s+/).filter(Boolean).slice(0, 8);
+  if (!financeDbExists() || terms.length === 0) {
+    return empty;
+  }
+
+  const db = await getFinanceDb();
+  const values: Array<number | string> = [];
+  const where: string[] = [];
+  // Each word must start a word in the line's name: "oat" finds "Oat milk" and "oats", while
+  // "go" does not find "mango".
+  const wordStarts: string[] = [];
+  for (const term of terms) {
+    values.push(`\\m${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+    wordStarts.push(`x.name ~* $${values.length}`);
+  }
+  // Spelling the product as one word or two ("oatmilk", "oat milk") still finds it: compare with
+  // spaces and punctuation removed. Only for 5+ letters, where a substring is not a false hit.
+  const squashed = terms.join("").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (squashed.length >= 5) {
+    values.push(`%${squashed}%`);
+    where.push(`((${wordStarts.join(" AND ")}) OR regexp_replace(lower(x.name), '[^a-z0-9]', '', 'g') LIKE $${values.length})`);
+  } else {
+    where.push(...wordStarts);
+  }
+  if (from) {
+    values.push(from);
+    where.push(`s.occurred_at >= $${values.length}`);
+  }
+  if (to) {
+    const dayAfter = new Date(`${to}T00:00:00.000Z`);
+    dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+    values.push(dayAfter.toISOString().slice(0, 10));
+    where.push(`s.occurred_at < $${values.length}`);
+  }
+
+  const result = await db.query<
+    SourceItemLineRow &
+      SourceItemRow & {
+        line_amount_minor: number | null;
+        line_currency: string | null;
+        transaction_amount_minor: number | null;
+        transaction_date: string | null;
+        transaction_description: string | null;
+        transaction_id: string | null;
+        transaction_merchant_name: string | null;
+      }
+  >(
+    `SELECT
+       x.source_item_id, x.position, x.name, x.quantity, x.unit_price_minor, x.amount_minor AS line_amount_minor,
+       x.sku, x.currency AS line_currency,
+       s.id, s.source_id, s.external_id, s.kind, s.occurred_at, s.title, s.summary, s.merchant_name,
+       s.amount_minor, s.currency,
+       t.id AS transaction_id, t.date AS transaction_date, t.amount_minor AS transaction_amount_minor,
+       t.description AS transaction_description, t.merchant_name AS transaction_merchant_name
+     FROM source_item_lines x
+     JOIN source_items s ON s.id = x.source_item_id
+     LEFT JOIN LATERAL (
+       SELECT tt.id, tt.date, tt.amount_minor, tt.description, tt.merchant_name
+       FROM transaction_evidence_links l
+       JOIN transactions tt ON tt.id = l.transaction_id
+       WHERE l.source_item_id = s.id AND ${trustedEvidenceLink}
+       ORDER BY CASE l.status WHEN 'accepted' THEN 0 ELSE 1 END, l.confidence DESC
+       LIMIT 1
+     ) t ON TRUE
+     WHERE ${where.join(" AND ")}
+     ORDER BY s.occurred_at DESC NULLS LAST, x.position`,
+    values
+  );
+
+  const cap = boundedInteger(limit, 50, 500);
+  let total = 0;
+  let unpricedCount = 0;
+  const sourceItems = new Set<string>();
+  const matches: LineItemMatch[] = [];
+  for (const row of result.rows) {
+    const line = sourceItemLineFromRow({ ...row, amount_minor: row.line_amount_minor });
+    const paid = lineItemTotal(line);
+    if (paid === undefined) {
+      unpricedCount += 1;
+    } else {
+      total += paid;
+    }
+    sourceItems.add(row.id);
+    if (matches.length < cap) {
+      matches.push({
+        line,
+        sourceItem: sourceItemFromRow(row),
+        ...(row.transaction_id
+          ? {
+              transaction: {
+                amount: minorToMoney(row.transaction_amount_minor ?? 0),
+                date: row.transaction_date ?? "",
+                description: row.transaction_description ?? "",
+                id: row.transaction_id,
+                merchantName: row.transaction_merchant_name ?? ""
+              }
+            }
+          : {})
+      });
+    }
+  }
+
+  return {
+    currency: normalizeCurrencyCode(result.rows[0]?.line_currency ?? result.rows[0]?.currency ?? undefined) ?? undefined,
+    matchCount: result.rows.length,
+    matches,
+    sourceItemCount: sourceItems.size,
+    total: Math.round(total * 100) / 100,
+    truncated: result.rows.length > matches.length,
+    unpricedCount
+  };
 }
 
 export async function listTransactionEvidence({
@@ -3861,12 +4052,13 @@ export async function listTransactionEvidence({
           l.created_at DESC`,
         [transactionId]
       );
+  const lines = await readSourceItemLines(db, [...new Set(result.rows.map((row) => row.id))]);
 
   return result.rows.map((row) => ({
     confidence: Number(row.confidence),
     createdAt: row.created_at,
     relationship: row.relationship,
-    sourceItem: sourceItemFromRow(row),
+    sourceItem: withLines(sourceItemFromRow(row), lines.get(row.id)),
     status: row.status,
     transactionId: row.transaction_id
   }));
@@ -4060,6 +4252,28 @@ export async function createTransactionEvidenceLink({
     return (await listTransactionEvidence({ includeDismissed: true, transactionId })).find(
       (item) => item.sourceItem.id === sourceItem.id && item.relationship === resolvedRelationship
     ) ?? null;
+  });
+}
+
+/**
+ * Removes every evidence link of these source items, matcher suggestions included, and refreshes
+ * the search documents of the charges they pointed at. For callers that then state the links
+ * themselves (the demo seed), so no suggestion is left pointing at a different charge.
+ */
+export async function clearSourceItemEvidenceLinks(sourceItemIds: string[]): Promise<void> {
+  if (!financeDbExists() || sourceItemIds.length === 0) {
+    return;
+  }
+
+  await enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const removed = await db.query<{ transaction_id: string }>(
+      "DELETE FROM transaction_evidence_links WHERE source_item_id = ANY($1) RETURNING transaction_id",
+      [sourceItemIds]
+    );
+    for (const transactionId of new Set(removed.rows.map((row) => row.transaction_id))) {
+      await refreshTransactionSemanticDocument(db, transactionId);
+    }
   });
 }
 
@@ -5768,6 +5982,21 @@ async function runMigrations(db: FinanceDb): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS source_items_source_occurred_idx ON source_items(source_id, occurred_at DESC);
     CREATE INDEX IF NOT EXISTS source_items_kind_idx ON source_items(kind);
+
+    -- Itemized lines of a receipt, order or invoice, when its source states them. Source truth:
+    -- replaced whenever the source item is re-synced with lines, never edited by the user.
+    CREATE TABLE IF NOT EXISTS source_item_lines (
+      source_item_id TEXT NOT NULL REFERENCES source_items(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      quantity REAL,
+      unit_price_minor INTEGER,
+      amount_minor INTEGER,
+      currency TEXT,
+      sku TEXT,
+      PRIMARY KEY (source_item_id, position)
+    );
+    CREATE INDEX IF NOT EXISTS source_item_lines_name_idx ON source_item_lines(lower(name));
     CREATE INDEX IF NOT EXISTS app_sync_runs_started_idx ON app_sync_runs(started_at DESC);
     CREATE INDEX IF NOT EXISTS sync_schedules_next_run_idx ON sync_schedules(enabled, next_run_at);
     CREATE INDEX IF NOT EXISTS transaction_evidence_links_transaction_idx ON transaction_evidence_links(transaction_id);
@@ -6526,6 +6755,103 @@ async function upsertSourceItem(db: FinanceDb, item: SourceItemInput): Promise<v
       new Date().toISOString()
     ]
   );
+  // The upsert keys on (source_id, external_id), so a re-synced item keeps its first id.
+  if (item.lines !== undefined) {
+    const stored = await db.query<{ id: string }>(
+      "SELECT id FROM source_items WHERE source_id = $1 AND external_id = $2",
+      [item.sourceId, item.externalId]
+    );
+    const storedId = stored.rows[0]?.id;
+    if (storedId) {
+      await replaceSourceItemLines(db, storedId, item.lines, item.currency);
+    }
+  }
+}
+
+async function replaceSourceItemLines(
+  db: FinanceDb,
+  sourceItemId: string,
+  lines: SourceItemLine[],
+  currency: SourceItem["currency"]
+): Promise<void> {
+  await db.query("DELETE FROM source_item_lines WHERE source_item_id = $1", [sourceItemId]);
+  for (const [position, line] of lines.entries()) {
+    await db.query(
+      `INSERT INTO source_item_lines (
+        source_item_id, position, name, quantity, unit_price_minor, amount_minor, currency, sku
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        sourceItemId,
+        position,
+        line.name,
+        line.quantity ?? null,
+        line.unitPrice === undefined ? null : moneyToMinor(line.unitPrice),
+        line.amount === undefined ? null : moneyToMinor(line.amount),
+        normalizeCurrencyCode(currency) ?? null,
+        line.sku ?? null
+      ]
+    );
+  }
+}
+
+interface SourceItemLineRow {
+  amount_minor: number | null;
+  name: string;
+  position: number;
+  quantity: number | null;
+  sku: string | null;
+  source_item_id: string;
+  unit_price_minor: number | null;
+}
+
+function sourceItemLineFromRow(row: SourceItemLineRow): SourceItemLine {
+  return {
+    name: row.name,
+    ...(row.quantity === null ? {} : { quantity: Number(row.quantity) }),
+    ...(row.unit_price_minor === null ? {} : { unitPrice: minorToMoney(row.unit_price_minor) }),
+    ...(row.amount_minor === null ? {} : { amount: minorToMoney(row.amount_minor) }),
+    ...(row.sku === null ? {} : { sku: row.sku })
+  };
+}
+
+/** Lines per source item id, in receipt order; ids without lines are absent. */
+async function readSourceItemLines(db: FinanceDb, sourceItemIds: string[]): Promise<Map<string, SourceItemLine[]>> {
+  const byItem = new Map<string, SourceItemLine[]>();
+  if (sourceItemIds.length === 0) {
+    return byItem;
+  }
+  const result = await db.query<SourceItemLineRow>(
+    `SELECT source_item_id, position, name, quantity, unit_price_minor, amount_minor, sku
+     FROM source_item_lines
+     WHERE source_item_id = ANY($1::text[])
+     ORDER BY source_item_id, position`,
+    [sourceItemIds]
+  );
+  for (const row of result.rows) {
+    const list = byItem.get(row.source_item_id) ?? [];
+    list.push(sourceItemLineFromRow(row));
+    byItem.set(row.source_item_id, list);
+  }
+  return byItem;
+}
+
+/** A line's price paid: its stated amount, else quantity x unit price. */
+export function lineItemTotal(line: SourceItemLine): number | undefined {
+  if (line.amount !== undefined) {
+    return line.amount;
+  }
+  if (line.unitPrice !== undefined) {
+    return Math.round(line.unitPrice * (line.quantity ?? 1) * 100) / 100;
+  }
+  return undefined;
+}
+
+/** One line as compact text for search documents and prompts: "Oat milk x2 $7.98". */
+export function lineItemText(line: SourceItemLine): string {
+  const total = lineItemTotal(line);
+  return [line.name, line.quantity !== undefined && line.quantity !== 1 ? `x${line.quantity}` : undefined, total === undefined ? undefined : `$${total.toFixed(2)}`]
+    .filter(Boolean)
+    .join(" ");
 }
 
 async function upsertTransactionRule(db: FinanceDb, rule: TransactionRule): Promise<void> {
@@ -7466,13 +7792,14 @@ async function refreshTransactionSemanticDocument(
 }
 
 async function readTransactionEvidenceSummaries(db: FinanceDb, transactionId: string): Promise<EvidenceSummaryRow[]> {
-  const result = await db.query<EvidenceSummaryRow>(
+  const result = await db.query<EvidenceSummaryRow & { source_item_id: string }>(
     `SELECT
       l.confidence,
       l.relationship,
       l.status,
       s.title,
-      s.summary
+      s.summary,
+      s.id AS source_item_id
     FROM transaction_evidence_links l
     JOIN source_items s ON s.id = l.source_item_id
     WHERE l.transaction_id = $1
@@ -7488,7 +7815,22 @@ async function readTransactionEvidenceSummaries(db: FinanceDb, transactionId: st
     [transactionId]
   );
 
-  return result.rows;
+  return withLineText(db, result.rows);
+}
+
+/**
+ * Evidence summaries with each source's itemized lines appended, so the semantic document and the
+ * categorizer see "Items: Oat milk x2 $7.98; ..." and a search for a product finds the charge.
+ */
+async function withLineText<T extends EvidenceSummaryRow & { source_item_id: string }>(
+  db: FinanceDb,
+  rows: T[]
+): Promise<EvidenceSummaryRow[]> {
+  const lines = await readSourceItemLines(db, [...new Set(rows.map((row) => row.source_item_id))]);
+  return rows.map(({ source_item_id, ...row }) => {
+    const items = lines.get(source_item_id);
+    return items?.length ? { ...row, summary: `${row.summary} Items: ${items.slice(0, 40).map(lineItemText).join("; ")}.` } : row;
+  });
 }
 
 async function readTransactionEvidenceSummariesForIds(
@@ -7500,7 +7842,7 @@ async function readTransactionEvidenceSummariesForIds(
   }
 
   const result = await db.query<EvidenceSummaryBatchRow>(
-    `SELECT transaction_id, confidence, relationship, status, title, summary
+    `SELECT transaction_id, confidence, relationship, status, title, summary, source_item_id
     FROM (
       SELECT
         l.transaction_id,
@@ -7509,6 +7851,7 @@ async function readTransactionEvidenceSummariesForIds(
         l.status,
         s.title,
         s.summary,
+        s.id AS source_item_id,
         ROW_NUMBER() OVER (
           PARTITION BY l.transaction_id
           ORDER BY
@@ -7529,14 +7872,15 @@ async function readTransactionEvidenceSummariesForIds(
     [transactionIds]
   );
   const summariesByTransactionId = new Map<string, EvidenceSummaryRow[]>();
+  const withItems = await withLineText(db, result.rows);
 
-  for (const row of result.rows) {
+  for (const [index, row] of result.rows.entries()) {
     const summaries = summariesByTransactionId.get(row.transaction_id) ?? [];
     summaries.push({
       confidence: row.confidence,
       relationship: row.relationship,
       status: row.status,
-      summary: row.summary,
+      summary: withItems[index].summary,
       title: row.title
     });
     summariesByTransactionId.set(row.transaction_id, summaries);
@@ -8711,6 +9055,8 @@ function vectorLiteral(values: number[]): string {
 
 export interface ReviewQueueEvidence {
   confidence: number;
+  /** The itemized receipt or order, when the source states its lines. */
+  lines?: SourceItemLine[];
   relationship: EvidenceRelationship;
   sourceLabel: string;
   summary: string;
@@ -8769,25 +9115,29 @@ export async function listReviewQueueContext(
     kind: string;
     relationship: EvidenceRelationship;
     source_id: string;
+    source_item_id: string;
     summary: string;
     title: string;
     transaction_id: string;
   }>(
-    `SELECT l.transaction_id, l.relationship, l.confidence, si.title, si.summary, si.kind, si.source_id
+    `SELECT l.transaction_id, l.relationship, l.confidence, si.title, si.summary, si.kind, si.source_id, si.id AS source_item_id
      FROM transaction_evidence_links l
      JOIN source_items si ON si.id = l.source_item_id
      WHERE l.transaction_id = ANY($1) AND l.status <> 'dismissed'
      ORDER BY l.transaction_id, l.confidence DESC`,
     [transactionIds]
   );
+  const lines = await readSourceItemLines(db, [...new Set(evidence.rows.map((row) => row.source_item_id))]);
   for (const row of evidence.rows) {
     const entry = ensure(row.transaction_id);
     if (row.kind === "context_note" || row.kind === "voice_transcript") {
       entry.notes.push(row.summary || row.title);
       continue;
     }
+    const items = lines.get(row.source_item_id);
     entry.evidence.push({
       confidence: Number(row.confidence) || 0,
+      ...(items?.length ? { lines: items } : {}),
       relationship: row.relationship,
       sourceLabel: row.source_id.replace(/^source_/, "").replace(/_/g, " "),
       summary: row.summary,

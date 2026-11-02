@@ -1,14 +1,25 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertDemoDatabasePreflight,
   assertDemoDataset,
   assertDemoSeedTarget,
   createDemoDataset,
+  demoDatabaseTables,
   demoSeedConfirmation
 } from "@/lib/demo-seed";
 import { createRecurringItems } from "@/lib/finance-data";
 
 describe("demo seed", () => {
+  // The reseed refuses a database with tables it does not know, so a new table breaks the demo.
+  it("knows every table the finance store creates", () => {
+    const source = readFileSync(path.resolve(__dirname, "../lib/db/finance-db.ts"), "utf8");
+    const created = [...source.matchAll(/CREATE TABLE IF NOT EXISTS "?(\w+)"?/g)].map((match) => match[1]);
+    expect(created.length).toBeGreaterThan(20);
+    expect(created.filter((table) => !demoDatabaseTables.has(table))).toEqual([]);
+  });
+
   it("builds the same rich fake ledger on every run", () => {
     const first = createDemoDataset();
     const second = createDemoDataset();
@@ -40,6 +51,23 @@ describe("demo seed", () => {
       expect(() => assertDemoDataset(dataset)).not.toThrow();
     }
     expect(() => createDemoDataset("2026-13-40")).toThrow(/YYYY-MM-DD/);
+  });
+
+  it("itemizes the grocery, warehouse and marketplace charges with lines that add up to each charge", () => {
+    const dataset = createDemoDataset("2026-11-01");
+    const items = dataset.receipts.sources.flatMap((source) => source.items);
+    const byId = new Map(dataset.ledger.transactions.map((transaction) => [transaction.id, transaction]));
+    const itemById = new Map(items.map((item) => [item.id, item]));
+    expect(items.length).toBeGreaterThan(40);
+    for (const link of dataset.receipts.links) {
+      const lines = itemById.get(link.sourceItemId)?.lines ?? [];
+      const sum = lines.reduce((total, line) => total + Math.round((line.amount ?? 0) * 100), 0);
+      expect(sum).toBe(Math.round(Math.abs(byId.get(link.transactionId)!.amount) * 100));
+    }
+    const amazon = dataset.receipts.links.find((link) => byId.get(link.transactionId)?.merchantName === "AMZN MKTP US*2K4LQ");
+    expect(amazon).toMatchObject({ confidence: 0.88, status: "suggested" });
+    expect(itemById.get(amazon!.sourceItemId)?.lines?.[0].name).toMatch(/stroller wheel/i);
+    expect(items.some((item) => item.lines?.some((line) => /oat milk/i.test(line.name)))).toBe(true);
   });
 
   it("pairs every internal transfer symmetrically", () => {

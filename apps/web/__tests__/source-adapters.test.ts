@@ -946,7 +946,7 @@ describe("source adapter normalization", () => {
       errorMessage: result.errorMessage,
       status: "connected"
     });
-  }, 15_000);
+  });
 
   it("retries a transient source adapter refresh failure once", async () => {
     useTempDb();
@@ -987,7 +987,7 @@ describe("source adapter normalization", () => {
       runStatus: "succeeded",
       sourceStatus: "connected"
     });
-  }, 15_000);
+  });
 
   it("maps raw Airbnb cookie/config failures to an actionable auth message", () => {
     expect(

@@ -23,6 +23,8 @@ const commands = [
     fileProperty: "body"
   }),
   command("transactions evidence", "koban_list_transaction_evidence", ["transaction_id"]),
+  command("transactions items", "koban_list_transaction_line_items", ["transaction_id"]),
+  command("items search", "koban_search_line_items", ["q"]),
   command("evidence list", "koban_list_evidence"),
   command("evidence attach", "koban_attach_transaction_evidence", ["transaction_id", "source_item_id"]),
   command("evidence review", "koban_review_transaction_evidence", ["transaction_id", "source_item_id"]),
