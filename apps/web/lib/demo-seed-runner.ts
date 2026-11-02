@@ -88,6 +88,7 @@ export async function runDemoSeed(options: DemoSeedOptions): Promise<DemoSeedRes
     // Rules go in after the ledger: replaceLedgerInDb re-applies stored rules,
     // and these already agree with the categories the ledger carries.
     await seedReviewAndOrganization(pool, dataset);
+    await seedReceipts(financeDb, dataset);
 
     const snapshot = await financeDb.readFinanceDbSnapshot();
     if (!snapshot) throw new Error("Demo seed verification failed: no ledger was readable after write.");
@@ -299,6 +300,31 @@ interface SeedCounts {
   tags: number;
   transactions: number;
   users: number;
+}
+
+/**
+ * The itemized orders and receipts behind the household's charges, written the way a source sync
+ * writes them, then linked to the charges they were paid in (accepted, or the matcher's suggestion
+ * for the charges still in the review queue).
+ */
+async function seedReceipts(financeDb: typeof import("@/lib/db/finance-db"), dataset: ReturnType<typeof createDemoDataset>): Promise<void> {
+  const { links, sources } = dataset.receipts;
+  await financeDb.ensureExternalSourceCatalog(
+    sources.map(({ command, displayName, id, kind }) => ({ command, displayName, id, kind, status: "connected" as const }))
+  );
+  for (const source of sources) {
+    await financeDb.recordSourceSyncRun({
+      finishedAt: dataset.ledger.lastSyncedAt,
+      items: source.items,
+      runStatus: "succeeded",
+      sourceId: source.id,
+      sourceStatus: "connected",
+      startedAt: dataset.ledger.lastSyncedAt
+    });
+  }
+  for (const link of links) {
+    await financeDb.createTransactionEvidenceLink(link);
+  }
 }
 
 async function readSeedCounts(database: pg.Pool): Promise<SeedCounts> {

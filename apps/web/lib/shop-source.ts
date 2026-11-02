@@ -161,6 +161,16 @@ export function normalizeShopOrders(payload: unknown, sourceId = "source_shop_or
       id: `source_item_${createHash("sha256").update(`${sourceId}:${externalId}`).digest("hex").slice(0, 24)}`,
       kind: "order",
       merchantName,
+      ...(itemDetails.length > 0
+        ? {
+            lines: itemDetails.map((item) => ({
+              name: item.title,
+              ...(item.quantity !== undefined ? { quantity: item.quantity } : {}),
+              ...(item.unitPrice !== undefined ? { unitPrice: Math.abs(item.unitPrice) } : {}),
+              ...(item.lineTotal !== undefined ? { amount: Math.abs(item.lineTotal) } : {})
+            }))
+          }
+        : {}),
       metadata: { itemCount: finiteNumber(order.totalItemCount), items: itemDetails, status },
       occurredAt,
       sourceId,

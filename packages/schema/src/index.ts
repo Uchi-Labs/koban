@@ -246,6 +246,18 @@ export type SourceItemKind =
   | "context_note"
   | "voice_transcript";
 
+/**
+ * One line of an itemized receipt, order, or invoice, as the context source states it.
+ * Amounts are positive prices paid, in the source item's currency.
+ */
+export interface SourceItemLine {
+  name: string;
+  quantity?: number;
+  unitPrice?: number;
+  amount?: number;
+  sku?: string;
+}
+
 export interface SourceItem {
   id: string;
   sourceId: string;
@@ -257,6 +269,8 @@ export interface SourceItem {
   merchantName?: string;
   amount?: number;
   currency?: CurrencyCode;
+  /** Itemized lines, when the source provides them. Absent means the source did not say. */
+  lines?: SourceItemLine[];
 }
 
 export type EvidenceRelationship = "receipt" | "order" | "merchant_context" | "travel_context" | "user_context";

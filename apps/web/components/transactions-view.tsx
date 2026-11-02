@@ -1,6 +1,6 @@
 "use client";
 
-import type { Category, TagStyle } from "@ai-finances/schema";
+import type { Category, SourceItemLine, TagStyle } from "@ai-finances/schema";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
   Ban,
@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Amount } from "@/components/amount";
+import { ItemizedLines } from "@/components/itemized-lines";
 import { CategoryPill } from "@/components/category-pill";
 import { CategoryPicker } from "@/components/ui/category-picker";
 import { VoiceWaveform } from "@/components/ui/voice-waveform";
@@ -90,6 +91,7 @@ interface TransactionEvidenceView {
     currency?: string;
     id: string;
     kind: string;
+    lines?: SourceItemLine[];
     merchantName?: string;
     occurredAt?: string;
     summary: string;
@@ -117,6 +119,7 @@ interface TransactionEvidenceApiResponse {
       currency?: string | null;
       id: string;
       kind: string;
+      lines?: Array<{ amount: number | null; name: string; quantity: number | null; sku: string | null; unit_price: number | null }> | null;
       merchant_name?: string;
       occurred_at?: string;
       summary: string;
@@ -3572,6 +3575,9 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
                 {evidenceLabel(item.relationship)} · {item.status} · {Math.round(item.confidence * 100)}%
               </span>
               <p className="mt-0.5 text-xs text-muted-foreground">{item.sourceItem.summary}</p>
+              {item.sourceItem.lines?.length ? (
+                <ItemizedLines className="mt-1.5" currency={item.sourceItem.currency} lines={item.sourceItem.lines} max={8} />
+              ) : null}
             </div>
             {item.status === "suggested" ? (
               <div className="flex shrink-0 items-center gap-1">
@@ -4107,6 +4113,13 @@ function evidenceFromApi(item: TransactionEvidenceApiResponse["data"][number]): 
       currency: normalizeCurrencyCode(item.source_item.currency),
       id: item.source_item.id,
       kind: item.source_item.kind,
+      lines: item.source_item.lines?.map((line) => ({
+        name: line.name,
+        ...(line.quantity === null ? {} : { quantity: line.quantity }),
+        ...(line.unit_price === null ? {} : { unitPrice: line.unit_price }),
+        ...(line.amount === null ? {} : { amount: line.amount }),
+        ...(line.sku === null ? {} : { sku: line.sku })
+      })),
       merchantName: item.source_item.merchant_name,
       occurredAt: item.source_item.occurred_at,
       summary: item.source_item.summary,
