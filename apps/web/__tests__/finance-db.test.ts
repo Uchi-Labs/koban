@@ -12,6 +12,7 @@ import {
   clearAppSyncScheduleClaim,
   applyCopilotHistoryImport,
   createFinancialGoal,
+  clearSourceItemEvidenceLinks,
   createTransactionEvidenceLink,
   createTransactionContextNote,
   createTransactionVoiceNote,
@@ -1516,6 +1517,14 @@ describe("finance db", () => {
     expect(await queryLineItems({ query: "oat milk" })).toMatchObject({ total: 4.25 });
     await receipt(undefined);
     expect((await listTransactionLineItems("txn_1"))[0].lines).toEqual([{ amount: 4.25, name: "Oat milk, barista", quantity: 1 }]);
+
+    // clearing an item's links unlinks it from the charge; the lines stay with the source item
+    await clearSourceItemEvidenceLinks(["src_receipt_1"]);
+    expect(await listTransactionLineItems("txn_1")).toEqual([]);
+    expect(await listTransactionEvidence({ includeDismissed: true, transactionId: "txn_1" })).toEqual([]);
+    const unlinked = await queryLineItems({ query: "oat milk" });
+    expect(unlinked).toMatchObject({ matchCount: 1 });
+    expect(unlinked.matches[0].transaction).toBeUndefined();
   }, 20_000);
 
   it("manually links source evidence to a Plaid transaction", async () => {

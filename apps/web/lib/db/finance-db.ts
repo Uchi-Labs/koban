@@ -4255,6 +4255,28 @@ export async function createTransactionEvidenceLink({
   });
 }
 
+/**
+ * Removes every evidence link of these source items, matcher suggestions included, and refreshes
+ * the search documents of the charges they pointed at. For callers that then state the links
+ * themselves (the demo seed), so no suggestion is left pointing at a different charge.
+ */
+export async function clearSourceItemEvidenceLinks(sourceItemIds: string[]): Promise<void> {
+  if (!financeDbExists() || sourceItemIds.length === 0) {
+    return;
+  }
+
+  await enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const removed = await db.query<{ transaction_id: string }>(
+      "DELETE FROM transaction_evidence_links WHERE source_item_id = ANY($1) RETURNING transaction_id",
+      [sourceItemIds]
+    );
+    for (const transactionId of new Set(removed.rows.map((row) => row.transaction_id))) {
+      await refreshTransactionSemanticDocument(db, transactionId);
+    }
+  });
+}
+
 export async function listTransactionRules(): Promise<TransactionRule[]> {
   if (!financeDbExists()) {
     return [];

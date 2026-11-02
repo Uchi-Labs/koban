@@ -326,6 +326,9 @@ async function seedReceipts(financeDb: typeof import("@/lib/db/finance-db"), dat
       startedAt: dataset.ledger.lastSyncedAt
     });
   }
+  // The sync run's matcher has already guessed a charge for each item; the dataset states which
+  // charge each one was paid in, so its guesses go before the stated links are written.
+  await financeDb.clearSourceItemEvidenceLinks(sources.flatMap((source) => source.items.map((item) => item.id)));
   for (const link of links) {
     await financeDb.createTransactionEvidenceLink(link);
   }
