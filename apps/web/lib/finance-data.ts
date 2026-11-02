@@ -610,7 +610,7 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
       const rightLastCharged = right.lastChargedAt ?? "";
       return rightLastCharged.localeCompare(leftLastCharged) || Math.abs(right.averageAmount) - Math.abs(left.averageAmount);
     })
-    .slice(0, 20);
+    .slice(0, 50);
 }
 
 /**
