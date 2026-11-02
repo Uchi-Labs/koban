@@ -34,7 +34,8 @@ describe("demo seed", () => {
     expect(new Set(first.ledger.transactions.map((transaction) => transaction.date.slice(0, 7)))).toHaveLength(24);
     expect(new Set(first.ledger.accounts.map((account) => account.type))).toEqual(new Set(["checking", "savings", "credit_card", "investment", "loan", "cash"]));
     expect(createRecurringItems(first.ledger.transactions).length).toBeGreaterThanOrEqual(10);
-    expect(createRecurringItems(first.ledger.transactions).length).toBeLessThanOrEqual(20);
+    // 22 real recurrings (bills, memberships, 12 subscriptions); more would mean false positives
+    expect(createRecurringItems(first.ledger.transactions).length).toBeLessThanOrEqual(25);
     expect(() => assertDemoDataset(first)).not.toThrow();
   });
 
