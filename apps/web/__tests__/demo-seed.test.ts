@@ -27,7 +27,7 @@ describe("demo seed", () => {
     expect(second).toEqual(first);
     expect(first.ledger.accounts).toHaveLength(15);
     expect(first.ledger.transactions.length).toBeGreaterThan(2_000);
-    expect(first.subscriptionNames).toHaveLength(10);
+    expect(first.subscriptionNames).toHaveLength(12);
     expect(first.investmentPositions).toHaveLength(7);
     expect(first.goals).toHaveLength(3);
     expect(first.ledger.transactions.some((transaction) => !transaction.reviewed)).toBe(true);

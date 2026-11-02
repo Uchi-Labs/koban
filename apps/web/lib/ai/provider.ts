@@ -182,7 +182,7 @@ export const aiSdkLlmClient: LlmGenerationClient = {
       messages,
       model: await buildConfiguredLanguageModel(provider, env, fetcher),
       timeout: { totalMs: provider.timeoutMs },
-      ...(tools ? { stopWhen: isStepCount(4), tools } : {}),
+      ...(tools ? { stopWhen: isStepCount(6), tools } : {}),
       ...chatGptMultiStepOptions(provider),
       ...samplingOptions(provider)
     });
