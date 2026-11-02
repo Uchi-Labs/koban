@@ -12,6 +12,11 @@ import { internalAmountSignConvention } from "@/lib/ledger-normalization";
 
 export const demoSeedConfirmation = "REPLACE_EXPLICIT_DEMO_DATABASE";
 export const demoSeedMarker = "koban_demo_seed_v1";
+/**
+ * How many recurring charges the demo household should derive. It has 22-25 depending on the
+ * as-of date (bills, memberships, 12 subscriptions); far more would mean false positives.
+ */
+export const demoRecurringRange = { max: 30, min: 10 };
 export const demoDatabaseTables = new Set([
   "account", "account_balance_snapshots", "accounts", "agent_conversation_turns", "agent_conversations",
   "apikey", "app_sync_runs", "categories", "embedding_models", "enrichment_suggestions", "external_sources",
