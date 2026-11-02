@@ -583,6 +583,7 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
 
       // Median, not mean: robust to the occasional off-price charge inside the gate.
       const averageAmount = medianAmount;
+      const priceChange = latestPriceChange(datedTransactions);
       const categoryId = mostCommon(datedTransactions.map((transaction) => transaction.categoryId)) ?? "cat_other";
 
       return [
@@ -597,6 +598,9 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
           currency: displayCurrencyCode(datedTransactions.map((transaction) => transaction.currency)),
           nextDate: addDays(lastTransaction.date, cadenceDays),
           lastChargedAt: lastTransaction.date,
+          lastAmount: roundMoney(Math.abs(lastTransaction.amount)),
+          ...priceChange,
+          chargeCount: datedTransactions.length,
           status: "watching"
         } satisfies RecurringItem
       ];
@@ -606,7 +610,20 @@ export function createRecurringItems(transactions: Transaction[]): RecurringItem
       const rightLastCharged = right.lastChargedAt ?? "";
       return rightLastCharged.localeCompare(leftLastCharged) || Math.abs(right.averageAmount) - Math.abs(left.averageAmount);
     })
-    .slice(0, 20);
+    .slice(0, 50);
+}
+
+/**
+ * The latest change in a recurring charge's price, when the new price has held for every charge
+ * since (a one-off odd amount is not a price change). Transactions are oldest first.
+ */
+function latestPriceChange(transactions: Transaction[]): Pick<RecurringItem, "previousAmount" | "priceChangedAt"> {
+  const cents = transactions.map((transaction) => Math.round(Math.abs(transaction.amount) * 100));
+  const current = cents.at(-1);
+  let start = cents.length - 1;
+  while (start > 0 && cents[start - 1] === current) start -= 1;
+  if (start === 0 || cents.length - start < 2) return {};
+  return { previousAmount: cents[start - 1] / 100, priceChangedAt: transactions[start].date };
 }
 
 export function filterTransactionsForIncludedAccounts(accounts: Account[], transactions: Transaction[]): Transaction[] {

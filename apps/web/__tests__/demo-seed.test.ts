@@ -27,14 +27,15 @@ describe("demo seed", () => {
     expect(second).toEqual(first);
     expect(first.ledger.accounts).toHaveLength(15);
     expect(first.ledger.transactions.length).toBeGreaterThan(2_000);
-    expect(first.subscriptionNames).toHaveLength(10);
+    expect(first.subscriptionNames).toHaveLength(12);
     expect(first.investmentPositions).toHaveLength(7);
     expect(first.goals).toHaveLength(3);
     expect(first.ledger.transactions.some((transaction) => !transaction.reviewed)).toBe(true);
     expect(new Set(first.ledger.transactions.map((transaction) => transaction.date.slice(0, 7)))).toHaveLength(24);
     expect(new Set(first.ledger.accounts.map((account) => account.type))).toEqual(new Set(["checking", "savings", "credit_card", "investment", "loan", "cash"]));
     expect(createRecurringItems(first.ledger.transactions).length).toBeGreaterThanOrEqual(10);
-    expect(createRecurringItems(first.ledger.transactions).length).toBeLessThanOrEqual(20);
+    // 22 real recurrings (bills, memberships, 12 subscriptions); more would mean false positives
+    expect(createRecurringItems(first.ledger.transactions).length).toBeLessThanOrEqual(25);
     expect(() => assertDemoDataset(first)).not.toThrow();
   });
 

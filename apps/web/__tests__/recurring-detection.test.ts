@@ -23,6 +23,27 @@ function charge(merchantName: string, date: string, amount: number): Transaction
 }
 
 describe("recurring detection gates", () => {
+  it("reports a price rise that has held, and not a one-off odd charge", () => {
+    const [netflix] = createRecurringItems([
+      charge("NETFLIX", "2026-04-07", 15.49),
+      charge("NETFLIX", "2026-05-07", 15.49),
+      charge("NETFLIX", "2026-06-07", 17.99),
+      charge("NETFLIX", "2026-07-07", 17.99),
+      charge("NETFLIX", "2026-08-07", 17.99)
+    ]);
+    expect(netflix).toMatchObject({ chargeCount: 5, lastAmount: 17.99, previousAmount: 15.49, priceChangedAt: "2026-06-07" });
+
+    const [gym] = createRecurringItems([
+      charge("GYM", "2026-04-01", 40),
+      charge("GYM", "2026-05-01", 40),
+      charge("GYM", "2026-06-01", 40),
+      charge("GYM", "2026-07-01", 44)
+    ]);
+    expect(gym.lastAmount).toBe(44);
+    expect(gym.previousAmount).toBeUndefined();
+    expect(gym.priceChangedAt).toBeUndefined();
+  });
+
   it("rejects a frequent merchant with irregular gaps and scattered amounts (Amazon)", () => {
     const items = createRecurringItems([
       charge("AMAZON", "2026-05-01", 12.99),
