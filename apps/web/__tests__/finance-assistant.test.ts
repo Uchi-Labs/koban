@@ -18,6 +18,7 @@ import { lineItemQuestion } from "@/lib/line-item-questions";
 import {
   answerFinanceQuestion,
   lineItemToolResult,
+  recurringChargesToolResult,
   sourceSetupActionsFromDiagnostics,
   streamFinanceAnswer,
   type AgentStreamEvent,
@@ -91,6 +92,20 @@ describe("finance assistant", () => {
     const spending = await answerFinanceQuestion("Where did my money go this month?", { includeSourceDiagnostics: false, llmEnv: {} });
     expect(spending.chart?.title).toBe("Spending by category, May 2026");
   }, 20_000);
+
+  it("gives the model each recurring charge's monthly and yearly cost and any price rise, fenced", () => {
+    const result = recurringChargesToolResult(
+      [
+        { accountId: "a", amount: -17.99, averageAmount: 17.99, cadence: "monthly", categoryId: "cat_entertainment", chargeCount: 8, currency: "USD", id: "r1", lastAmount: 17.99, lastChargedAt: "2026-10-07", name: "Netflix.com", nextDate: "2026-11-06", previousAmount: 15.49, priceChangedAt: "2026-03-07", status: "watching" },
+        { accountId: "a", amount: -120, averageAmount: 120, cadence: "annual", categoryId: "cat_software", currency: "USD", id: "r2", name: "Domain renewal", nextDate: "2027-02-01", status: "watching" }
+      ],
+      new Map([["cat_entertainment", "Entertainment"]])
+    );
+    expect(result.recurring_charges[1]).toMatchObject({ category: "cat_software", monthly_cost: 10, price_went_up: null, yearly_cost: 120 });
+    expect(result.recurring_charges[0]).toMatchObject({ category: "Entertainment", monthly_cost: 17.99, price: 17.99, price_went_up: { from: 15.49, on: "2026-03-07" }, yearly_cost: 215.88 });
+    expect(result.recurring_charges[0].merchant).toContain(untrustedDataOpenTag);
+    expect(result.total_monthly).toBe(27.99);
+  });
 
   it("reads the product words and the date range out of an item question", () => {
     const now = new Date("2026-11-02T12:00:00Z");
@@ -357,7 +372,7 @@ describe("finance assistant", () => {
       events.push(event);
     }
 
-    expect(offeredTools).toEqual(["show_visual", "query_line_items"]);
+    expect(offeredTools).toEqual(["show_visual", "query_line_items", "list_recurring_charges"]);
     expect(payload.monthly_history?.months).toHaveLength(12);
     expect(payload.monthly_history?.as_of).toBe("2026-05-21");
     expect(payload.monthly_history?.budgets.monthly_total).toEqual(expect.any(Number));

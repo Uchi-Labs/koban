@@ -205,7 +205,7 @@ const tagColors: Record<string, string> = {
 
 const subscriptionNames = [
   "Netflix.com", "Spotify", "Apple iCloud+", "nytimes.com", "Riverside YMCA",
-  "Figma.com", "Chewy.com", "Kidtales", "Amazon Prime", "Fiberlane Internet"
+  "Figma.com", "Chewy.com", "Kidtales", "Amazon Prime", "Fiberlane Internet", "ChatGPT Plus", "YouTube Premium"
 ];
 
 const goalIds = {
@@ -371,6 +371,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     transfer("joint", "emergency", day(month, 2), 500, "Internal Transfer", { id: goalIds.emergency, leg: "outgoing" });
     transfer("joint", "travel", day(month, 2), 350, "Internal Transfer", { id: goalIds.travel, leg: "outgoing" });
     add("visa", day(month, 3), "Apple iCloud+", "iCloud+ 200 GB", -2.99, cat.software, { tags: ["subscription"] });
+    add("amex", day(month, 5), "ChatGPT Plus", "Monthly plan", -20, cat.software, { tags: ["subscription"] });
     transfer("joint", "roth", day(month, 5), 583, "Brokerage Contribution");
     add("joint", day(month, 6), "Greenlight Energy", "Electric", -roundMoney(92 + (summer ? 68 : winter ? 34 : 0) + between(-9, 14)), cat.utilities);
     add("amex", day(month, 7), "Netflix.com", "Standard plan", monthsAgo < 8 ? -17.99 : -15.49, cat.entertainment, { tags: ["subscription"] });
@@ -388,6 +389,8 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     add("visa", day(month, 20), "Chewy.com", "Biscuit's food and treats", -routine(day(month, 20), 54, 63), cat.pets, { tags: ["subscription"] });
     transfer("joint", "student", day(month, 21), 280, "Student Loan Payment");
     add("joint", day(month, 22), "Cedar Mobile", "Two lines", -92, cat.utilities);
+    // YouTube Premium includes YouTube Music, on top of the Spotify family plan.
+    add("amex", day(month, 22), "YouTube Premium", "Family plan", monthsAgo < 6 ? -22.99 : -19.99, cat.entertainment, { tags: ["subscription"] });
     add("visa", day(month, 24), "nytimes.com", "Digital subscription", -8, cat.entertainment, { tags: ["subscription"] });
     add("visa", day(month, 25), "Food Bank of Riverside", "Monthly donation", -25, cat.gifts);
     if (index % 2 === 1) add("jordan", day(month, 27), "Lumière Salon", "Cut and color", -routine(day(month, 27), 64, 82), cat.other);
@@ -718,6 +721,8 @@ const merchantNotes: Record<string, string[]> = {
   "Apple iCloud+": ["Family photo storage plan."],
   "Netflix.com": ["Streaming plan the family shares."],
   Spotify: ["Family music plan."],
+  "ChatGPT Plus": ["Alex's ChatGPT plan for planning and work."],
+  "YouTube Premium": ["Ad-free YouTube for the family; includes YouTube Music."],
   "nytimes.com": ["Digital news subscription."],
   "Figma.com": ["Alex's design seat; expensed back through Lumen."],
   Kidtales: ["New bedtime story app Maya loves; trial converted to paid."],

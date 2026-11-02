@@ -186,6 +186,14 @@ export interface RecurringItem {
   currency: CurrencyCode;
   nextDate: string;
   lastChargedAt?: string;
+  /** The most recent charge, positive. Differs from averageAmount after a price change. */
+  lastAmount?: number;
+  /** The price before the latest change, positive, when the price changed and has held since. */
+  previousAmount?: number;
+  /** Date of the first charge at the current price, when the price changed. */
+  priceChangedAt?: string;
+  /** How many charges the pattern was read from. */
+  chargeCount?: number;
   status: RecurringStatus;
 }
 

@@ -172,6 +172,10 @@ export function serializeRecurring(
     currency: item.currency,
     next_date: item.nextDate,
     last_charged_at: item.lastChargedAt,
+    last_amount: item.lastAmount,
+    previous_amount: item.previousAmount,
+    price_changed_at: item.priceChangedAt,
+    charge_count: item.chargeCount,
     status: item.status
   };
 }

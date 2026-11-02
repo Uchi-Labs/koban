@@ -155,7 +155,7 @@ claude mcp add --transport stdio --scope local koban -- /absolute/path/to/.local
 claude mcp get koban
 ```
 
-The MCP registration contains no secrets. New Claude Code sessions discover the same 33 backend tools. Their names remain stable for existing integrations. The native CLI command tree is independent of those internal tool names.
+The MCP registration contains no secrets. New Claude Code sessions discover the same 34 backend tools. Their names remain stable for existing integrations. The native CLI command tree is independent of those internal tool names.
 
 The `/koban` skill in `skills/koban/` teaches agents the workflows: context backfill (with a batch planner script), search, categorization, sync and connector fixes. Install it by linking the folder into your agent's skills directory, e.g. `ln -s "$PWD/skills/koban" ~/.claude/skills/koban`.
 

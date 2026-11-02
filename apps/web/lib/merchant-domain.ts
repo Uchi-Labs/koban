@@ -8,12 +8,13 @@ const KNOWN_MERCHANT_DOMAINS: Array<{
 }> = [
   { accentColor: "#ff385c", domain: "airbnb.com", pattern: /\bairbnb\b/i },
   { accentColor: "#ff9900", domain: "amazon.com", pattern: /\b(?:amazon|amzn)\b/i },
+  { accentColor: "#da1f26", domain: "adobe.com", pattern: /\badobe\b/i },
   { accentColor: "#d4a574", domain: "anthropic.com", pattern: /\banthropic\b/i },
   {
     accentColor: "#a3a3a3",
     domain: "apple.com",
     pattern: /\bapple\b/i,
-    validate: (merchant) => merchant === "apple" || /^apple(?:[./]|\s+(?:bill|com)\b)/i.test(merchant)
+    validate: (merchant) => merchant === "apple" || /^apple(?:[./]|\s+(?:bill|com|icloud|one|music|tv)\b)/i.test(merchant)
   },
   // Deliberately NO bank/brokerage domains here: institution names resolved to
   // third-party favicon URLs (google/ddg) would leak which institutions the
@@ -21,16 +22,21 @@ const KNOWN_MERCHANT_DOMAINS: Array<{
   // the tinted icon in account-favicon-badge.tsx. Restore bank logos only via
   // a same-origin favicon proxy if ever wanted.
   { accentColor: "#60a5fa", domain: "browserbase.com", pattern: /\bbrowserbase\b/i },
+  { accentColor: "#10a37f", domain: "chatgpt.com", pattern: /\bchatgpt\b/i },
+  { accentColor: "#1c49c2", domain: "chewy.com", pattern: /\bchewy\b/i },
   { accentColor: "#facc15", domain: "codedex.io", pattern: /\bcode\s*dex\b|\bcodedex\b/i },
   { accentColor: "#60a5fa", domain: "copilot.money", pattern: /\bcopilot money\b/i },
+  { accentColor: "#e31837", domain: "costco.com", pattern: /\bcostco\b/i },
   {
     accentColor: "#d1d5db",
     domain: "cursor.com",
     pattern: /\bcursor\b/i,
     validate: (merchant) => merchant === "cursor" || /^cursor\s+ai\b/i.test(merchant)
   },
+  { accentColor: "#cc0000", domain: "cvs.com", pattern: /\bcvs\b/i },
   { accentColor: "#5865f2", domain: "discord.com", pattern: /\bdiscord\b/i },
   { accentColor: "#d4a574", domain: "elevenlabs.io", pattern: /\belevenlabs?\b/i },
+  { accentColor: "#a259ff", domain: "figma.com", pattern: /\bfigma\b/i },
   { accentColor: "#2565a8", domain: "geico.com", pattern: /\bgeico\b/i },
   { accentColor: "#4285f4", domain: "one.google.com", pattern: /\bgoogle one\b/i },
   { accentColor: "#f6c344", domain: "huggingface.co", pattern: /\bhugging face\b/i },
@@ -41,6 +47,8 @@ const KNOWN_MERCHANT_DOMAINS: Array<{
     pattern: /\bmedium\b/i,
     validate: (merchant) => merchant === "medium" || /^medium(?:\.com|\s+(?:membership|subscription))\b/i.test(merchant)
   },
+  { accentColor: "#e50914", domain: "netflix.com", pattern: /\bnetflix\b/i },
+  { accentColor: "#d1d5db", domain: "nytimes.com", pattern: /\b(?:nytimes|new york times)\b/i },
   { accentColor: "#d81b60", domain: "parkmobile.io", pattern: /\bparkmobile\b/i },
   {
     accentColor: "#a855f7",
@@ -55,6 +63,7 @@ const KNOWN_MERCHANT_DOMAINS: Array<{
   { accentColor: "#34d399", domain: "webshare.io", pattern: /\bwebshare\b/i },
   { accentColor: "#0071ce", domain: "walmart.com", pattern: /\bwalmart\b/i },
   { accentColor: "#d1d5db", domain: "xsolla.com", pattern: /\bxsolla\b/i },
+  { accentColor: "#5c2d91", domain: "ymca.org", pattern: /\bymca\b/i },
   { accentColor: "#ff0033", domain: "youtube.com", pattern: /\byoutube(?:\s+premium)?\b/i }
 ];
 
