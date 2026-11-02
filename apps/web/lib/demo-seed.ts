@@ -16,7 +16,7 @@ export const demoDatabaseTables = new Set([
   "account", "account_balance_snapshots", "accounts", "agent_conversation_turns", "agent_conversations",
   "apikey", "app_sync_runs", "categories", "embedding_models", "enrichment_suggestions", "external_sources",
   "financial_goals", "investment_positions", "passkey", "provider_connections", "semantic_documents",
-  "semantic_embeddings", "session", "source_items", "source_sync_runs", "sync_run_items", "sync_runs",
+  "semantic_embeddings", "session", "source_item_lines", "source_items", "source_sync_runs", "sync_run_items", "sync_runs",
   "sync_schedules", "sync_state", "tag_registry", "transaction_evidence_links", "transaction_rules",
   "transactions", "twoFactor", "user", "verification"
 ]);

@@ -1,14 +1,25 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertDemoDatabasePreflight,
   assertDemoDataset,
   assertDemoSeedTarget,
   createDemoDataset,
+  demoDatabaseTables,
   demoSeedConfirmation
 } from "@/lib/demo-seed";
 import { createRecurringItems } from "@/lib/finance-data";
 
 describe("demo seed", () => {
+  // The reseed refuses a database with tables it does not know, so a new table breaks the demo.
+  it("knows every table the finance store creates", () => {
+    const source = readFileSync(path.resolve(__dirname, "../lib/db/finance-db.ts"), "utf8");
+    const created = [...source.matchAll(/CREATE TABLE IF NOT EXISTS "?(\w+)"?/g)].map((match) => match[1]);
+    expect(created.length).toBeGreaterThan(20);
+    expect(created.filter((table) => !demoDatabaseTables.has(table))).toEqual([]);
+  });
+
   it("builds the same rich fake ledger on every run", () => {
     const first = createDemoDataset();
     const second = createDemoDataset();
