@@ -11,6 +11,7 @@ import {
   assertDemoDatabasePreflight,
   assertDemoSeedTarget,
   createDemoDataset,
+  demoRecurringRange,
   demoRuleMatchCount,
   demoSeedMarker,
   demoUser
@@ -98,8 +99,7 @@ export async function runDemoSeed(options: DemoSeedOptions): Promise<DemoSeedRes
     assertWrittenCounts(counts, dataset);
     const { createRecurringItems, invalidateShellDataCache } = await import("@/lib/finance-data");
     const recurringCount = createRecurringItems(snapshot.transactions).length;
-    // createRecurringItems keeps at most 20.
-    if (recurringCount < 10 || recurringCount > 20) {
+    if (recurringCount < demoRecurringRange.min || recurringCount > demoRecurringRange.max) {
       throw new Error(`Demo seed verification failed: derived ${recurringCount} recurring items.`);
     }
     await ensureSeedMarker(pool, "complete");
