@@ -110,7 +110,6 @@ export async function executeOperation(name, args = {}, options = {}) {
     ?? configuration.timeoutMs
     ?? (LONG_RUNNING_OPERATIONS.has(name) ? DEFAULT_SYNC_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
   const timeout = setTimeout(() => controller.abort(new Error("request timeout")), timeoutMs);
-  timeout.unref?.();
   const signal = options.signal
     ? AbortSignal.any([options.signal, controller.signal])
     : controller.signal;
