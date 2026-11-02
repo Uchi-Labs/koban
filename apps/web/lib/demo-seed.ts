@@ -1,3 +1,4 @@
+import { assertDemoReceipts, createDemoReceipts, type DemoReceipts } from "@/lib/demo-receipts";
 import type {
   Account,
   FinancialGoal,
@@ -59,6 +60,8 @@ export interface DemoDataset {
   goals: FinancialGoal[];
   investmentPositions: InvestmentPosition[];
   ledger: Ledger;
+  /** Itemized receipts and orders behind the household's grocery, warehouse and marketplace charges. */
+  receipts: DemoReceipts;
   rules: DemoRule[];
   subscriptionNames: string[];
   suggestions: DemoSuggestion[];
@@ -582,6 +585,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     goals,
     investmentPositions,
     ledger,
+    receipts: createDemoReceipts(transactions),
     rules,
     subscriptionNames,
     suggestions,
@@ -593,6 +597,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
 
 export function assertDemoDataset(dataset: DemoDataset): void {
   const { accounts, transactions } = dataset.ledger;
+  assertDemoReceipts(dataset.receipts, transactions);
   if (accounts.length < 12 || accounts.length > 18) throw new Error(`Demo account count out of range: ${accounts.length}.`);
   if (transactions.length < 2_000) throw new Error(`Demo transaction count is too small: ${transactions.length}.`);
   if (dataset.subscriptionNames.length < 8 || dataset.subscriptionNames.length > 15) throw new Error("Demo subscription count out of range.");

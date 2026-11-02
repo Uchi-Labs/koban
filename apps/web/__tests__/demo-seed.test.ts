@@ -42,6 +42,23 @@ describe("demo seed", () => {
     expect(() => createDemoDataset("2026-13-40")).toThrow(/YYYY-MM-DD/);
   });
 
+  it("itemizes the grocery, warehouse and marketplace charges with lines that add up to each charge", () => {
+    const dataset = createDemoDataset("2026-11-01");
+    const items = dataset.receipts.sources.flatMap((source) => source.items);
+    const byId = new Map(dataset.ledger.transactions.map((transaction) => [transaction.id, transaction]));
+    const itemById = new Map(items.map((item) => [item.id, item]));
+    expect(items.length).toBeGreaterThan(40);
+    for (const link of dataset.receipts.links) {
+      const lines = itemById.get(link.sourceItemId)?.lines ?? [];
+      const sum = lines.reduce((total, line) => total + Math.round((line.amount ?? 0) * 100), 0);
+      expect(sum).toBe(Math.round(Math.abs(byId.get(link.transactionId)!.amount) * 100));
+    }
+    const amazon = dataset.receipts.links.find((link) => byId.get(link.transactionId)?.merchantName === "AMZN MKTP US*2K4LQ");
+    expect(amazon).toMatchObject({ confidence: 0.88, status: "suggested" });
+    expect(itemById.get(amazon!.sourceItemId)?.lines?.[0].name).toMatch(/stroller wheel/i);
+    expect(items.some((item) => item.lines?.some((line) => /oat milk/i.test(line.name)))).toBe(true);
+  });
+
   it("pairs every internal transfer symmetrically", () => {
     const transactions = createDemoDataset().ledger.transactions;
     const byId = new Map(transactions.map((transaction) => [transaction.id, transaction]));

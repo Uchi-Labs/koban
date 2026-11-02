@@ -2,6 +2,7 @@
 
 import { FileText, Loader2, MessageSquarePlus } from "lucide-react";
 import { useState } from "react";
+import { ItemizedLines } from "@/components/itemized-lines";
 import { Button } from "@/components/ui/button";
 import type { ReviewQueueContext } from "@/lib/db/finance-db";
 
@@ -74,9 +75,10 @@ export function ReviewContextPanel({
           {context.evidence.slice(0, 3).map((item, index) => (
             <li className="flex gap-2 text-xs text-muted-foreground" key={`${item.title}-${index}`}>
               <FileText aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 opacity-60" />
-              <span className="min-w-0">
+              <span className="min-w-0 flex-1">
                 <span className="block truncate text-foreground">{item.title}</span>
                 <span className="block truncate">{item.sourceLabel} · {Math.round(item.confidence * 100)}% match</span>
+                {item.lines?.length ? <ItemizedLines className="mt-1" lines={item.lines} /> : null}
               </span>
             </li>
           ))}

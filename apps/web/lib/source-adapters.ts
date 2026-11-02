@@ -1,4 +1,4 @@
-import type { ExternalSourceKind, ExternalSourceStatus } from "@ai-finances/schema";
+import type { ExternalSourceKind, ExternalSourceStatus, SourceItemLine } from "@ai-finances/schema";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -1118,6 +1118,20 @@ function normalizeInstacartCsvPurchaseRows(
       rows.reduce((sum, row) => sum + (firstNumber(row, ["price_paid_before_tax", "pricePaidBeforeTax", "product_price", "productPrice"]) ?? 0), 0)
     );
     const title = itemTitles.length > 0 ? itemTitles.slice(0, 3).join(", ") : `Instacart order ${orderId}`;
+    // Each CSV row is one product line: keep it, not only the order total.
+    const lines = rows.flatMap((row): SourceItemLine[] => {
+      const name = firstString(row, ["product_description", "productDescription"]);
+      if (!name) return [];
+      const quantity = firstNumber(row, ["product_quantity", "productQuantity"]);
+      const paid = firstNumber(row, ["price_paid_before_tax", "pricePaidBeforeTax"]);
+      const unit = firstNumber(row, ["product_price", "productPrice"]);
+      return [{
+        name,
+        ...(quantity !== undefined && quantity > 0 ? { quantity } : {}),
+        ...(unit !== undefined ? { unitPrice: roundMoney(Math.abs(unit)) } : {}),
+        ...(paid !== undefined ? { amount: roundMoney(Math.abs(paid)) } : {})
+      }];
+    });
     const summary = [
       retailer ? `Retailer: ${retailer}` : undefined,
       `Order: ${orderId}`,
@@ -1141,6 +1155,7 @@ function normalizeInstacartCsvPurchaseRows(
         summary: summary || "Instacart grocery order.",
         merchantName: retailer,
         amount,
+        ...(lines.length > 0 ? { lines } : {}),
         currency: amount === undefined ? undefined : sourceCurrency(firstRow, ["price_paid_before_tax", "product_price"]),
         metadata: {
           itemCount,
@@ -1222,6 +1237,7 @@ function normalizeInstacartOrderRecord(
     summary: summary || "Instacart grocery order.",
     merchantName: retailer,
     amount,
+    ...(extractLineItems(record) ? { lines: extractLineItems(record) } : {}),
     currency: amount === undefined ? undefined : sourceCurrency(record, ["total", "order_total", "orderTotal", "grand_total", "grandTotal", "amount"]),
     metadata: {
       ...pickMetadata(record, ["retailer_id", "retailer_name", "item_count", "status"]),
@@ -1510,6 +1526,7 @@ export function normalizeAmazonOrders(payload: unknown, sourceId = "source_amazo
       const amountKeys = ["total", "grandTotal", "grand_total", "orderTotal", "order_total", "amount", "signedAmount", "signed_amount"];
       const amount = firstNumber(record, amountKeys);
       const itemTitles = extractItemTitles(record);
+      const lines = extractLineItems(record);
       const explicitTitle = firstString(record, ["title", "name", "description"]);
       const title = explicitTitle ?? (itemTitles.length > 0 ? itemTitles.slice(0, 2).join(", ") : `Amazon order ${externalId}`);
       const status = firstString(record, ["status", "orderStatus", "shipmentStatus"]);
@@ -1540,6 +1557,7 @@ export function normalizeAmazonOrders(payload: unknown, sourceId = "source_amazo
           summary: summary || "Amazon order.",
           merchantName: seller ?? "Amazon",
           amount,
+          ...(lines ? { lines } : {}),
           currency: amount === undefined ? undefined : sourceCurrency(record, amountKeys),
           metadata: pickMetadata(record, ["orderId", "order_id", "status", "paymentMethod", "payment_method", "payments", "shipTo", "asin", "trackingNumber"])
         }
@@ -3970,6 +3988,43 @@ function extractItemTitles(record: Record<string, unknown>): string[] {
   }
 
   return [...titles];
+}
+
+const lineItemArrayKeys = ["items", "lineItems", "line_items", "products", "orderItems", "order_items", "purchasedItems", "purchased_items"];
+
+/**
+ * The itemized lines of an order, receipt or invoice record, when it states them: each entry's name,
+ * quantity, unit price and line total (positive prices paid). Cent fields are converted. A line with
+ * a name and no price is kept, unpriced. Returns undefined when the record carries no line list.
+ */
+export function extractLineItems(record: Record<string, unknown>): SourceItemLine[] | undefined {
+  for (const key of lineItemArrayKeys) {
+    const entries = arrayValue(readPath(record, key));
+    const lines = entries.flatMap((entry): SourceItemLine[] => {
+      const item = asRecord(entry);
+      if (!item) return [];
+      const name = firstString(item, ["title", "name", "description", "productTitle", "product_title", "product_description", "productDescription", "itemTitle", "item_title"]);
+      if (!name) return [];
+      const quantity = firstNumber(item, ["quantity", "qty", "product_quantity", "productQuantity", "count"]);
+      const unitPrice =
+        firstNumber(item, ["unit_price", "unitPrice", "item_price", "itemPrice", "product_price", "productPrice", "price"]) ??
+        centsToAmount(firstNumber(item, ["unit_price_cents", "unitPriceCents", "price_cents", "priceCents"]));
+      const amount =
+        firstNumber(item, ["line_total", "lineTotal", "total", "total_price", "totalPrice", "price_paid", "pricePaid", "price_paid_before_tax", "pricePaidBeforeTax", "amount"]) ??
+        centsToAmount(firstNumber(item, ["line_total_cents", "lineTotalCents", "total_cents", "totalCents"]));
+      return [{
+        name: name.slice(0, 300),
+        ...(quantity !== undefined && quantity > 0 ? { quantity } : {}),
+        ...(unitPrice !== undefined ? { unitPrice: roundMoney(Math.abs(unitPrice)) } : {}),
+        ...(amount !== undefined ? { amount: roundMoney(Math.abs(amount)) } : {}),
+        ...(firstString(item, ["sku", "asin", "upc", "product_id", "productId"]) ? { sku: firstString(item, ["sku", "asin", "upc", "product_id", "productId"]) } : {})
+      }];
+    });
+    if (lines.length > 0) {
+      return lines.slice(0, 200);
+    }
+  }
+  return undefined;
 }
 
 function splitItemTitleList(value: string): string[] {
