@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listSourceItems } from "@/lib/db/finance-db";
 import { isCalendarDate, parseBoundedLimit } from "@/lib/finance-api";
+import { lineToApi } from "@/lib/line-items-api";
 
 export const runtime = "nodejs";
 
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
       summary: item.summary,
       merchant_name: item.merchantName,
       amount: item.amount,
-      currency: item.currency
+      currency: item.currency,
+      lines: item.lines ? item.lines.map(lineToApi) : null
     })),
     has_more: false
   });

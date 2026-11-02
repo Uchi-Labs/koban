@@ -21,7 +21,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.next*/**", "tests/e2e/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.next*/**", "**/.claude/**", "tests/e2e/**"],
     globals: true,
     // PGlite integration tests spin up a fresh embedded Postgres per test; under
     // full-suite parallel load their setup can exceed the 5s default. Give them

@@ -12,6 +12,7 @@ import {
   clearAppSyncScheduleClaim,
   applyCopilotHistoryImport,
   createFinancialGoal,
+  clearSourceItemEvidenceLinks,
   createTransactionEvidenceLink,
   createTransactionContextNote,
   createTransactionVoiceNote,
@@ -37,6 +38,8 @@ import {
   listTagStyles,
   listTransactionRules,
   listTransactionEvidence,
+  listTransactionLineItems,
+  queryLineItems,
   listSourceItems,
   readFinanceDbSnapshot,
   readSyncStateValue,
@@ -1452,6 +1455,77 @@ describe("finance db", () => {
       status: "suggested"
     });
   }, 15_000);
+
+  it("stores itemized lines on a context source and answers line-item queries through the trusted link", async () => {
+    useTempDb();
+    await replaceLedgerInDb(createLedger({ transactionAmount: -31.2, providerCategoryId: "cat_other" }));
+    await ensureExternalSourceCatalog([
+      { command: "outlook-email-pp-cli", displayName: "Outlook email", id: "source_outlook_email", kind: "outlook_email", status: "stale" }
+    ]);
+    const receipt = (lines?: Array<{ amount?: number; name: string; quantity?: number; unitPrice?: number }>) => recordSourceSyncRun({
+      finishedAt: "2026-05-31T01:00:01.000Z",
+      items: [
+        {
+          amount: 31.2,
+          currency: "USD",
+          externalId: "receipt_1",
+          id: "src_receipt_1",
+          kind: "receipt",
+          ...(lines ? { lines } : {}),
+          merchantName: "Corner Market",
+          occurredAt: "2026-05-28T13:00:00.000Z",
+          sourceId: "source_outlook_email",
+          summary: "Receipt from Corner Market.",
+          title: "Corner Market receipt"
+        }
+      ],
+      runStatus: "succeeded",
+      sourceId: "source_outlook_email",
+      sourceStatus: "connected",
+      startedAt: "2026-05-31T01:00:00.000Z"
+    });
+    await receipt([
+      { amount: 7.98, name: "Oat milk, barista", quantity: 2, unitPrice: 3.99 },
+      { name: "Sourdough loaf", unitPrice: 6.5 },
+      { name: "Paper towels" }
+    ]);
+    await createTransactionEvidenceLink({ sourceItemId: "src_receipt_1", transactionId: "txn_1" });
+
+    const items = await listTransactionLineItems("txn_1");
+    expect(items).toHaveLength(1);
+    expect(items[0].lines).toEqual([
+      { amount: 7.98, name: "Oat milk, barista", quantity: 2, unitPrice: 3.99 },
+      { name: "Sourdough loaf", unitPrice: 6.5 },
+      { name: "Paper towels" }
+    ]);
+
+    const oat = await queryLineItems({ query: "oat milk" });
+    expect(oat).toMatchObject({ matchCount: 1, sourceItemCount: 1, total: 7.98, unpricedCount: 0 });
+    expect(oat.matches[0].transaction).toMatchObject({ amount: -31.2, id: "txn_1" });
+    // a line with only a unit price counts once at that price; a line with no price is listed, not summed
+    expect(await queryLineItems({ query: "sourdough" })).toMatchObject({ total: 6.5, unpricedCount: 0 });
+    expect(await queryLineItems({ query: "towels" })).toMatchObject({ matchCount: 1, total: 0, unpricedCount: 1 });
+    expect(await queryLineItems({ query: "oat", from: "2026-06-01" })).toMatchObject({ matchCount: 0 });
+    // one word or two: "oatmilk" finds "Oat milk"; short words never match inside another ("ink" in "sink" style)
+    expect(await queryLineItems({ query: "oatmilk" })).toMatchObject({ matchCount: 1, total: 7.98 });
+    expect(await queryLineItems({ query: "ugh" })).toMatchObject({ matchCount: 0 });
+    expect((await listSourceItems({ query: "sourdough" })).map((item) => item.id)).toEqual(["src_receipt_1"]);
+    expect((await semanticSearchTransactions("oat milk barista", 3))[0]?.transaction?.id).toBe("txn_1");
+
+    // a resync that states lines replaces them; one that states none keeps what the source said before
+    await receipt([{ amount: 4.25, name: "Oat milk, barista", quantity: 1 }]);
+    expect(await queryLineItems({ query: "oat milk" })).toMatchObject({ total: 4.25 });
+    await receipt(undefined);
+    expect((await listTransactionLineItems("txn_1"))[0].lines).toEqual([{ amount: 4.25, name: "Oat milk, barista", quantity: 1 }]);
+
+    // clearing an item's links unlinks it from the charge; the lines stay with the source item
+    await clearSourceItemEvidenceLinks(["src_receipt_1"]);
+    expect(await listTransactionLineItems("txn_1")).toEqual([]);
+    expect(await listTransactionEvidence({ includeDismissed: true, transactionId: "txn_1" })).toEqual([]);
+    const unlinked = await queryLineItems({ query: "oat milk" });
+    expect(unlinked).toMatchObject({ matchCount: 1 });
+    expect(unlinked.matches[0].transaction).toBeUndefined();
+  }, 20_000);
 
   it("manually links source evidence to a Plaid transaction", async () => {
     useTempDb();

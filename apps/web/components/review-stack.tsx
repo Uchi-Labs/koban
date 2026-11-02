@@ -18,6 +18,7 @@ import { ReviewContextComposer } from "@/components/review-context-composer";
 import { isPublicDemoClient } from "@/lib/agent-conversations-local";
 import { readDemoContext } from "@/lib/demo-context-local";
 import { cn } from "@/lib/utils";
+import { ItemizedLines } from "@/components/itemized-lines";
 import type { TransactionView } from "@/lib/view-models";
 
 type ReviewAction = "accept" | "categorize" | "review" | "skip";
@@ -376,9 +377,10 @@ function CardBody({ confidence, context, evidence, reason, suggestedCategory, su
           {evidence.slice(0, 3).map((item, index) => (
             <li className="flex gap-2 text-xs text-muted-foreground" key={`${item.title}-${index}`}>
               <FileText aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 opacity-60" />
-              <span className="min-w-0">
+              <span className="min-w-0 flex-1">
                 <span className="block truncate text-foreground">{item.title}</span>
                 <span className="block truncate">{item.sourceLabel} · {Math.round(item.confidence * 100)}% match</span>
+                {item.lines?.length ? <ItemizedLines className="mt-1" currency={transaction.currency} lines={item.lines} /> : null}
               </span>
             </li>
           ))}

@@ -88,6 +88,7 @@ export async function runDemoSeed(options: DemoSeedOptions): Promise<DemoSeedRes
     // Rules go in after the ledger: replaceLedgerInDb re-applies stored rules,
     // and these already agree with the categories the ledger carries.
     await seedReviewAndOrganization(pool, dataset);
+    await seedReceipts(financeDb, dataset);
 
     const snapshot = await financeDb.readFinanceDbSnapshot();
     if (!snapshot) throw new Error("Demo seed verification failed: no ledger was readable after write.");
@@ -292,13 +293,45 @@ interface SeedCounts {
   positions: number;
   pairedRows: number;
   coloredTags: number;
+  contextSources: number;
   customCategories: number;
+  evidenceLinks: number;
+  lineItems: number;
+  sourceItems: number;
   reviewQueue: number;
   rules: number;
   suggestions: number;
   tags: number;
   transactions: number;
   users: number;
+}
+
+/**
+ * The itemized orders and receipts behind the household's charges, written the way a source sync
+ * writes them, then linked to the charges they were paid in (accepted, or the matcher's suggestion
+ * for the charges still in the review queue).
+ */
+async function seedReceipts(financeDb: typeof import("@/lib/db/finance-db"), dataset: ReturnType<typeof createDemoDataset>): Promise<void> {
+  const { links, sources } = dataset.receipts;
+  await financeDb.ensureExternalSourceCatalog(
+    sources.map(({ command, displayName, id, kind }) => ({ command, displayName, id, kind, status: "connected" as const }))
+  );
+  for (const source of sources) {
+    await financeDb.recordSourceSyncRun({
+      finishedAt: dataset.ledger.lastSyncedAt,
+      items: source.items,
+      runStatus: "succeeded",
+      sourceId: source.id,
+      sourceStatus: "connected",
+      startedAt: dataset.ledger.lastSyncedAt
+    });
+  }
+  // The sync run's matcher has already guessed a charge for each item; the dataset states which
+  // charge each one was paid in, so its guesses go before the stated links are written.
+  await financeDb.clearSourceItemEvidenceLinks(sources.flatMap((source) => source.items.map((item) => item.id)));
+  for (const link of links) {
+    await financeDb.createTransactionEvidenceLink(link);
+  }
 }
 
 async function readSeedCounts(database: pg.Pool): Promise<SeedCounts> {
@@ -328,9 +361,12 @@ async function readSeedCounts(database: pg.Pool): Promise<SeedCounts> {
         (SELECT COUNT(*) FROM "session") + (SELECT COUNT(*) FROM apikey) +
         (SELECT COUNT(*) FROM passkey) + (SELECT COUNT(*) FROM "twoFactor") +
         (SELECT COUNT(*) FROM verification) + (SELECT COUNT(*) FROM agent_conversations) +
-        (SELECT COUNT(*) FROM agent_conversation_turns) + (SELECT COUNT(*) FROM transaction_evidence_links) +
-        (SELECT COUNT(*) FROM source_items) + (SELECT COUNT(*) FROM external_sources)
+        (SELECT COUNT(*) FROM agent_conversation_turns)
       )::int AS "accessoryRows",
+      (SELECT COUNT(*)::int FROM external_sources) AS "contextSources",
+      (SELECT COUNT(*)::int FROM source_items) AS "sourceItems",
+      (SELECT COUNT(*)::int FROM source_item_lines) AS "lineItems",
+      (SELECT COUNT(*)::int FROM transaction_evidence_links) AS "evidenceLinks",
       (SELECT COUNT(*)::int FROM tag_registry) AS tags,
       (SELECT COUNT(*)::int FROM tag_registry WHERE color IS NOT NULL) AS "coloredTags",
       (SELECT COUNT(*)::int FROM transaction_rules) AS rules,
@@ -341,6 +377,7 @@ async function readSeedCounts(database: pg.Pool): Promise<SeedCounts> {
 }
 
 function assertWrittenCounts(counts: SeedCounts, dataset: ReturnType<typeof createDemoDataset>): void {
+  const receiptItems = dataset.receipts.sources.flatMap((source) => source.items);
   const expected = {
     accounts: dataset.ledger.accounts.length,
     goals: dataset.goals.length,
@@ -349,6 +386,10 @@ function assertWrittenCounts(counts: SeedCounts, dataset: ReturnType<typeof crea
     users: 1,
     authAccounts: 1,
     accessoryRows: 0,
+    contextSources: dataset.receipts.sources.length,
+    sourceItems: receiptItems.length,
+    lineItems: receiptItems.reduce((total, item) => total + (item.lines?.length ?? 0), 0),
+    evidenceLinks: dataset.receipts.links.length,
     tags: new Set(dataset.ledger.transactions.flatMap((transaction) => transaction.tags ?? [])).size,
     coloredTags: Object.keys(dataset.tagColors).length,
     rules: dataset.rules.length,
@@ -362,7 +403,7 @@ function assertWrittenCounts(counts: SeedCounts, dataset: ReturnType<typeof crea
   for (const key of [
     "accounts", "goals", "positions", "transactions", "users", "authAccounts",
     "accessoryRows", "tags", "coloredTags", "rules", "suggestions", "customCategories", "reviewQueue",
-    "credentialAccounts", "pairedRows", "brokenPairRows"
+    "credentialAccounts", "pairedRows", "brokenPairRows", "contextSources", "sourceItems", "lineItems", "evidenceLinks"
   ] as const) {
     if (counts[key] !== expected[key]) throw new Error(`Demo seed verification failed for ${key}: expected ${expected[key]}, found ${counts[key]}.`);
   }
