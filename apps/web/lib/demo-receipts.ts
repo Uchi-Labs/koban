@@ -136,13 +136,18 @@ export function createDemoReceipts(transactions: Transaction[]): DemoReceipts {
       links.push({ confidence: 0.93, relationship: "receipt", sourceItemId: sourceIdFor("source_gmail", externalId), status: "accepted", transactionId: transaction.id });
     } else if (merchant === "AMZN MKTP US*2K4LQ") {
       const externalId = "113-4471902-8835461";
+      const batteries = (cents(paid(transaction)) - cents(38.99) - cents(14.99)) / 100;
       amazon.push({
         amount: paid(transaction),
         currency: "USD",
         externalId,
         id: sourceIdFor("source_amazon_orders", externalId),
         kind: "order",
-        lines: [{ amount: paid(transaction), name: "Replacement stroller wheel, front, 7 in", quantity: 1, unitPrice: paid(transaction) }],
+        lines: [
+          { amount: 38.99, name: "Replacement stroller wheel, front, 7 in", quantity: 1, unitPrice: 38.99 },
+          { amount: 14.99, name: "Stroller cup holder", quantity: 1, unitPrice: 14.99 },
+          { amount: batteries, name: "AA batteries, 24 pack", quantity: 1, unitPrice: batteries }
+        ],
         merchantName: "Amazon",
         occurredAt: `${transaction.date}T09:12:00.000Z`,
         sourceId: "source_amazon_orders",
