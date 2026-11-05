@@ -373,7 +373,7 @@ function PasskeySettingsSection({
       </form>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading passkeys...</p>
+        <p className="text-sm text-muted-foreground">Loading passkeys…</p>
       ) : passkeys.length === 0 ? (
         <p className="text-sm text-muted-foreground">No passkeys are enrolled yet.</p>
       ) : (

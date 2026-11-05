@@ -40,13 +40,13 @@ export function GoalManager({ initialGoals }: { initialGoals: GoalView[] }) {
       {activeGoals.length === 0 ? (
         <EmptyState
           actions={
-            <a className={buttonVariants()} data-slot="button" href="#new-goal">
-              Create a goal
+            <a className={buttonVariants({ variant: "outline" })} data-slot="button" href="#new-goal">
+              Name your first goal
             </a>
           }
-          description="Assign transactions to a goal to track money you set aside. Create one to get started."
+          description="Name a goal above, then assign transactions to it from any transaction's details."
           mascot
-          title="No goals yet — create one"
+          title="No goals yet"
         />
       ) : (
         <section aria-label="Active goals" className="flex flex-col gap-3">

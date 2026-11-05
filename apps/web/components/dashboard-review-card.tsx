@@ -68,7 +68,7 @@ export function DashboardReviewCard({
 
     setBusy(true);
     setButtonState("loading");
-    setMessage(`Marking ${rowsToMark.length.toLocaleString()} transactions reviewed...`);
+    setMessage(`Marking ${rowsToMark.length.toLocaleString()} transactions reviewed…`);
     const toastId = showToast({
       description: `Marking ${rowsToMark.length.toLocaleString()} dashboard transactions reviewed.`,
       duration: 0,

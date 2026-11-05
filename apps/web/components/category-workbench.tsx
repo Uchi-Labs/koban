@@ -16,6 +16,7 @@ import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, EASE_SMOOTH_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { categoryColorPalette } from "@/lib/category-style";
 import { cn } from "@/lib/utils";
+import { PageHeader, pageFrameClassName } from "@/components/page-header";
 
 export interface MonthPoint {
   month: string;
@@ -98,16 +99,18 @@ export function CategoryWorkbench({
   );
 
   return (
-    <main className="@container/page flex min-h-svh flex-col" data-testid="categories-page">
-      <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
-        <span className="text-[13px] font-semibold tracking-tight">Categories</span>
-        <Button onClick={() => setCreating(true)} size="sm" type="button" variant="outline">
-          <Plus className="size-4" />
-          New category
-        </Button>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6 @6xl/page:max-w-[80rem]">
+    <main className="@container/page w-full" data-testid="categories-page">
+      <div className={pageFrameClassName}>
+        <PageHeader
+          actions={
+            <Button onClick={() => setCreating(true)} size="sm" type="button" variant="outline">
+              <Plus className="size-4" />
+              New category
+            </Button>
+          }
+          description="Set a monthly budget per category and see where this month's spending went."
+          title="Categories"
+        />
         <div className="grid items-start gap-5 @6xl/page:grid-cols-[minmax(0,1.55fr)_minmax(30rem,0.8fr)]">
           <div className="flex min-w-0 flex-col gap-5">
             <div aria-label="Category totals">
@@ -785,14 +788,14 @@ function DetailPane({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-2.5">
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             {selectedId ? (
               <span aria-hidden="true" className="text-lg">
                 {detail.emoji}
               </span>
             ) : null}
             {detail.name}
-          </h1>
+          </h2>
           <div className="flex flex-wrap items-center gap-1.5">
             {selectedId ? (
               <button

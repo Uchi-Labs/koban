@@ -1206,7 +1206,7 @@ function useTransactionsViewModel({
 
     setReviewBusy(true);
     setBulkReviewState("loading");
-    setReviewMessage(`Marking ${ids.length.toLocaleString()} transactions reviewed...`);
+    setReviewMessage(`Marking ${ids.length.toLocaleString()} transactions reviewed…`);
     const toastId = showToast({
       description: `Marking ${ids.length.toLocaleString()} transactions reviewed.`,
       duration: 0,
@@ -1445,8 +1445,8 @@ function useTransactionsViewModel({
     options?: { silent?: boolean }
   ): Promise<boolean> {
     const nextCategory = categoryById.get(nextCategoryId);
-    setReviewMessage("Saving category...");
-    setInspectorMessage("Saving category...");
+    setReviewMessage("Saving category…");
+    setInspectorMessage("Saving category…");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transactionId)}`, {
       body: JSON.stringify({ category_id: nextCategoryId }),
@@ -1611,7 +1611,7 @@ function useTransactionsViewModel({
   }
 
   async function linkSourceItem(transaction: TransactionView, sourceItem: SourceItemSearchView) {
-    setInspectorMessage("Linking evidence...");
+    setInspectorMessage("Linking evidence…");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}/evidence`, {
       body: JSON.stringify({
@@ -1718,7 +1718,7 @@ function useTransactionsViewModel({
   }
 
   async function updateTransactionTags(transaction: TransactionView, tags: string[]) {
-    setInspectorMessage("Saving tags...");
+    setInspectorMessage("Saving tags…");
 
     const normalizedTags = normalizeTags(tags);
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}`, {
@@ -1830,7 +1830,7 @@ function useTransactionsViewModel({
       return null;
     }
 
-    setInspectorMessage("Saving tag style...");
+    setInspectorMessage("Saving tag style…");
     const response = await fetch("/api/v1/tag-colors", {
       body: JSON.stringify({ name, ...update }),
       headers: { "Content-Type": "application/json" },
@@ -1863,7 +1863,7 @@ function useTransactionsViewModel({
       return false;
     }
 
-    setInspectorMessage("Renaming tag...");
+    setInspectorMessage("Renaming tag…");
     const response = await fetch(`/api/v1/tags/${encodeURIComponent(currentName)}`, {
       body: JSON.stringify({ new_name: nextName }),
       headers: { "Content-Type": "application/json" },
@@ -1888,7 +1888,7 @@ function useTransactionsViewModel({
 
   async function toggleReviewed(transaction: TransactionView) {
     const nextReviewed = !transaction.reviewed;
-    setInspectorMessage("Saving review state...");
+    setInspectorMessage("Saving review state…");
     setReviewToggleState("loading");
     const toastId = showToast({
       description: nextReviewed ? "Marking the selected transaction reviewed." : "Moving the selected transaction back to review.",
@@ -1950,7 +1950,7 @@ function useTransactionsViewModel({
       return;
     }
 
-    setInspectorMessage("Saving context note...");
+    setInspectorMessage("Saving context note…");
     setNoteSaveState("loading");
     const toastId = showToast({
       description: "Saving the note as transaction evidence.",
@@ -2080,7 +2080,7 @@ function useTransactionsViewModel({
       voiceTransactionIdRef.current = transactionId;
       recognition.start();
       setVoiceRecordingForTransaction(transactionId, true);
-      setVoiceStatusForTransaction(transactionId, "Recording...");
+      setVoiceStatusForTransaction(transactionId, "Recording…");
     } catch (error) {
       setVoiceStatusForTransaction(transactionId, error instanceof Error ? error.message : "Voice recording failed.");
       setVoiceRecordingForTransaction(transactionId, false);
@@ -2113,7 +2113,7 @@ function useTransactionsViewModel({
     }
 
     stopVoiceRecognition();
-    setInspectorMessage("Saving voice note...");
+    setInspectorMessage("Saving voice note…");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}/voice-notes`, {
       body: JSON.stringify({ transcript }),
@@ -2140,7 +2140,7 @@ function useTransactionsViewModel({
     evidence: TransactionEvidenceView,
     status: "accepted" | "dismissed"
   ) {
-    setInspectorMessage(status === "accepted" ? "Accepting evidence..." : "Dismissing evidence...");
+    setInspectorMessage(status === "accepted" ? "Accepting evidence…" : "Dismissing evidence…");
 
     const response = await fetch(
       `/api/v1/transactions/${encodeURIComponent(transaction.id)}/evidence/${encodeURIComponent(evidence.sourceItem.id)}`,
@@ -3539,7 +3539,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
       </header>
       {model.evidenceLoading ? (
         <div className="mt-2 grid gap-2">
-          <p className="text-sm text-muted-foreground">Loading evidence...</p>
+          <p className="text-sm text-muted-foreground">Loading evidence…</p>
           <Skeleton className="h-3" variant="long" />
           <Skeleton className="h-3" variant="short" />
         </div>
@@ -3627,12 +3627,12 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
             value={model.linkEvidenceQuery}
           />
           <Button disabled={model.linkEvidenceLoading} size="sm" type="submit" variant="outline">
-            {model.linkEvidenceLoading ? "Searching..." : "Search source items"}
+            {model.linkEvidenceLoading ? "Searching…" : "Search source items"}
           </Button>
         </form>
         {model.linkEvidenceLoading ? (
           <div className="mt-2 grid gap-2">
-            <p className="text-sm text-muted-foreground">Searching imported evidence...</p>
+            <p className="text-sm text-muted-foreground">Searching imported evidence…</p>
             <Skeleton className="h-3" />
             <Skeleton className="h-3" variant="short" />
           </div>
@@ -3795,7 +3795,7 @@ function ReviewTabLoadMore({ model }: { model: TransactionsViewModel }) {
       {model.reviewTransactionsError
         ? model.reviewTransactionsError
         : model.reviewTransactionsLoading
-          ? "Loading review rows..."
+          ? "Loading review rows…"
           : "Scroll for more review rows"}
     </div>
   );

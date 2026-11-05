@@ -118,7 +118,7 @@ export function PlaidConnectSetup({
     updateState({
       busy: true,
       error: "",
-      message: "Saving Plaid item...",
+      message: "Saving Plaid item…",
       syncSummary: ""
     });
 
@@ -213,7 +213,7 @@ export function PlaidConnectSetup({
     updateState({
       busy: true,
       error: "",
-      message: "Preparing Plaid Link...",
+      message: "Preparing Plaid Link…",
       syncSummary: ""
     });
 
@@ -237,7 +237,7 @@ export function PlaidConnectSetup({
       window.sessionStorage.setItem(PLAID_LINK_SESSION_STORAGE_KEY, body.link_token);
       openWhenReadyRef.current = openWhenReady;
       setLinkToken(body.link_token);
-      updateState({ message: openWhenReady ? "Opening Plaid Link..." : "Plaid Link is ready." });
+      updateState({ message: openWhenReady ? "Opening Plaid Link…" : "Plaid Link is ready." });
     } catch (caughtError) {
       playError();
       const detail = caughtError instanceof Error ? caughtError.message : "Unable to create Plaid Link token.";
@@ -279,7 +279,7 @@ export function PlaidConnectSetup({
     updateState({
       busy: true,
       error: "",
-      message: "Syncing Plaid transactions...",
+      message: "Syncing Plaid transactions…",
       syncSummary: ""
     });
 
@@ -343,7 +343,7 @@ export function PlaidConnectSetup({
             ) : null}
             <Button variant="outline" disabled={!status.readyForSync || busy} onClick={syncPlaid} type="button">
               {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
-              {busy ? "Syncing..." : "Sync Plaid"}
+              {busy ? "Syncing…" : "Sync Plaid"}
             </Button>
           </div>
           <ProviderConsentLine className="text-right" />

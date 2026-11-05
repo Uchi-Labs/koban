@@ -17,6 +17,7 @@ import { normalizeProviderCurrencyCode } from "@/lib/currency";
 import { formatCurrency } from "@/lib/format";
 import type { HoldingView, InvestmentsData } from "@/lib/investments";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/page-header";
 
 // Only ever mounts once a holding row is expanded, and it injects a third-party
 // script tag itself -- code-split it out of the initial /investments bundle
@@ -136,13 +137,16 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
   const historySpan = describeSpan(data.history);
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="investments-page">
-      <div className="mb-5 flex items-center gap-3">
-        <h1 className="app-page-title">Investment accounts</h1>
-        <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
-          {data.accounts.length.toLocaleString()} accounts
-        </Badge>
-      </div>
+    <main className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="investments-page">
+      <PageHeader
+        className="mb-5"
+        meta={
+          <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
+            {data.accounts.length.toLocaleString()} {data.accounts.length === 1 ? "account" : "accounts"}
+          </Badge>
+        }
+        title="Investment accounts"
+      />
 
       <InvestmentTotalsSection
         change={change}

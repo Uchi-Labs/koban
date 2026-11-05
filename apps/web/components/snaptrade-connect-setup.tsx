@@ -107,7 +107,7 @@ export function SnapTradeConnectSetup({
     updateState({
       busy: true,
       error: "",
-      message: "Preparing SnapTrade connection portal...",
+      message: "Preparing SnapTrade connection portal…",
       syncSummary: ""
     });
 
@@ -161,7 +161,7 @@ export function SnapTradeConnectSetup({
     updateState({
       busy: true,
       error: "",
-      message: "Syncing SnapTrade accounts and positions...",
+      message: "Syncing SnapTrade accounts and positions…",
       syncSummary: ""
     });
 
@@ -218,7 +218,7 @@ export function SnapTradeConnectSetup({
           <div className="flex max-w-sm flex-col items-end gap-2">
             <Button variant="tonal" disabled={!status.readyForConnect || busy} onClick={openConnectionPortal} type="button">
               <ExternalLink className="size-4" aria-hidden />
-              {busy ? "Working..." : hasConnections ? "Connect another brokerage" : "Connect brokerage"}
+              {busy ? "Working…" : hasConnections ? "Connect another brokerage" : "Connect brokerage"}
             </Button>
             <ProviderConsentLine className="text-right" />
           </div>
@@ -266,7 +266,7 @@ export function SnapTradeConnectSetup({
             type="button"
           >
             {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
-            {busy ? "Syncing..." : "Sync SnapTrade"}
+            {busy ? "Syncing…" : "Sync SnapTrade"}
           </Button>
         </div>
 

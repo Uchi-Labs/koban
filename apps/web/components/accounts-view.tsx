@@ -16,6 +16,7 @@ import type { Ledger } from "@/lib/finance-data";
 import { computePortfolioChange } from "@/lib/investments";
 import { buildNetWorthToggleGroups } from "@/lib/net-worth-toggles";
 import { cn } from "@/lib/utils";
+import { PageHeader, pageFrameClassName } from "@/components/page-header";
 
 /**
  * One row of the accounts list. Declared here, not in the page, because it is
@@ -124,20 +125,16 @@ export function AccountsView({
   summaryStats
 }: AccountsViewProps) {
   return (
-    <main className="@container/page flex min-h-svh flex-col" data-testid="accounts-page">
-      <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
-        <span className="text-[13px] font-semibold tracking-tight">Accounts</span>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
-        <section>
-          <h1 className="app-page-title">Balance by account</h1>
-          <p className="app-page-description mt-1.5">
-            {accounts.length > 0
+    <main className="@container/page w-full" data-testid="accounts-page">
+      <div className={pageFrameClassName}>
+        <PageHeader
+          description={
+            accounts.length > 0
               ? `${accounts.length.toLocaleString()} synced accounts · last sync ${formatDateTime(ledger?.lastSyncedAt)}`
-              : "No accounts have been synced into the local database yet."}
-          </p>
-        </section>
+              : "No accounts have synced yet. Connect a bank in Settings to see balances here."
+          }
+          title="Balance by account"
+        />
 
         <div className="flex flex-col gap-6 @5xl/page:grid @5xl/page:grid-cols-[minmax(0,1.6fr)_minmax(24rem,0.9fr)] @5xl/page:items-start">
           <div className="flex min-w-0 flex-col gap-6">

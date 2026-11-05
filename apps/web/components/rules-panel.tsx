@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { BouncyAccordion } from "@/components/motion/bouncy-accordion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
 import { TagChip } from "@/components/tag-chip";
 import { tagStyleMap } from "@/components/tag-style-map";
@@ -225,7 +225,7 @@ function useRulesPanelModel({
 
   async function generateSuggestions() {
     setSuggestionBusy(true);
-    setSuggestionMessage("Analyzing local ledger...");
+    setSuggestionMessage("Analyzing local ledger…");
 
     try {
       const response = await fetch("/api/v1/enrichment/runs", {
@@ -323,7 +323,7 @@ function useRulesPanelModel({
     }
 
     setSuggestionBusy(true);
-    setSuggestionMessage(action === "accept" ? `Applying ${ids.length} suggestions...` : `Dismissing ${ids.length} suggestions...`);
+    setSuggestionMessage(action === "accept" ? `Applying ${ids.length} suggestions…` : `Dismissing ${ids.length} suggestions…`);
     const toastId = showToast({
       description: `${action === "accept" ? "Applying" : "Dismissing"} ${ids.length.toLocaleString()} suggestions.`,
       duration: 0,
@@ -390,7 +390,7 @@ function useRulesPanelModel({
 
   async function resolveSuggestion(suggestion: EnrichmentSuggestionView, status: "applied" | "dismissed") {
     setSuggestionBusy(true);
-    setSuggestionMessage(status === "applied" ? "Applying suggestion..." : "Dismissing suggestion...");
+    setSuggestionMessage(status === "applied" ? "Applying suggestion…" : "Dismissing suggestion…");
     const toastId = showToast({
       description: status === "applied" ? suggestionLabel(suggestion) : "Dismissing enrichment suggestion.",
       duration: 0,
@@ -483,7 +483,7 @@ function useRulesPanelModel({
       return;
     }
 
-    setMessage("Creating rule...");
+    setMessage("Creating rule…");
 
     const response = await fetch("/api/v1/rules", {
       body: JSON.stringify({
@@ -515,7 +515,7 @@ function useRulesPanelModel({
   }
 
   async function toggleRule(rule: RuleView) {
-    setMessage(rule.enabled ? "Pausing rule..." : "Enabling rule...");
+    setMessage(rule.enabled ? "Pausing rule…" : "Enabling rule…");
     const response = await fetch(`/api/v1/rules/${encodeURIComponent(rule.id)}`, {
       body: JSON.stringify({ enabled: !rule.enabled }),
       headers: {
@@ -539,7 +539,7 @@ function useRulesPanelModel({
   }
 
   async function deleteRule(rule: RuleView) {
-    setMessage("Deleting rule...");
+    setMessage("Deleting rule…");
     const response = await fetch(`/api/v1/rules/${encodeURIComponent(rule.id)}`, {
       method: "DELETE"
     });
@@ -555,7 +555,7 @@ function useRulesPanelModel({
   }
 
   async function applyRules() {
-    setMessage("Applying enabled rules...");
+    setMessage("Applying enabled rules…");
     const toastId = showToast({
       description: "Running enabled transaction rules against the local ledger.",
       duration: 0,
@@ -610,9 +610,9 @@ type RulesPanelModel = ReturnType<typeof useRulesPanelModel>;
 
 function RulesPanelLayout({ model }: { model: RulesPanelModel }) {
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
-      <EnrichmentSuggestionsCard model={model} />
+    <div className="flex flex-col gap-5">
       <TransactionRulesCard model={model} />
+      <EnrichmentSuggestionsCard model={model} />
     </div>
   );
 }
@@ -622,20 +622,18 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-4">
+      <CardHeader>
         <div className="flex flex-col gap-1">
-          <h1 className="text-base font-medium">AI enrichment suggestions</h1>
+          <h2 className="text-base font-medium">AI enrichment suggestions</h2>
           <p className="text-sm text-muted-foreground">
-            Local and optional LLM enrichment jobs propose categories, tags, review actions, and rules for you to approve.
+            An optional AI model suggests categories, tags, and rules. Nothing changes until you approve it.
           </p>
         </div>
-        <Button disabled={model.suggestionBusy} onClick={model.generateSuggestions} size="sm" type="button" variant="secondary">
-          {model.suggestionBusy ? (
-            <span className="t-shimmer">Analyzing...</span>
-          ) : (
-            "Generate suggestions"
-          )}
-        </Button>
+        <CardAction>
+          <Button disabled={model.suggestionBusy} onClick={model.generateSuggestions} size="sm" type="button" variant="secondary">
+            {model.suggestionBusy ? <span className="t-shimmer">Analyzing…</span> : "Generate suggestions"}
+          </Button>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
@@ -658,7 +656,7 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
               type="button"
               variant="secondary"
             >
-              {model.providerBusy ? "Checking..." : "Check provider"}
+              {model.providerBusy ? "Checking…" : "Check provider"}
             </Button>
           </div>
         </div>
@@ -897,17 +895,19 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-4">
+      <CardHeader>
         <div className="flex flex-col gap-1">
-          <h1 className="text-base font-medium">Transaction rules</h1>
+          <h2 className="text-base font-medium">Transaction rules</h2>
           <p className="text-sm text-muted-foreground">
-            Rules run locally against bank transactions on creation, manual apply, and future provider syncs.
+            Rules categorize and tag matching transactions as they arrive. Apply them to existing transactions any time.
           </p>
         </div>
-        <Button onClick={model.applyRules} size="sm" type="button" variant="secondary">
-          <Play size={14} />
-          Apply enabled
-        </Button>
+        <CardAction>
+          <Button onClick={model.applyRules} size="sm" type="button" variant="secondary">
+            <Play size={14} />
+            Apply enabled rules
+          </Button>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">

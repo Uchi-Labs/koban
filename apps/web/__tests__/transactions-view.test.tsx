@@ -313,7 +313,7 @@ describe("TransactionsView", () => {
     expect(screen.queryByText("Figma")).not.toBeInTheDocument();
     expect(screen.queryByText("Uber")).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByText("Loading evidence...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Loading evidence…")).not.toBeInTheDocument();
     });
   });
 

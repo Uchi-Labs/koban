@@ -17,7 +17,7 @@ export function InsightsView({ currency, heatmap, insights }: InsightsViewProps)
     >
       <header className="mb-5 shrink-0">
         <h1 className="app-page-title">Insights</h1>
-        <p className="app-page-description mt-1.5">Deterministic signals from your transactions, recurring activity, and budgets.</p>
+        <p className="app-page-description mt-1.5">Patterns Koban found in your spending, recurring charges, and budgets.</p>
       </header>
       {/* minmax(0,1fr) caps the track at the container width so wide children
           (the fixed-width heatmap svg) scroll inside their own scrollers

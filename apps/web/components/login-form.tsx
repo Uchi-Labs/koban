@@ -312,7 +312,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
 
       {totpChallenge || passwordExpanded ? (
         <Button disabled={busy} type="submit" size="lg" className="w-full">
-          {busy ? "Working..." : totpChallenge ? "Verify code" : isFirstRun ? "Create account" : "Continue"}
+          {busy ? "Working…" : totpChallenge ? "Verify code" : isFirstRun ? "Create account" : "Continue"}
         </Button>
       ) : null}
     </form>

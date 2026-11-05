@@ -578,7 +578,7 @@ function useSourceAdaptersModel({
   }
 
   async function updateEvidenceStatus(evidence: EvidenceReviewView, status: "accepted" | "dismissed") {
-    setMessage(status === "accepted" ? "Accepting evidence..." : "Dismissing evidence...");
+    setMessage(status === "accepted" ? "Accepting evidence…" : "Dismissing evidence…");
     const toastId = showToast({
       description: status === "accepted" ? evidence.sourceItem.title : "Dismissing suggested evidence.",
       duration: 0,
@@ -751,7 +751,7 @@ function SourceSummaryActions({ model }: { model: SourceAdaptersModel }) {
           }}
           type="button"
         >
-          {model.syncingAll ? "Syncing sources..." : "Sync installed sources"}
+          {model.syncingAll ? "Syncing sources…" : "Sync installed sources"}
         </Button>
       </div>
     </>
@@ -869,7 +869,7 @@ function ImportedSourceItems({ model }: { model: SourceAdaptersModel }) {
           </Select>
         </div>
       </header>
-      {model.sourceItemsLoading ? <p className="text-sm text-muted-foreground">Loading imported evidence...</p> : null}
+      {model.sourceItemsLoading ? <p className="text-sm text-muted-foreground">Loading imported evidence…</p> : null}
       {!model.sourceItemsLoading && model.sourceItems.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No imported evidence yet. Sync a configured source or import JSON/JSONL/CSV/EML/MBOX/ICS/ZIP from a source
@@ -919,11 +919,11 @@ function SuggestedEvidenceMatches({ model }: { model: SourceAdaptersModel }) {
           }}
           type="button"
         >
-          {model.evidenceLinksLoading ? "Refreshing..." : "Refresh suggestions"}
+          {model.evidenceLinksLoading ? "Refreshing…" : "Refresh suggestions"}
         </Button>
       </header>
       {model.evidenceLinksLoading ? (
-        <p className="text-sm text-muted-foreground">Loading evidence suggestions...</p>
+        <p className="text-sm text-muted-foreground">Loading evidence suggestions…</p>
       ) : null}
       {!model.evidenceLinksLoading && model.evidenceLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">No suggested evidence matches yet.</p>
@@ -1117,7 +1117,7 @@ function MicrosoftWebAuthActions({ adapter }: { adapter: SourceAdapterView }) {
         type="button"
         variant="ghost"
       >
-        {disconnecting ? "Disconnecting..." : "Disconnect Microsoft"}
+        {disconnecting ? "Disconnecting…" : "Disconnect Microsoft"}
       </Button>
       <span className="text-xs text-muted-foreground">Mail.Read · Calendars.Read</span>
     </div>
@@ -1134,7 +1134,7 @@ function SourceAdapterFileActions({ adapter, model }: { adapter: SourceAdapterVi
         onClick={() => model.syncSource(adapter.id)}
         type="button"
       >
-        {model.syncingSourceId === adapter.id ? "Syncing..." : "Sync source"}
+        {model.syncingSourceId === adapter.id ? "Syncing…" : "Sync source"}
       </Button>
       <label
         className={cn(
@@ -1143,7 +1143,7 @@ function SourceAdapterFileActions({ adapter, model }: { adapter: SourceAdapterVi
           model.actionsBusy && "pointer-events-none opacity-50"
         )}
       >
-        <span>{model.importingSourceId === adapter.id ? "Importing..." : "Import JSON/JSONL/CSV/EML/MBOX/ICS/ZIP"}</span>
+        <span>{model.importingSourceId === adapter.id ? "Importing…" : "Import JSON/JSONL/CSV/EML/MBOX/ICS/ZIP"}</span>
         <em className="text-[10px] font-normal not-italic text-muted-foreground">Up to {sourceImportLimitLabel}</em>
         <input
           accept={model.fileInputAccept}
@@ -1163,7 +1163,7 @@ function SourceAdapterFileActions({ adapter, model }: { adapter: SourceAdapterVi
           model.actionsBusy && "pointer-events-none opacity-50"
         )}
       >
-        <span>{model.importingSourceId === adapter.id ? "Checking..." : "Validate import file"}</span>
+        <span>{model.importingSourceId === adapter.id ? "Checking…" : "Validate import file"}</span>
         <em className="text-[10px] font-normal not-italic text-muted-foreground">No records saved</em>
         <input
           accept={model.fileInputAccept}
