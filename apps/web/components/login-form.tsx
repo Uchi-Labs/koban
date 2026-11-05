@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 import { useShakeReplay } from "@/lib/transitions";
 import { cn } from "@/lib/utils";
+import { useFinePointerAutoFocus } from "@/lib/hooks/use-fine-pointer-auto-focus";
 
 interface HostedLoginFormProps {
   googleEnabled: boolean;
@@ -24,6 +25,7 @@ interface LegacyTokenFormProps {
 const authBasePath = "/api/better-auth";
 
 export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFormProps) {
+  const autoFocusRef = useFinePointerAutoFocus<HTMLInputElement>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [errorKey, setErrorKey] = useState(0);
@@ -235,7 +237,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
           </div>
           <div className="grid gap-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" required autoFocus />
+            <Input id="email" name="email" type="email" autoComplete="email" required ref={autoFocusRef} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="password">Password</Label>
@@ -279,7 +281,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
                   type="email"
                   autoComplete="email webauthn"
                   required
-                  autoFocus
+                  ref={autoFocusRef}
                 />
               </div>
               <div className="grid gap-2">
@@ -312,7 +314,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
 
       {totpChallenge || passwordExpanded ? (
         <Button disabled={busy} type="submit" size="lg" className="w-full">
-          {busy ? "Working..." : totpChallenge ? "Verify code" : isFirstRun ? "Create account" : "Continue"}
+          {busy ? "Working…" : totpChallenge ? "Verify code" : isFirstRun ? "Create account" : "Continue"}
         </Button>
       ) : null}
     </form>
@@ -320,6 +322,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
 }
 
 export function LegacyTokenForm({ invalid, nextPath }: LegacyTokenFormProps) {
+  const autoFocusRef = useFinePointerAutoFocus<HTMLInputElement>();
   const shake = useShakeReplay(invalid, { shakeOnMount: invalid });
 
   return (
@@ -340,7 +343,7 @@ export function LegacyTokenForm({ invalid, nextPath }: LegacyTokenFormProps) {
       </div>
       <div className="grid gap-2">
         <Label htmlFor="token">Access token</Label>
-        <Input id="token" name="token" type="password" autoComplete="current-password" required autoFocus />
+        <Input id="token" name="token" type="password" autoComplete="current-password" required ref={autoFocusRef} />
         <p className="t-error-msg text-sm text-destructive">Token was not accepted.</p>
       </div>
       <Button type="submit" size="lg" className="w-full">

@@ -16,6 +16,7 @@ import {
 } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useFinePointerAutoFocus } from "@/lib/hooks/use-fine-pointer-auto-focus";
 
 // The ring keeps the persisted palette on its outer edge; Bloom remains the
 // arbitrary-color affordance for hex and shades between those anchors.
@@ -76,6 +77,7 @@ export function NewCategoryDialog({
   open: boolean;
   uncategorizedMerchants: string[];
 }) {
+  const autoFocusRef = useFinePointerAutoFocus<HTMLInputElement>();
   const router = useRouter();
   const reduce = useReducedMotion();
   const [state, dispatch] = React.useReducer(newCategoryReducer, INITIAL_NEW_CATEGORY_STATE);
@@ -174,7 +176,7 @@ export function NewCategoryDialog({
         showCloseButton
       >
         <form className="flex flex-col items-center gap-5" onSubmit={save}>
-          <DialogTitle className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">New category</DialogTitle>
+          <DialogTitle className="text-2xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">New category</DialogTitle>
 
           <div className="grid w-full grid-cols-2 gap-1 rounded-full bg-muted/60 p-1">
             {(["regular", "excluded"] as const).map((value) => (
@@ -225,8 +227,8 @@ export function NewCategoryDialog({
                       />
                       <input
                         aria-label="Search emoji"
-                        autoFocus
-                        className="h-8 w-full rounded-xl bg-muted/60 pr-3 pl-8 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                        ref={autoFocusRef}
+                        className="h-8 w-full rounded-xl bg-muted/60 pr-3 pl-8 text-base outline-hidden md:text-sm transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
                         onChange={(event) => updateState({ emojiQuery: event.target.value })}
                         placeholder="Search emoji"
                         value={emojiQuery}
@@ -294,7 +296,7 @@ export function NewCategoryDialog({
                   value={budget}
                 />
               </span>
-              <span className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">Monthly budget — optional</span>
+              <span className="text-2xs tracking-[0.14em] text-muted-foreground uppercase">Monthly budget — optional</span>
             </label>
           ) : (
             <p className="text-xs text-muted-foreground">Excluded categories are left out of spending totals and budgets.</p>

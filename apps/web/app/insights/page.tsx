@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { InsightsView } from "@/components/insights-view";
 import { applyBudgetOverrides, getCategoryBudgetOverrides } from "@/lib/category-budgets";
 import { getFinanceData } from "@/lib/finance-data";
 import { getDismissedInsightIds } from "@/lib/insight-dismissals";
 import { deriveInsights } from "@/lib/insights";
 import { buildCategorySpendingHeatmaps } from "@/lib/spending-heatmap";
+
+export const metadata: Metadata = { title: "Insights" };
 
 export default async function InsightsPage() {
   const [{ categories: rawCategories, dashboardSummary, transactions }, overrides, dismissed] = await Promise.all([

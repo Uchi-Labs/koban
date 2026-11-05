@@ -198,7 +198,7 @@ function ProgressHeader({
       <div className="space-y-1">
         {label ? (
           <span
-            className="font-medium text-[12px] text-foreground/90 tracking-[-0.02em] sm:text-[13px]"
+            className="font-medium text-xs text-foreground/90 tracking-[-0.02em] sm:text-ui"
             id={labelId}
           >
             {label}
@@ -206,7 +206,7 @@ function ProgressHeader({
         ) : null}
         {helper ? (
           <p
-            className="max-w-xl text-[12px] text-muted-foreground leading-5 sm:text-[13px]"
+            className="max-w-xl text-xs text-muted-foreground leading-5 sm:text-ui"
             id={helperId}
           >
             {helper}
@@ -217,7 +217,7 @@ function ProgressHeader({
       {showValue ? (
         <motion.span
           animate={{ opacity: 1, y: 0 }}
-          className="shrink-0 font-medium text-[12px] text-muted-foreground tabular-nums tracking-[-0.02em] sm:text-[13px]"
+          className="shrink-0 font-medium text-xs text-muted-foreground tabular-nums tracking-[-0.02em] sm:text-ui"
           transition={shellSpring}
         >
           {displayValue}

@@ -5,6 +5,7 @@ import {
   type EnrichmentSuggestionView,
   type RuleView
 } from "@/components/rules-panel";
+import { PageHeader, pageFrameClassName } from "@/components/page-header";
 
 export interface RulesViewProps {
   categories: Category[];
@@ -16,10 +17,8 @@ export interface RulesViewProps {
 
 export function RulesView({ categories, provider, rules, suggestions, tagStyles }: RulesViewProps) {
   return (
-    <main className="flex min-h-svh flex-col" data-testid="rules-page">
-      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
-        <span className="text-[13px] font-semibold tracking-tight">Rules</span>
-      </header>
+    <main className={pageFrameClassName} data-testid="rules-page">
+      <PageHeader description="Categorize and tag transactions automatically, by merchant or description." title="Rules" />
       <RulesPanel
         categories={categories}
         initialProvider={provider}

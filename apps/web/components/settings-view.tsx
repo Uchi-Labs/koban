@@ -13,6 +13,7 @@ import { SoundSettingsPanel } from "@/components/sound-settings-panel";
 import { AiProviderPanel, SyncEverythingPanel } from "@/components/sync-everything-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isPublicDemo } from "@/lib/public-demo";
+import { PageHeader, pageFrameClassName } from "@/components/page-header";
 
 /**
  * Presentation for /settings. The page keeps every await, every provider status
@@ -67,15 +68,11 @@ export function SettingsView({
   transactionCount
 }: SettingsViewProps) {
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 p-4 sm:p-6" data-testid="settings-page">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="app-page-title">Settings</h1>
-          <p className="app-page-description">
-            Connect banks and context sources, control syncing, and manage local data.
-          </p>
-        </div>
-      </header>
+    <main className={pageFrameClassName} data-testid="settings-page">
+      <PageHeader
+        description="Connect banks and context sources, control syncing, and manage your data."
+        title="Settings"
+      />
 
       <Tabs defaultValue="connections" className="gap-5">
         <TabsList variant="buttons" className="justify-start">

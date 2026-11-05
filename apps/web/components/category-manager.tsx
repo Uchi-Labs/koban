@@ -236,11 +236,11 @@ export function CategoryEditDialog({
 
           <label className="flex items-center justify-between gap-3">
             <span className="text-xs text-muted-foreground">Monthly budget</span>
-            <span className="flex items-center gap-1 rounded-lg border border-border bg-input/40 px-2.5 py-1.5 text-sm tabular-nums">
+            <span className="flex items-center gap-1 rounded-lg border border-border bg-input/40 px-2.5 py-1.5 text-sm tabular-nums focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
               <span className="text-muted-foreground">$</span>
               <input
                 aria-label="Monthly budget"
-                className="w-20 bg-transparent text-right outline-hidden placeholder:text-muted-foreground/50"
+                className="w-20 bg-transparent text-right text-base outline-hidden placeholder:text-muted-foreground/50 md:text-sm"
                 inputMode="decimal"
                 onChange={(event) => {
                   setLargeBudgetConfirmed(false);

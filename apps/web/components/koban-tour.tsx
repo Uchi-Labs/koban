@@ -91,8 +91,8 @@ const steps: TourStep[] = [
 
 // A flat pill for the one action that moves the tour on, and bare text for the
 // rest, so the card never shows two boxed buttons side by side.
-const tourPrimaryButton = "h-7 rounded-full px-3.5 text-[13px]";
-const tourTextButton = "h-7 px-2 text-[13px] text-muted-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent";
+const tourPrimaryButton = "h-7 rounded-full px-3.5 text-ui";
+const tourTextButton = "h-7 px-2 text-ui text-muted-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent";
 
 const finalQuestion = "How are we doing against our budget this month?";
 
@@ -232,7 +232,7 @@ function TourLayer({
 
   return (
     <LazyMotion features={domAnimation}>
-      <div className="fixed inset-0 z-[60]" data-koban-tour="">
+      <div className="fixed inset-0 z-(--z-tour)" data-koban-tour="">
         {/* Catches clicks so the page under the light stays still while the cat talks. */}
         <div aria-hidden="true" className="absolute inset-0" />
 
@@ -309,14 +309,14 @@ function TourLayer({
                 transition={reduce ? { duration: 0 } : { duration: 0.28, ease }}
               >
                 <h2
-                  className={cn("font-semibold tracking-tight text-balance", isFirst ? "text-center text-lg" : "text-[15px]")}
+                  className={cn("font-semibold tracking-tight text-balance", isFirst ? "text-center text-lg" : "text-base")}
                   id="koban-tour-title"
                 >
                   {step.title}
                 </h2>
                 <p
                   className={cn(
-                    "mt-1.5 text-[13.5px] leading-relaxed text-pretty text-muted-foreground",
+                    "mt-1.5 text-ui leading-relaxed text-pretty text-muted-foreground",
                     isFirst && "text-center"
                   )}
                   id="koban-tour-body"

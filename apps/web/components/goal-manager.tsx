@@ -40,13 +40,13 @@ export function GoalManager({ initialGoals }: { initialGoals: GoalView[] }) {
       {activeGoals.length === 0 ? (
         <EmptyState
           actions={
-            <a className={buttonVariants()} data-slot="button" href="#new-goal">
-              Create a goal
+            <a className={buttonVariants({ variant: "outline" })} data-slot="button" href="#new-goal">
+              Name your first goal
             </a>
           }
-          description="Assign transactions to a goal to track money you set aside. Create one to get started."
+          description="Name a goal above, then assign transactions to it from any transaction's details."
           mascot
-          title="No goals yet — create one"
+          title="No goals yet"
         />
       ) : (
         <section aria-label="Active goals" className="flex flex-col gap-3">
@@ -185,11 +185,11 @@ function GoalCreateForm() {
               value={name}
             />
 
-            <span className="flex h-9 items-center gap-1 rounded-2xl border border-border bg-input/40 px-2.5 text-sm tabular-nums">
+            <span className="flex h-9 items-center gap-1 rounded-2xl border border-border bg-input/40 px-2.5 text-sm tabular-nums focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
               <span className="text-muted-foreground">$</span>
               <input
                 aria-label="Target amount"
-                className="w-20 bg-transparent text-right outline-hidden placeholder:text-muted-foreground/50"
+                className="w-20 bg-transparent text-right text-base outline-hidden placeholder:text-muted-foreground/50 md:text-sm"
                 inputMode="decimal"
                 onChange={(event) => setTarget(event.target.value.replace(/[^0-9.]/g, ""))}
                 placeholder="Target"

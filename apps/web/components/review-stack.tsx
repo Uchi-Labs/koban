@@ -358,7 +358,7 @@ function CardBody({ categories, confidence, context, evidence, reason, suggested
     <>
       <div className="flex items-center gap-3">
         {merchantDomain(transaction.merchant) ? <FaviconBadge size="lg" website={merchantDomain(transaction.merchant)!} /> : <span className="grid size-11 place-items-center rounded-full bg-muted text-sm font-semibold">{transaction.merchant.slice(0, 1)}</span>}
-        <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold">{transaction.merchant}</h2><p className="truncate text-sm text-muted-foreground">{transaction.accountName} · {transaction.dateLabel}</p></div>
+        <div className="min-w-0 flex-1"><h2 className="truncate text-lg font-semibold" title={transaction.merchant}>{transaction.merchant}</h2><p className="text-sm text-pretty text-muted-foreground">{transaction.accountName} · {transaction.dateLabel}</p></div>
       </div>
       <p className={cn("text-center text-4xl font-semibold tracking-tight tabular-nums", context?.trim() || reason || evidence?.length ? "mt-8 mb-6" : "my-10")}>{formatCurrency(Math.abs(transaction.amount), transaction.currency)}</p>
       {/* Context from connectors, earlier notes, or what you add below the card. */}

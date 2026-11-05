@@ -64,7 +64,7 @@ export function ReviewContextComposer({ existing, onSaved, transactionId }: {
       <div className="rounded-xl border border-border bg-card transition-colors focus-within:border-ring/60">
         <textarea
           aria-label="Add context"
-          className="block max-h-32 min-h-10 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none [field-sizing:content] placeholder:text-muted-foreground"
+          className="block max-h-32 min-h-10 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base outline-none [field-sizing:content] md:text-sm placeholder:text-muted-foreground"
           disabled={saving}
           onChange={(event) => {
             setDraft(event.target.value);

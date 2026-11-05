@@ -64,7 +64,7 @@ export function AccountDetailView({
     <main className="flex min-h-svh flex-col" data-testid="account-detail-page">
       <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
         <Link
-          className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[13px] font-semibold tracking-tight text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+          className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "-ml-2 rounded-full text-muted-foreground")}
           href="/accounts"
         >
           <ArrowLeft className="size-3.5" />
@@ -99,7 +99,7 @@ export function AccountDetailView({
                   <section className="contents" key={date}>
                     <h3
                       className={cn(
-                        "col-span-3 pb-1.5 pt-2.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase",
+                        "col-span-3 pb-1.5 pt-2.5 text-2xs font-medium tracking-wide text-muted-foreground uppercase",
                         groupIndex > 0 && "mt-1 border-t border-border/35"
                       )}
                     >
@@ -200,7 +200,7 @@ export function AccountDetailView({
                     ) : (
                       <span
                         aria-hidden="true"
-                        className="flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                        className="flex size-6 shrink-0 items-center justify-center rounded-full text-3xs font-semibold"
                         style={{
                           backgroundColor: `color-mix(in oklab, ${item.category.color} 16%, transparent)`,
                           color: item.category.color
@@ -298,7 +298,7 @@ function InvestmentsSection({ holdings }: { holdings: HoldingView[] }) {
         <ScrollArea orientation="horizontal" viewportClassName="scroll-fade-x overscroll-x-contain">
           <table className="w-full min-w-[680px] border-separate border-spacing-0 text-sm">
             <thead>
-              <tr className="text-left text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              <tr className="text-left text-2xs font-medium tracking-wide text-muted-foreground uppercase">
                 <th className="border-b border-border/35 px-2 pb-2">Position</th>
                 <th className="border-b border-border/35 px-2 pb-2 text-right">Units</th>
                 <th className="border-b border-border/35 px-2 pb-2 text-right">Price</th>

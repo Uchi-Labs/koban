@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { Account, Transaction } from "@ai-finances/schema";
 import { CreditCard, Landmark, WalletCards } from "lucide-react";
 import { AccountsView, type AccountRow } from "@/components/accounts-view";
@@ -5,6 +6,8 @@ import type { AccountsSummaryStat } from "@/components/accounts-summary-strip";
 import { getAccountNetWorthContribution, getFinanceData } from "@/lib/finance-data";
 import { accountHistories, type PortfolioPoint } from "@/lib/investments";
 import { buildNetWorthRangeTrends } from "@/lib/net-worth-trend";
+
+export const metadata: Metadata = { title: "Accounts" };
 
 function signTone(value: number): "negative" | "neutral" | "positive" {
   if (value < 0) {

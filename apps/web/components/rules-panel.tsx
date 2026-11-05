@@ -8,11 +8,19 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { BouncyAccordion } from "@/components/motion/bouncy-accordion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, EmptyState } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
 import { TagChip } from "@/components/tag-chip";
 import { tagStyleMap } from "@/components/tag-style-map";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { MorphingPanel } from "@/components/ui/morphing-modal";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
@@ -225,7 +233,7 @@ function useRulesPanelModel({
 
   async function generateSuggestions() {
     setSuggestionBusy(true);
-    setSuggestionMessage("Analyzing local ledger...");
+    setSuggestionMessage("Analyzing local ledger…");
 
     try {
       const response = await fetch("/api/v1/enrichment/runs", {
@@ -323,7 +331,7 @@ function useRulesPanelModel({
     }
 
     setSuggestionBusy(true);
-    setSuggestionMessage(action === "accept" ? `Applying ${ids.length} suggestions...` : `Dismissing ${ids.length} suggestions...`);
+    setSuggestionMessage(action === "accept" ? `Applying ${ids.length} suggestions…` : `Dismissing ${ids.length} suggestions…`);
     const toastId = showToast({
       description: `${action === "accept" ? "Applying" : "Dismissing"} ${ids.length.toLocaleString()} suggestions.`,
       duration: 0,
@@ -390,7 +398,7 @@ function useRulesPanelModel({
 
   async function resolveSuggestion(suggestion: EnrichmentSuggestionView, status: "applied" | "dismissed") {
     setSuggestionBusy(true);
-    setSuggestionMessage(status === "applied" ? "Applying suggestion..." : "Dismissing suggestion...");
+    setSuggestionMessage(status === "applied" ? "Applying suggestion…" : "Dismissing suggestion…");
     const toastId = showToast({
       description: status === "applied" ? suggestionLabel(suggestion) : "Dismissing enrichment suggestion.",
       duration: 0,
@@ -483,7 +491,7 @@ function useRulesPanelModel({
       return;
     }
 
-    setMessage("Creating rule...");
+    setMessage("Creating rule…");
 
     const response = await fetch("/api/v1/rules", {
       body: JSON.stringify({
@@ -515,7 +523,7 @@ function useRulesPanelModel({
   }
 
   async function toggleRule(rule: RuleView) {
-    setMessage(rule.enabled ? "Pausing rule..." : "Enabling rule...");
+    setMessage(rule.enabled ? "Pausing rule…" : "Enabling rule…");
     const response = await fetch(`/api/v1/rules/${encodeURIComponent(rule.id)}`, {
       body: JSON.stringify({ enabled: !rule.enabled }),
       headers: {
@@ -539,7 +547,7 @@ function useRulesPanelModel({
   }
 
   async function deleteRule(rule: RuleView) {
-    setMessage("Deleting rule...");
+    setMessage("Deleting rule…");
     const response = await fetch(`/api/v1/rules/${encodeURIComponent(rule.id)}`, {
       method: "DELETE"
     });
@@ -555,7 +563,7 @@ function useRulesPanelModel({
   }
 
   async function applyRules() {
-    setMessage("Applying enabled rules...");
+    setMessage("Applying enabled rules…");
     const toastId = showToast({
       description: "Running enabled transaction rules against the local ledger.",
       duration: 0,
@@ -610,9 +618,9 @@ type RulesPanelModel = ReturnType<typeof useRulesPanelModel>;
 
 function RulesPanelLayout({ model }: { model: RulesPanelModel }) {
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6 p-6">
-      <EnrichmentSuggestionsCard model={model} />
+    <div className="flex flex-col gap-5">
       <TransactionRulesCard model={model} />
+      <EnrichmentSuggestionsCard model={model} />
     </div>
   );
 }
@@ -622,20 +630,18 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-4">
+      <CardHeader>
         <div className="flex flex-col gap-1">
-          <h1 className="text-base font-medium">AI enrichment suggestions</h1>
+          <h2 className="text-base font-medium">AI enrichment suggestions</h2>
           <p className="text-sm text-muted-foreground">
-            Local and optional LLM enrichment jobs propose categories, tags, review actions, and rules for you to approve.
+            An optional AI model suggests categories, tags, and rules for you to approve. Clear transfers between your own accounts are matched automatically.
           </p>
         </div>
-        <Button disabled={model.suggestionBusy} onClick={model.generateSuggestions} size="sm" type="button" variant="secondary">
-          {model.suggestionBusy ? (
-            <span className="t-shimmer">Analyzing...</span>
-          ) : (
-            "Generate suggestions"
-          )}
-        </Button>
+        <CardAction>
+          <Button disabled={model.suggestionBusy} onClick={model.generateSuggestions} size="sm" type="button" variant="secondary">
+            {model.suggestionBusy ? <span className="t-shimmer">Analyzing…</span> : "Generate suggestions"}
+          </Button>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
@@ -658,7 +664,7 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
               type="button"
               variant="secondary"
             >
-              {model.providerBusy ? "Checking..." : "Check provider"}
+              {model.providerBusy ? "Checking…" : "Check provider"}
             </Button>
           </div>
         </div>
@@ -897,17 +903,19 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-4">
+      <CardHeader>
         <div className="flex flex-col gap-1">
-          <h1 className="text-base font-medium">Transaction rules</h1>
+          <h2 className="text-base font-medium">Transaction rules</h2>
           <p className="text-sm text-muted-foreground">
-            Rules run locally against bank transactions on creation, manual apply, and future provider syncs.
+            Rules categorize and tag matching transactions as soon as you create or enable them, and again on every sync.
           </p>
         </div>
-        <Button onClick={model.applyRules} size="sm" type="button" variant="secondary">
-          <Play size={14} />
-          Apply enabled
-        </Button>
+        <CardAction>
+          <Button onClick={model.applyRules} size="sm" type="button" variant="secondary">
+            <Play size={14} />
+            Apply enabled rules
+          </Button>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
@@ -920,7 +928,11 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
             items={accordionItems}
           />
         ) : (
-          <p className="text-sm text-muted-foreground">No local transaction rules yet.</p>
+          <EmptyState
+            description="Fill in the form above to categorize and tag matching transactions automatically."
+            size="sm"
+            title="No rules yet"
+          />
         )}
 
         {model.message ? <p className="text-sm text-muted-foreground">{model.message}</p> : null}
@@ -952,7 +964,7 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
                 autoComplete="off"
                 id="transaction-rule-name"
                 onChange={(event) => model.setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="OpenAI subscriptions"
+                placeholder="e.g. AI subscriptions"
                 value={model.form.name}
               />
             </label>
@@ -961,8 +973,9 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
               <Input
                 autoComplete="off"
                 id="transaction-rule-pattern"
+                spellCheck={false}
                 onChange={(event) => model.setForm((current) => ({ ...current, pattern: event.target.value }))}
-                placeholder="OPENAI"
+                placeholder="e.g. OPENAI"
                 value={model.form.pattern}
               />
             </label>
@@ -976,8 +989,9 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
               <Input
                 autoComplete="off"
                 id="transaction-rule-tags"
+                spellCheck={false}
                 onChange={(event) => model.setForm((current) => ({ ...current, tags: event.target.value }))}
-                placeholder="ai, work"
+                placeholder="e.g. ai, work"
                 value={model.form.tags}
               />
             </label>
@@ -1001,12 +1015,27 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
   );
 }
 
+const RULE_FIELD_ITEMS = [
+  { label: "Merchant or description", value: "merchant_or_description" },
+  { label: "Merchant", value: "merchant_name" },
+  { label: "Description", value: "description" }
+] satisfies Array<{ label: string; value: RuleView["matchField"] }>;
+
+const RULE_OPERATOR_ITEMS = [
+  { label: "Contains", value: "contains" },
+  { label: "Equals", value: "equals" },
+  { label: "Matches regex", value: "regex" }
+] satisfies Array<{ label: string; value: RuleView["matchOperator"] }>;
+
+// SelectValue renders the raw value unless the root knows each value's label.
 function RuleSelects({ model }: { model: RulesPanelModel }) {
+  const categoryItems = model.categories.map((category) => ({ label: category.name, value: category.id }));
   return (
     <>
       <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Field</span>
         <Select
+          items={RULE_FIELD_ITEMS}
           onValueChange={(value) =>
             model.setForm((current) => ({ ...current, matchField: value as RuleView["matchField"] }))
           }
@@ -1025,6 +1054,7 @@ function RuleSelects({ model }: { model: RulesPanelModel }) {
       <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Operator</span>
         <Select
+          items={RULE_OPERATOR_ITEMS}
           onValueChange={(value) =>
             model.setForm((current) => ({ ...current, matchOperator: value as RuleView["matchOperator"] }))
           }
@@ -1036,13 +1066,14 @@ function RuleSelects({ model }: { model: RulesPanelModel }) {
           <SelectContent>
             <SelectItem value="contains">Contains</SelectItem>
             <SelectItem value="equals">Equals</SelectItem>
-            <SelectItem value="regex">matches regex</SelectItem>
+            <SelectItem value="regex">Matches regex</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Category</span>
         <Select
+          items={categoryItems}
           onValueChange={(value) => model.setForm((current) => ({ ...current, categoryId: value ?? current.categoryId }))}
           value={model.form.categoryId}
         >
@@ -1075,6 +1106,7 @@ function RuleRow({
   rule: RuleView;
   tagStyleByName: Map<string, TagStyle>;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   return (
     // The actions wrap below the details once the row is narrower than ~15rem
     // of content plus the buttons (phones).
@@ -1109,7 +1141,7 @@ function RuleRow({
         </Button>
         <Button
           aria-label={`Delete rule ${rule.name}`}
-          onClick={() => onDelete(rule)}
+          onClick={() => setConfirmingDelete(true)}
           size="icon-sm"
           type="button"
           variant="destructive"
@@ -1117,6 +1149,32 @@ function RuleRow({
           <Trash2 size={15} />
         </Button>
       </div>
+
+      <Dialog onOpenChange={setConfirmingDelete} open={confirmingDelete}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete this rule?</DialogTitle>
+            <DialogDescription>
+              “{rule.name}” stops running on new transactions. Categories it already set stay as they are.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setConfirmingDelete(false)} type="button" variant="outline">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDelete(rule);
+              }}
+              type="button"
+              variant="destructive"
+            >
+              Delete rule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

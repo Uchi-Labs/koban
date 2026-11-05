@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { Category, Transaction } from "@ai-finances/schema";
 import { CategoryWorkbench, type CategoryDetail, type CategorySummary } from "@/components/category-workbench";
 import { applyBudgetOverrides, getCategoryBudgetOverrides } from "@/lib/category-budgets";
@@ -6,6 +7,8 @@ import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { filterTransactionsForIncludedAccounts, getFinanceData } from "@/lib/finance-data";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { getCategory } from "@/lib/view-models";
+
+export const metadata: Metadata = { title: "Categories" };
 
 const TIMELINE_MONTHS = 24;
 

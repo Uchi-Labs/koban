@@ -68,7 +68,7 @@ export function DashboardReviewCard({
 
     setBusy(true);
     setButtonState("loading");
-    setMessage(`Marking ${rowsToMark.length.toLocaleString()} transactions reviewed...`);
+    setMessage(`Marking ${rowsToMark.length.toLocaleString()} transactions reviewed…`);
     const toastId = showToast({
       description: `Marking ${rowsToMark.length.toLocaleString()} dashboard transactions reviewed.`,
       duration: 0,
@@ -155,14 +155,14 @@ export function DashboardReviewCard({
             <Link href="/transactions?review=actionable" key={transaction.id}>
               {/* ponytail: plain div, not IconiqCard interactive — 10 spring-hover
                   cards with backdrop-blur made dashboard hover visibly laggy */}
-              <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
+              <div className="gap-0 rounded-lg border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
                 <div className="@container flex items-center gap-3 px-3 py-2.5">
                   {domain ? (
                     <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} />
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/50 text-[10px] font-semibold text-muted-foreground"
+                      className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/50 text-3xs font-semibold text-muted-foreground"
                     >
                       {transaction.merchant.charAt(0).toUpperCase() || "?"}
                     </span>

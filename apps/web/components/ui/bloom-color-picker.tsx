@@ -617,7 +617,7 @@ function BloomPanel({
             <m.button
               animate={{ opacity: 1, scale: 1 }}
               aria-label="Keep current color and close"
-              className="absolute z-10 grid place-items-center rounded-full border border-border bg-white text-[10px] shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute z-10 grid place-items-center rounded-full border border-border bg-white text-3xs shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
               exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.6 }}
               initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.6 }}
               onClick={closeBloom}

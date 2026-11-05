@@ -25,15 +25,15 @@ const badgeVariants = cva(
         "over-budget":
           "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40",
         "under-budget":
-          "bg-(--positive)/10 text-(--positive) focus-visible:ring-(--positive)/25",
+          "bg-(--positive)/10 text-(--positive) focus-visible:ring-ring/50",
         income:
-          "bg-(--positive)/10 text-(--positive) focus-visible:ring-(--positive)/25",
+          "bg-(--positive)/10 text-(--positive) focus-visible:ring-ring/50",
         recurring:
           "border-border bg-transparent text-muted-foreground ring-1 ring-border/70",
         review:
-          "bg-[color-mix(in_oklch,oklch(0.8_0.14_80)_14%,transparent)] text-[oklch(0.8_0.14_80)] focus-visible:ring-[oklch(0.8_0.14_80/0.25)]",
+          "bg-warning/12 text-warning focus-visible:ring-ring/50",
         synced:
-          "bg-primary/10 text-primary focus-visible:ring-primary/25",
+          "bg-primary/10 text-primary focus-visible:ring-ring/50",
         pending:
           "bg-muted text-muted-foreground ring-1 ring-border/70",
       },
@@ -50,7 +50,7 @@ const badgeDotColorClasses = {
   muted: "bg-muted-foreground",
   negative: "bg-(--negative)",
   positive: "bg-(--positive)",
-  warning: "bg-[oklch(0.8_0.14_80)]",
+  warning: "bg-warning",
 } as const
 
 type BadgeDotColor = keyof typeof badgeDotColorClasses

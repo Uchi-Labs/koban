@@ -200,7 +200,7 @@ export function LivelineChart({
 
       {showValue && !sparkline && activeCoord === null ? (
         <span
-          className="pointer-events-none absolute right-1 top-1 rounded-md bg-background/70 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground ring-1 ring-border/60 backdrop-blur"
+          className="pointer-events-none absolute right-1 top-1 rounded-md bg-background/70 px-1.5 py-0.5 text-2xs font-medium tabular-nums text-muted-foreground ring-1 ring-border/60 backdrop-blur"
           style={{ color }}
         >
           {compactCurrency.format(last)}
@@ -213,7 +213,7 @@ export function LivelineChart({
         <div
           className={cn(
             "pointer-events-none absolute z-10 whitespace-nowrap rounded-md bg-popover/95 text-popover-foreground shadow-md ring-1 ring-border backdrop-blur",
-            sparkline ? "top-0 px-1.5 py-0.5 text-[10px]" : "top-1 px-2 py-1 text-[11px]"
+            sparkline ? "top-0 px-1.5 py-0.5 text-3xs" : "top-1 px-2 py-1 text-2xs"
           )}
           style={{
             left: `${activeCoord.x}%`,
@@ -231,7 +231,7 @@ export function LivelineChart({
             </span>
           ) : (
             <>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 {fullDateFormatter.format(activePoint.time * 1000)}
               </div>
               <div className="font-semibold tabular-nums" style={{ color }}>

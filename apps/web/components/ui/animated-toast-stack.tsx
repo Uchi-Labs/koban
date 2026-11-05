@@ -281,7 +281,7 @@ export function AnimatedToastStack({
         className={cn(
           "pointer-events-none flex w-[calc(100vw-2rem)] max-w-sm gap-2",
           isBottom ? "flex-col-reverse" : "flex-col",
-          resolvedPlacement === "fixed" && "fixed z-[90]",
+          resolvedPlacement === "fixed" && "fixed z-(--z-toast)",
           resolvedPlacement === "absolute" && "absolute z-20",
           resolvedPlacement !== "static" && POSITION_CLASS[position],
           classNames?.root,
@@ -384,7 +384,7 @@ const ToastItem = memo(function ToastItem({
     >
       <div
         className={cn(
-          "relative overflow-hidden rounded-2xl border border-border bg-card/95 p-3 shadow-2xl backdrop-blur-xl",
+          "relative overflow-hidden rounded-2xl border border-border bg-card/95 p-3 shadow-2xl backdrop-blur-md",
           classNames?.surface
         )}
       >

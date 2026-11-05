@@ -81,6 +81,8 @@ import { isReviewActionableTransaction } from "@/lib/transaction-classification"
 import { playClose, playOpen, playSelect, playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 import type { TransactionView } from "@/lib/view-models";
+import { useModifierKeyLabel } from "@/lib/hooks/use-modifier-key";
+import { ShortcutHint } from "@/components/shortcut-hint";
 
 interface TransactionEvidenceView {
   confidence: number;
@@ -1206,7 +1208,7 @@ function useTransactionsViewModel({
 
     setReviewBusy(true);
     setBulkReviewState("loading");
-    setReviewMessage(`Marking ${ids.length.toLocaleString()} transactions reviewed...`);
+    setReviewMessage(`Marking ${ids.length.toLocaleString()} transactions reviewed…`);
     const toastId = showToast({
       description: `Marking ${ids.length.toLocaleString()} transactions reviewed.`,
       duration: 0,
@@ -1445,8 +1447,8 @@ function useTransactionsViewModel({
     options?: { silent?: boolean }
   ): Promise<boolean> {
     const nextCategory = categoryById.get(nextCategoryId);
-    setReviewMessage("Saving category...");
-    setInspectorMessage("Saving category...");
+    setReviewMessage("Saving category…");
+    setInspectorMessage("Saving category…");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transactionId)}`, {
       body: JSON.stringify({ category_id: nextCategoryId }),
@@ -1611,7 +1613,7 @@ function useTransactionsViewModel({
   }
 
   async function linkSourceItem(transaction: TransactionView, sourceItem: SourceItemSearchView) {
-    setInspectorMessage("Linking evidence...");
+    setInspectorMessage("Linking evidence…");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}/evidence`, {
       body: JSON.stringify({
@@ -1718,7 +1720,7 @@ function useTransactionsViewModel({
   }
 
   async function updateTransactionTags(transaction: TransactionView, tags: string[]) {
-    setInspectorMessage("Saving tags...");
+    setInspectorMessage("Saving tags…");
 
     const normalizedTags = normalizeTags(tags);
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}`, {
@@ -1830,7 +1832,7 @@ function useTransactionsViewModel({
       return null;
     }
 
-    setInspectorMessage("Saving tag style...");
+    setInspectorMessage("Saving tag style…");
     const response = await fetch("/api/v1/tag-colors", {
       body: JSON.stringify({ name, ...update }),
       headers: { "Content-Type": "application/json" },
@@ -1863,7 +1865,7 @@ function useTransactionsViewModel({
       return false;
     }
 
-    setInspectorMessage("Renaming tag...");
+    setInspectorMessage("Renaming tag…");
     const response = await fetch(`/api/v1/tags/${encodeURIComponent(currentName)}`, {
       body: JSON.stringify({ new_name: nextName }),
       headers: { "Content-Type": "application/json" },
@@ -1888,7 +1890,7 @@ function useTransactionsViewModel({
 
   async function toggleReviewed(transaction: TransactionView) {
     const nextReviewed = !transaction.reviewed;
-    setInspectorMessage("Saving review state...");
+    setInspectorMessage("Saving review state…");
     setReviewToggleState("loading");
     const toastId = showToast({
       description: nextReviewed ? "Marking the selected transaction reviewed." : "Moving the selected transaction back to review.",
@@ -1950,7 +1952,7 @@ function useTransactionsViewModel({
       return;
     }
 
-    setInspectorMessage("Saving context note...");
+    setInspectorMessage("Saving context note…");
     setNoteSaveState("loading");
     const toastId = showToast({
       description: "Saving the note as transaction evidence.",
@@ -2080,7 +2082,7 @@ function useTransactionsViewModel({
       voiceTransactionIdRef.current = transactionId;
       recognition.start();
       setVoiceRecordingForTransaction(transactionId, true);
-      setVoiceStatusForTransaction(transactionId, "Recording...");
+      setVoiceStatusForTransaction(transactionId, "Recording…");
     } catch (error) {
       setVoiceStatusForTransaction(transactionId, error instanceof Error ? error.message : "Voice recording failed.");
       setVoiceRecordingForTransaction(transactionId, false);
@@ -2113,7 +2115,7 @@ function useTransactionsViewModel({
     }
 
     stopVoiceRecognition();
-    setInspectorMessage("Saving voice note...");
+    setInspectorMessage("Saving voice note…");
 
     const response = await fetch(`/api/v1/transactions/${encodeURIComponent(transaction.id)}/voice-notes`, {
       body: JSON.stringify({ transcript }),
@@ -2140,7 +2142,7 @@ function useTransactionsViewModel({
     evidence: TransactionEvidenceView,
     status: "accepted" | "dismissed"
   ) {
-    setInspectorMessage(status === "accepted" ? "Accepting evidence..." : "Dismissing evidence...");
+    setInspectorMessage(status === "accepted" ? "Accepting evidence…" : "Dismissing evidence…");
 
     const response = await fetch(
       `/api/v1/transactions/${encodeURIComponent(transaction.id)}/evidence/${encodeURIComponent(evidence.sourceItem.id)}`,
@@ -2249,6 +2251,7 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
 }
 
 function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
+  const modifierKey = useModifierKeyLabel();
   const { syncNow, syncing } = useSyncControls();
   const commandHintId = React.useId();
   const searchClearRef = React.useRef<HTMLDivElement>(null);
@@ -2266,7 +2269,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           <TabsTrigger value="review">
             Review
             {model.reviewTransactions.length > 0 ? (
-              <Badge className="ml-1 h-4 min-w-4 px-1 text-[10px] tabular-nums" variant="review">
+              <Badge className="ml-1 h-4 min-w-4 px-1 text-3xs tabular-nums" variant="review">
                 {model.reviewTotalCount.toLocaleString("en-US")}
               </Badge>
             ) : null}
@@ -2317,7 +2320,8 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           <InputGroupInput
             aria-describedby={commandHintId}
             aria-label="Search transactions"
-            className="h-9 px-2 text-sm"
+            spellCheck={false}
+            className="h-9 px-2 text-base md:text-sm"
             onChange={(event) => model.setQuery(event.target.value)}
             value={model.query}
           />
@@ -2345,13 +2349,11 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             <InputGroupText>
               {/* Pill badge inside a pill input — corner language follows the container.
                   Flex-centered spans: ⌘ and K sit on different baselines otherwise. */}
-              <kbd
-                aria-label="Command K"
-                className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-muted-foreground"
-              >
-                <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
-                <span className="text-[10px] leading-none">K</span>
-              </kbd>
+              <ShortcutHint
+                aria-label={modifierKey === "⌘" ? "Command K" : "Control K"}
+                className="border-border bg-muted/60"
+                shortcutKey="K"
+              />
             </InputGroupText>
           </InputGroupAddon>
         </InputGroup>
@@ -2362,7 +2364,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             </InputGroupAddon>
             <InputGroupInput
               aria-label="Minimum transaction amount"
-              className="h-9 px-2 text-sm"
+              className="h-9 px-2 text-base md:text-sm"
               inputMode="decimal"
               onChange={(event) => model.setMinAmount(
                 clampAmountInput(event.target.value, model.maxAmount, model.amountRangeMax, "minimum")
@@ -2377,7 +2379,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             </InputGroupAddon>
             <InputGroupInput
               aria-label="Maximum transaction amount"
-              className="h-9 px-2 text-sm"
+              className="h-9 px-2 text-base md:text-sm"
               inputMode="decimal"
               onChange={(event) => model.setMaxAmount(
                 clampAmountInput(event.target.value, model.minAmount, model.amountRangeMax, "maximum")
@@ -2504,7 +2506,7 @@ function TransactionBulkActions({ ids, model }: { ids: Set<string>; model: Trans
   return (
     <div
       aria-label="Bulk transaction actions"
-      className="sticky bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/88 px-4 py-2.5 backdrop-blur-xl sm:px-6"
+      className="sticky bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/88 px-4 py-2.5 backdrop-blur-md sm:px-6"
     >
       <span className="inline-flex items-center gap-2 text-sm">
         <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold tabular-nums text-primary">
@@ -2862,7 +2864,7 @@ function TransactionRowButton({
         ) : null}
 
         {assignedGoal ? (
-          <span className="hidden h-4 max-w-28 shrink-0 items-center gap-1 rounded-full border border-border/70 px-1.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+          <span className="hidden h-4 max-w-28 shrink-0 items-center gap-1 rounded-full border border-border/70 px-1.5 text-3xs font-medium text-muted-foreground sm:inline-flex">
             <span aria-hidden="true" className="leading-none">
               {assignedGoal.emoji ?? "🎯"}
             </span>
@@ -3391,7 +3393,7 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
           <div className="flex flex-wrap items-center gap-2">
             <button
               aria-label={`Use default color for ${tagDraft}`}
-              className="h-5 rounded-2xl border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+              className="h-5 rounded-2xl border border-border px-2 text-2xs text-muted-foreground transition-colors hover:bg-muted"
               onClick={() => model.updateTagColor(tagDraft, null)}
               type="button"
             >
@@ -3442,10 +3444,10 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
       ) : null}
       {sourceTags.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
-          <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
+          <span className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
           {sourceTags.map((tag) => (
             <TagChip
-              className="h-5 border-border/60 bg-muted/50 text-[11px] text-muted-foreground"
+              className="h-5 border-border/60 bg-muted/50 text-2xs text-muted-foreground"
               color={model.tagStyleByName.get(tag.toLowerCase())?.color}
               key={tag}
               tag={tag}
@@ -3465,6 +3467,7 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
         <Textarea
           aria-label="Context note"
           className="min-h-20"
+          aria-keyshortcuts="Meta+Enter Control+Enter"
           id="transaction-context-note"
           onChange={(event) =>
             model.setNoteDraftState({
@@ -3472,6 +3475,12 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
               value: event.target.value
             })
           }
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              void model.saveContextNote(transaction);
+            }
+          }}
           placeholder="Add context for this transaction"
           value={model.noteDraft}
         />
@@ -3485,6 +3494,7 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
           size="sm"
           state={model.noteSaveState}
           successText="Saved"
+          title="Save note (⌘↵ or Ctrl+Enter)"
           type="button"
           variant="outline"
         >
@@ -3539,7 +3549,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
       </header>
       {model.evidenceLoading ? (
         <div className="mt-2 grid gap-2">
-          <p className="text-sm text-muted-foreground">Loading evidence...</p>
+          <p className="text-sm text-muted-foreground">Loading evidence…</p>
           <Skeleton className="h-3" variant="long" />
           <Skeleton className="h-3" variant="short" />
         </div>
@@ -3560,7 +3570,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
           description="Link receipts, emails, or imported source items when a transaction needs supporting context."
           icon={<Link2 className="size-5" />}
           size="sm"
-          title="No linked evidence yet."
+          title="No linked evidence yet"
         />
       ) : null}
       <div className="mt-2 flex flex-col gap-2">
@@ -3627,12 +3637,12 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
             value={model.linkEvidenceQuery}
           />
           <Button disabled={model.linkEvidenceLoading} size="sm" type="submit" variant="outline">
-            {model.linkEvidenceLoading ? "Searching..." : "Search source items"}
+            {model.linkEvidenceLoading ? "Searching…" : "Search source items"}
           </Button>
         </form>
         {model.linkEvidenceLoading ? (
           <div className="mt-2 grid gap-2">
-            <p className="text-sm text-muted-foreground">Searching imported evidence...</p>
+            <p className="text-sm text-muted-foreground">Searching imported evidence…</p>
             <Skeleton className="h-3" />
             <Skeleton className="h-3" variant="short" />
           </div>
@@ -3657,7 +3667,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
             description="Try the merchant name, amount, or a receipt keyword from your imported evidence sources."
             icon={<Search className="size-5" />}
             size="sm"
-            title="No source items found."
+            title="No matching source items"
           />
         ) : null}
         {!model.linkEvidenceLoading && model.linkEvidenceResults.length > 0 ? (
@@ -3795,7 +3805,7 @@ function ReviewTabLoadMore({ model }: { model: TransactionsViewModel }) {
       {model.reviewTransactionsError
         ? model.reviewTransactionsError
         : model.reviewTransactionsLoading
-          ? "Loading review rows..."
+          ? "Loading review rows…"
           : "Scroll for more review rows"}
     </div>
   );
@@ -3939,7 +3949,7 @@ function MerchantReviewGroup({
 
 function MerchantAvatar({ name }: { name: string }) {
   return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-medium text-muted-foreground">
       {name.trim().charAt(0).toUpperCase() || "?"}
     </span>
   );

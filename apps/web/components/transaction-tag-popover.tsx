@@ -85,7 +85,7 @@ export function TransactionTagPopover({
             <div className="border-b border-border/60 px-3.5 py-2.5">
               <input
                 aria-label="Add tags"
-                className="w-full bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
+                className="w-full bg-transparent text-base outline-hidden placeholder:text-muted-foreground md:text-sm"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Add tags…"
                 ref={inputRef}

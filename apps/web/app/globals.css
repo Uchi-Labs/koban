@@ -11,6 +11,37 @@ body {
   min-height: 100%;
 }
 
+/* Native-feeling touch: no grey tap flash (controls carry their own press
+   state), no font inflation in landscape, and no page bounce or
+   pull-to-refresh behind the app's own scroll containers. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Vertical only: horizontal overscroll is the trackpad back/forward swipe. */
+  overscroll-behavior-y: none;
+}
+
+@layer base {
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Long-press on a control shouldn't select its label. Content stays selectable. */
+  button,
+  [role="button"],
+  [role="tab"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
 body {
   font-optical-sizing: auto;
   font-synthesis: none;
@@ -24,10 +55,14 @@ a {
   text-underline-offset: 0.16em;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  letter-spacing: 0;
+/* Layered so a control's own text-* utility wins; unlayered, this reset beat
+   every Tailwind size on buttons and inputs and they all inherited instead. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    letter-spacing: 0;
+  }
 }

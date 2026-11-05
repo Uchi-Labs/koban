@@ -13,7 +13,6 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
-import { TextReveal } from "@/components/motion/text-reveal";
 import type { FinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
 import type { FinanceInsight } from "@/lib/insights";
@@ -72,14 +71,7 @@ export function DashboardView({
   return (
     <main className="@container/dashboard mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="dashboard-page">
       <div className="mb-5 flex items-center gap-3">
-        <TextReveal
-          as="h1"
-          blur={4}
-          className="app-page-title"
-          stagger={0}
-          text="Dashboard"
-          yOffset={6}
-        />
+        <h1 className="app-page-title">Dashboard</h1>
         {source === "koban" ? (
           <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
             Synced accounts
@@ -102,7 +94,7 @@ export function DashboardView({
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
               <MoneyHero amount={monthlySpending} currency={dashboardSummary.currency} />
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                 of {formatCurrency(monthlyBudget, dashboardSummary.currency)} budgeted
               </div>
             </div>
@@ -234,7 +226,7 @@ export function DashboardView({
 
                   return (
                     <Link href="/recurrings" key={item.id}>
-                      <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
+                      <div className="gap-0 rounded-lg border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
                         <div className="@container flex items-center gap-3 px-3 py-2.5">
                           <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
                           {domain ? <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} /> : null}

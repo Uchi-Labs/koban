@@ -195,7 +195,7 @@ export function SetupChecklistDescription({
   return (
     <p
       className={cn(
-        "mt-1 text-[13px] text-muted-foreground leading-snug",
+        "mt-1 text-ui text-muted-foreground leading-snug",
         className
       )}
     >
@@ -339,14 +339,14 @@ export function SetupChecklistItem({
         <span className="min-w-0 flex-1 pr-6">
           <span
             className={cn(
-              "block font-medium text-[15px] text-foreground transition-opacity duration-300",
+              "block font-medium text-sm text-foreground transition-opacity duration-300",
               isCompleted && "opacity-70"
             )}
           >
             {title}
           </span>
           {description ? (
-            <span className="mt-0.5 block text-[13px] text-muted-foreground leading-snug">
+            <span className="mt-0.5 block text-ui text-muted-foreground leading-snug">
               {description}
             </span>
           ) : null}
@@ -448,7 +448,7 @@ export function SetupChecklistProgress({
         initial={reduceMotion ? false : { opacity: 0, y: 10 }}
         transition={{ ...SPRING_SETUP_CHECKLIST, delay: 0.25 }}
       >
-        <span className="text-[13px] text-muted-foreground">
+        <span className="text-ui text-muted-foreground">
           {children ? <>{children}: </> : null}
           <span className="font-medium text-foreground tabular-nums">
             {displayPercent}%

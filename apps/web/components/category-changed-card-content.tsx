@@ -20,7 +20,7 @@ export function CategoryChangedCardContent({
   const applyAllAction = React.useEffectEvent(onApplyAll);
   const createRuleAction = React.useEffectEvent(onCreateRule);
   const keycapClassName =
-    "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border bg-muted px-1 text-[11px] font-medium tabular-nums text-muted-foreground";
+    "inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border bg-muted px-1 text-2xs font-medium tabular-nums text-muted-foreground";
   const rowClassName =
     "flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent";
 
@@ -52,7 +52,7 @@ export function CategoryChangedCardContent({
   return (
     <div className="flex w-[19.5rem] flex-col rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10">
       <div className="mb-1.5 flex items-center justify-between pl-2">
-        <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Category changed</span>
+        <span className="text-2xs font-medium tracking-wider text-muted-foreground uppercase">Category changed</span>
         <button
           aria-label="Dismiss"
           className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none sm:size-10"

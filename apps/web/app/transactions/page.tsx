@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { TransactionsView } from "@/components/transactions-view";
 import {
   filterTransactionsForList,
@@ -7,6 +8,8 @@ import {
 import { listTagStyles } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
 import { createViewModelLookups, getTransactionViews } from "@/lib/view-models";
+
+export const metadata: Metadata = { title: "Transactions" };
 
 const initialTransactionWindowSize = 200;
 

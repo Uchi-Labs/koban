@@ -84,7 +84,7 @@ export function NetWorthAccountsDialog({ groups }: { groups: NetWorthToggleGroup
           <div className="flex flex-col gap-4">
             {groups.map((group) => (
               <section aria-label={group.name} key={group.id}>
-                <h3 className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                <h3 className="px-2 pb-1 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
                   {group.name}
                 </h3>
                 <ul className="flex flex-col">

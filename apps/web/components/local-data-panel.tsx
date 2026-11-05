@@ -164,7 +164,7 @@ export function LocalDataPanel({ initialTransactionCount }: { initialTransaction
                 busy && "pointer-events-none opacity-50"
               )}
             >
-              {busy ? "Working..." : "Import backup"}
+              {busy ? "Working…" : "Import backup"}
               <input
                 accept=".json,application/json,text/plain"
                 className="sr-only"

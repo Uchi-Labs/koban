@@ -164,7 +164,7 @@ export function CashflowView({
   const isEmpty = transactions.length === 0;
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="cashflow-page">
+    <main className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="cashflow-page">
       <header className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-3">
         <h1 className="app-page-title">Cash flow</h1>
 

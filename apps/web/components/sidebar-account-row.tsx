@@ -93,7 +93,7 @@ export function SidebarAccountRow({
           <input
             aria-label={`Rename ${account.name}`}
             autoFocus
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-sidebar-foreground outline-none placeholder:text-sidebar-foreground/40"
+            className="min-w-0 flex-1 bg-transparent text-ui text-sidebar-foreground outline-none placeholder:text-sidebar-foreground/40"
             onBlur={() => { if (cancelled.current) { cancelled.current = false; return; } void save(); }}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -121,7 +121,7 @@ export function SidebarAccountRow({
       <Link
         aria-current={active ? "page" : undefined}
         aria-label={`Open account page for ${account.name}`}
-        className="relative z-10 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
+        className="relative z-10 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-ui outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
         href={href}
         title={`${account.name} · right-click to rename`}
         unstable_dynamicOnHover

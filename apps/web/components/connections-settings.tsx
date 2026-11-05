@@ -236,7 +236,7 @@ export function ConnectionsSettings({
         <CardContent className="@container/connections p-0">
           <div
             aria-hidden
-            className="hidden grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)] gap-3 border-b border-border px-4 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase @4xl/connections:grid"
+            className="hidden grid-cols-[minmax(220px,1.6fr)_110px_130px_90px_170px_minmax(92px,auto)] gap-3 border-b border-border px-4 py-2 text-2xs font-medium tracking-wide text-muted-foreground uppercase @4xl/connections:grid"
           >
             <span>Institution</span>
             <span>Type</span>

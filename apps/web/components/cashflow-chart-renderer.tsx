@@ -67,12 +67,12 @@ type ResolvedChartColors = Record<keyof typeof CHART_COLOR_VARS, string>;
 // Ink & Mint dark-default fallbacks — only used for the very first paint before
 // the effect resolves the live tokens (and if a token is ever missing).
 const FALLBACK_CHART_COLORS: ResolvedChartColors = {
-  grid: "#26312b",
-  income: "#5b9dff",
-  muted: "#8a9a92",
-  negative: "#ef6a6a",
-  popover: "#12201a",
-  positive: "#34d399"
+  grid: "oklch(0.94 0.01 230 / 9%)",
+  income: "oklch(0.72 0.13 235)",
+  muted: "oklch(0.74 0.012 245)",
+  negative: "oklch(0.73 0.16 15)",
+  popover: "oklch(0.19 0.009 250)",
+  positive: "oklch(0.8 0.15 165)"
 };
 
 function useResolvedChartColors(): ResolvedChartColors {

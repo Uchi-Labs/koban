@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { LoginView } from "@/components/login-view";
 import {
   getConfiguredAuthToken,
@@ -6,6 +7,8 @@ import {
   isHostedAuthMode
 } from "@/lib/auth";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
+
+export const metadata: Metadata = { title: "Sign in" };
 
 interface LoginPageProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

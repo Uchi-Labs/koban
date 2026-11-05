@@ -6,6 +6,7 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
 import { ActionSwapIcon } from "@/components/ui/action-swap";
 import { cn } from "@/lib/utils";
+import { themeColors } from "@/lib/theme-colors";
 
 export type ThemeVariant = "rectangle" | "circle" | "circle-blur" | "fade";
 
@@ -118,8 +119,18 @@ export function useThemeToggle({
     document.head.appendChild(el);
   }, []);
   const applyTheme = (theme: "dark" | "light") => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    document.documentElement.style.colorScheme = theme;
+    const root = document.documentElement;
+    // Freeze per-element color transitions so the whole page flips at once
+    // instead of fading in a ragged cascade.
+    root.classList.add("theme-switching");
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+    // Keep the browser chrome / status bar in step with the page.
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((meta) => meta.setAttribute("content", themeColors[theme]));
+    void root.offsetHeight;
+    requestAnimationFrame(() => root.classList.remove("theme-switching"));
     document.cookie = `koban_theme=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;
     setIsDark(theme === "dark");
   };

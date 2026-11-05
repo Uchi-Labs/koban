@@ -16,6 +16,7 @@ import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, EASE_SMOOTH_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { categoryColorPalette } from "@/lib/category-style";
 import { cn } from "@/lib/utils";
+import { PageHeader, pageFrameClassName } from "@/components/page-header";
 
 export interface MonthPoint {
   month: string;
@@ -98,16 +99,18 @@ export function CategoryWorkbench({
   );
 
   return (
-    <main className="@container/page flex min-h-svh flex-col" data-testid="categories-page">
-      <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
-        <span className="text-[13px] font-semibold tracking-tight">Categories</span>
-        <Button onClick={() => setCreating(true)} size="sm" type="button" variant="outline">
-          <Plus className="size-4" />
-          New category
-        </Button>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-[64rem] flex-1 flex-col gap-5 p-6 @6xl/page:max-w-[80rem]">
+    <main className="@container/page w-full" data-testid="categories-page">
+      <div className={pageFrameClassName}>
+        <PageHeader
+          actions={
+            <Button onClick={() => setCreating(true)} size="sm" type="button" variant="outline">
+              <Plus className="size-4" />
+              New category
+            </Button>
+          }
+          description="Set a monthly budget per category and see where this month's spending went."
+          title="Categories"
+        />
         <div className="grid items-start gap-5 @6xl/page:grid-cols-[minmax(0,1.55fr)_minmax(30rem,0.8fr)]">
           <div className="flex min-w-0 flex-col gap-5">
             <div aria-label="Category totals">
@@ -296,7 +299,7 @@ function SpendDonut({ budget, summaries, total }: { budget: number; summaries: C
             />
           </span>
         )}
-        <span className="text-[9px] text-muted-foreground">used</span>
+        <span className="text-3xs text-muted-foreground">used</span>
       </div>
     </div>
   );
@@ -371,11 +374,11 @@ function CategoryTable({
         </div>
       </div>
       <div className="hidden grid-cols-[minmax(9rem,1fr)_minmax(3rem,10rem)_5.5rem_5.5rem_5.5rem_1.75rem] items-center gap-3 border-b border-border px-4 pb-2 @xl/cattable:grid">
-        <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Category</span>
-        <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget used</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
+        <span className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">Category</span>
+        <span className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">Budget used</span>
+        <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
+        <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Budget</span>
+        <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Left</span>
         <span aria-hidden="true" />
       </div>
       <LazyMotion features={domAnimation}>
@@ -504,13 +507,13 @@ function CategoryTableRow({
             <GripVertical aria-label={`Drag to reorder ${summary.name}`} className="size-3.5 shrink-0 cursor-grab text-muted-foreground" />
             <CategoryPill category={category} className="max-w-full" />
             {summary.isBuiltIn ? <Lock aria-label="System category" className="size-3.5 shrink-0 text-muted-foreground" /> : null}
-            {summary.archived ? <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Archived</span> : null}
+            {summary.archived ? <span className="text-2xs uppercase tracking-wide text-muted-foreground">Archived</span> : null}
           </span>
           <div className="hidden @xl/cattable:block">
             {summary.budgetAmount ? (
               <BudgetBar color={summary.color} pct={pct} />
             ) : (
-              <span className="block text-[11px] text-muted-foreground">No budget</span>
+              <span className="block text-2xs text-muted-foreground">No budget</span>
             )}
           </div>
           <span className="text-right text-sm tabular-nums">{formatCurrency(summary.spentThisMonth)}</span>
@@ -785,14 +788,14 @@ function DetailPane({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-2.5">
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             {selectedId ? (
               <span aria-hidden="true" className="text-lg">
                 {detail.emoji}
               </span>
             ) : null}
             {detail.name}
-          </h1>
+          </h2>
           <div className="flex flex-wrap items-center gap-1.5">
             {selectedId ? (
               <button
@@ -819,7 +822,7 @@ function DetailPane({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-          <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Spent in {monthLabel.split(" ")[0]}</span>
+          <span className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">Spent in {monthLabel.split(" ")[0]}</span>
           <MoneyRollingWhole className="text-2xl" value={detail.spentThisMonth} />
           {remaining !== undefined ? (
             <span className={cn("text-xs tabular-nums", remaining < 0 ? "text-[var(--negative)]" : "text-muted-foreground")}>
@@ -898,7 +901,7 @@ function SpendTimeline({ detail }: { detail: CategoryDetail }) {
   return (
     <IconiqCard className="rounded-lg border-border/70 bg-card/60">
       <IconiqCardContent className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground tabular-nums">
           {budget !== undefined ? (
             <>
               <span className="font-medium text-foreground">
@@ -921,7 +924,7 @@ function SpendTimeline({ detail }: { detail: CategoryDetail }) {
               className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/35"
               style={{ bottom: `${toPercent(budget)}%` }}
             >
-              <span className="absolute right-0 bottom-1 rounded bg-card/90 px-1 text-[11px] text-muted-foreground tabular-nums">
+              <span className="absolute right-0 bottom-1 rounded bg-card/90 px-1 text-2xs text-muted-foreground tabular-nums">
                 Budget {formatCurrency(budget)}
               </span>
             </div>
@@ -933,7 +936,7 @@ function SpendTimeline({ detail }: { detail: CategoryDetail }) {
               const label = `${formatMonthLong(point.month)}${inProgress ? " so far" : ""}: ${formatCurrency(point.spent)}`;
               return (
                 <div className="group/bar relative flex h-full flex-1 items-end" key={point.month} title={label}>
-                  <span className="pointer-events-none absolute inset-x-0 z-20 text-center text-[11px] font-medium whitespace-nowrap tabular-nums opacity-0 transition-opacity group-hover/bar:opacity-100 motion-reduce:transition-none" style={{ bottom: `calc(${toPercent(point.spent)}% + 4px)` }}>
+                  <span className="pointer-events-none absolute inset-x-0 z-20 text-center text-2xs font-medium whitespace-nowrap tabular-nums opacity-0 transition-opacity group-hover/bar:opacity-100 motion-reduce:transition-none" style={{ bottom: `calc(${toPercent(point.spent)}% + 4px)` }}>
                     {formatCompactCurrency(point.spent)}
                   </span>
                   <span
@@ -949,7 +952,7 @@ function SpendTimeline({ detail }: { detail: CategoryDetail }) {
           </div>
         </div>
         {/* Narrow charts label each bar with the month's initial; wider ones spell it out. */}
-        <div aria-hidden="true" className="@container/months flex gap-1 text-[11px] text-muted-foreground">
+        <div aria-hidden="true" className="@container/months flex gap-1 text-2xs text-muted-foreground">
           {months.map((point) => (
             <span className={cn("min-w-0 flex-1 text-center whitespace-nowrap", point === current && "text-foreground")} key={point.month}>
               <span className="@md/months:hidden">{formatMonthLetter(point.month).charAt(0)}</span>
@@ -989,8 +992,8 @@ function KeyMetrics({ detail, transactionsToReview }: { detail: CategoryDetail; 
       <IconiqCardContent className="flex w-full flex-col gap-1">
         <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 px-1 pb-1.5">
           <span className="text-sm font-semibold tracking-tight">Key metrics</span>
-          <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent / year</span>
-          <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Avg / month</span>
+          <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Spent / year</span>
+          <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Avg / month</span>
         </div>
         {detail.yearly.map((row) => (
           <div className="grid grid-cols-[minmax(0,1fr)_7rem_7rem] items-center gap-3 rounded-lg px-1 py-1.5 hover:bg-muted/40" key={row.year}>
@@ -1027,9 +1030,9 @@ function AllCategoriesList({
       <IconiqCardContent className="@container/allcats flex w-full flex-col gap-1">
       <div className="grid grid-cols-[minmax(0,1fr)_4.75rem_4.75rem] items-center gap-3 px-1 pb-1.5 @sm/allcats:grid-cols-[minmax(0,1fr)_5rem_5rem_5rem]">
         <span className="text-sm font-semibold tracking-tight">All categories</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
-        <span className="hidden text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase @sm/allcats:block">Budget</span>
-        <span className="text-right text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Left</span>
+        <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Spent</span>
+        <span className="hidden text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase @sm/allcats:block">Budget</span>
+        <span className="text-right text-2xs font-medium tracking-wide text-muted-foreground uppercase">Left</span>
       </div>
       <ScrollArea
         className="max-h-64 @6xl/page:max-h-[420px]"

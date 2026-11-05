@@ -13,7 +13,7 @@ const statToneClasses: Record<FinanceStatTone, { dot: string; value: string }> =
   negative: { dot: "bg-(--negative)", value: "text-(--negative)" },
   positive: { dot: "bg-(--positive)", value: "text-(--positive)" },
   primary: { dot: "bg-primary", value: "text-primary" },
-  warning: { dot: "bg-[oklch(0.8_0.14_80)]", value: "text-[oklch(0.8_0.14_80)]" }
+  warning: { dot: "bg-warning", value: "text-warning" }
 };
 
 export function FinanceStatStrip({
@@ -29,7 +29,7 @@ export function FinanceStatStrip({
         // Items never shrink below their own content width (see FinanceStatItem below),
         // so on narrow viewports the strip itself scrolls horizontally instead of any
         // individual amount getting ellipsis-clipped. scroll-fade-x hints there's more.
-        "min-w-0 rounded-2xl border border-border bg-muted/25",
+        "min-w-0 rounded-lg border border-border bg-muted/25",
         className
       )}
       orientation="horizontal"
@@ -83,7 +83,7 @@ export function FinanceStatItem({
           )}
         </span>
         {/* Unit on its own line because inline unit text can collapse long currency values. */}
-        {unit ? <span className="text-[10px] font-medium text-muted-foreground">{unit}</span> : null}
+        {unit ? <span className="text-2xs font-medium text-muted-foreground">{unit}</span> : null}
       </span>
     </div>
   );

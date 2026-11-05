@@ -9,6 +9,7 @@ import { RecurringCalendar, type CalendarRecurring, type RecurringDonutSegment }
 import { formatCurrency } from "@/lib/format";
 import { merchantBrandColor, merchantDomain } from "@/lib/merchant-domain";
 import { getUpcomingRecurringViews } from "@/lib/view-models";
+import { PageHeader, pageFrameClassName } from "@/components/page-header";
 
 // One shared column grid, applied identically to the header row and every data row, so
 // every column edge lands on the same x regardless of that row's content (fixed px tracks
@@ -52,7 +53,7 @@ function MerchantAvatar({ color, merchant }: { color: string; merchant: string }
     return (
       <span
         aria-hidden="true"
-        className="flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+        className="flex size-7 shrink-0 items-center justify-center rounded-full text-2xs font-semibold"
         style={{
           backgroundColor: `color-mix(in oklab, ${accentColor} 18%, transparent)`,
           color: accentColor
@@ -75,80 +76,76 @@ export function RecurringsView({
   upcomingCount
 }: RecurringsViewProps) {
   return (
-    <main className="@container/page flex min-h-svh flex-col" data-testid="recurrings-page">
-      <header className="flex items-center h-14 shrink-0 border-b border-border px-6">
-        <span className="text-[13px] font-semibold tracking-tight">Recurrings</span>
-      </header>
+    <main className="@container/page w-full" data-testid="recurrings-page">
+      <div className={pageFrameClassName}>
+        <PageHeader
+          description="Charges Koban spotted repeating in your transactions. Expected dates are estimates from past charges, not confirmed bills."
+          title="Recurring candidates"
+        />
 
-      {/* Side by side only when the page itself is wide; it narrows when the agent docks. */}
-      <div className="mx-auto grid w-full max-w-[70rem] flex-1 items-start gap-6 p-6 @6xl/page:max-w-[78rem] @6xl/page:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] @[90rem]/page:max-w-[96rem]">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 @6xl/page:mx-0 @6xl/page:max-w-none">
-          <section className="text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">Recurring candidates</h1>
-            <p className="mx-auto mt-1.5 max-w-xl text-sm text-muted-foreground">
-              Inferred from posted transaction cadence — projected charge dates are review targets, not confirmed subscriptions.
-            </p>
-          </section>
+        {/* Side by side only when the page itself is wide; it narrows when the agent docks. */}
+        <div className="grid w-full items-start gap-5 @6xl/page:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
+          <div className="flex w-full min-w-0 flex-col gap-5">
+            <RecurringCalendar initialMonth={now.slice(0, 7)} items={calendarItems} segments={donutSegments} today={now.slice(0, 10)} />
 
-          <RecurringCalendar initialMonth={now.slice(0, 7)} items={calendarItems} segments={donutSegments} today={now.slice(0, 10)} />
+            <section aria-label="Recurring totals" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <MetricCard icon={<Wallet size={15} />} label="Yearly forecast" value={formatCurrency(roundMoney(monthlyizedTotal * 12))} />
+              <MetricCard icon={<RefreshCw size={15} />} label="Average monthly cost" value={formatCurrency(roundMoney(monthlyizedTotal))} />
+              <MetricCard icon={<Repeat2 size={15} />} label="Detected candidates" value={candidateRows.length.toLocaleString()} />
+              <MetricCard icon={<CalendarClock size={15} />} label="Due or overdue" value={upcomingCount.toLocaleString()} />
+            </section>
+          </div>
 
-          <section aria-label="Recurring totals" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <MetricCard icon={<Wallet size={15} />} label="Yearly forecast" value={formatCurrency(roundMoney(monthlyizedTotal * 12))} />
-            <MetricCard icon={<RefreshCw size={15} />} label="Average monthly cost" value={formatCurrency(roundMoney(monthlyizedTotal))} />
-            <MetricCard icon={<Repeat2 size={15} />} label="Detected candidates" value={candidateRows.length.toLocaleString()} />
-            <MetricCard icon={<CalendarClock size={15} />} label="Due or overdue" value={upcomingCount.toLocaleString()} />
-          </section>
+          <Card className="@container/recurring min-w-0">
+            <CardHeader>
+              <h2 className="text-base font-medium">Detected recurring charges</h2>
+              <p className="text-sm text-muted-foreground">Soonest first, with the account each charge comes from.</p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-0.5">
+              {candidateRows.length > 0 ? (
+                <div className={`${RECURRING_ROW_GRID} px-3 pb-1.5 text-2xs font-medium tracking-wide text-muted-foreground uppercase`}>
+                  <span aria-hidden="true" />
+                  <span>Merchant</span>
+                  <span className="text-right">Amount</span>
+                  <span className="text-right">Next expected</span>
+                  <span className={`${RECURRING_WIDE_CELL} text-right`}>Last charged</span>
+                  <span className={`${RECURRING_WIDE_CELL} text-right`}>Observed</span>
+                  <span className={RECURRING_CATEGORY_CELL}>Category</span>
+                </div>
+              ) : null}
+              {candidateRows.map((candidate) => (
+                <Link
+                  aria-label={`View transactions for recurring candidate ${candidate.merchant}`}
+                  className={`${RECURRING_ROW_GRID} items-center rounded-xl px-3 py-2 text-sm transition-colors hover:bg-[color-mix(in_oklab,var(--merchant-accent)_9%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none`}
+                  href={candidate.href}
+                  key={candidate.id}
+                  style={{ "--merchant-accent": candidate.accentColor } as RecurringRowStyle}
+                >
+                  <MerchantAvatar color={candidate.accentColor} merchant={candidate.merchant} />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{candidate.merchant}</p>
+                    <p className="truncate text-xs text-muted-foreground">{candidate.accountName}</p>
+                  </div>
+                  {/* Amount over cadence — stacked so "Monthly" never truncates at
+                      the narrower xl column widths. Mirrors the two-line merchant cell. */}
+                  <div className="min-w-0 text-right">
+                    <p className="font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</p>
+                    <p className="text-2xs text-muted-foreground">{candidate.frequency}</p>
+                  </div>
+                  <div className="text-right tabular-nums">{candidate.nextDateLabel}</div>
+                  <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.lastChargedLabel}</div>
+                  <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.observedCount.toLocaleString()}</div>
+                  <div className={RECURRING_CATEGORY_CELL}>
+                    <CategoryPill category={candidate.category} className="max-w-full" />
+                  </div>
+                </Link>
+              ))}
+              {candidateRows.length === 0 ? (
+                <p className="px-1 text-sm text-muted-foreground">No recurring candidates found in synced transactions yet.</p>
+              ) : null}
+            </CardContent>
+          </Card>
         </div>
-
-        <Card className="@container/recurring min-w-0">
-          <CardHeader>
-            <h2 className="text-base font-medium">Detected recurring charges</h2>
-            <p className="text-sm text-muted-foreground">Sorted by expected charge date, with the account and observed transaction count shown for auditability.</p>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-0.5">
-            {candidateRows.length > 0 ? (
-              <div className={`${RECURRING_ROW_GRID} px-3 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase`}>
-                <span aria-hidden="true" />
-                <span>Merchant</span>
-                <span className="text-right">Amount</span>
-                <span className="text-right">Next expected</span>
-                <span className={`${RECURRING_WIDE_CELL} text-right`}>Last charged</span>
-                <span className={`${RECURRING_WIDE_CELL} text-right`}>Observed</span>
-                <span className={RECURRING_CATEGORY_CELL}>Category</span>
-              </div>
-            ) : null}
-            {candidateRows.map((candidate) => (
-              <Link
-                aria-label={`View transactions for recurring candidate ${candidate.merchant}`}
-                className={`${RECURRING_ROW_GRID} items-center rounded-xl px-3 py-2 text-sm transition-colors hover:bg-[color-mix(in_oklab,var(--merchant-accent)_9%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 motion-reduce:transition-none`}
-                href={candidate.href}
-                key={candidate.id}
-                style={{ "--merchant-accent": candidate.accentColor } as RecurringRowStyle}
-              >
-                <MerchantAvatar color={candidate.accentColor} merchant={candidate.merchant} />
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{candidate.merchant}</p>
-                  <p className="truncate text-xs text-muted-foreground">{candidate.accountName}</p>
-                </div>
-                {/* Amount over cadence — stacked so "Monthly" never truncates at
-                    the narrower xl column widths. Mirrors the two-line merchant cell. */}
-                <div className="min-w-0 text-right">
-                  <p className="font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</p>
-                  <p className="text-[11px] text-muted-foreground">{candidate.frequency}</p>
-                </div>
-                <div className="text-right tabular-nums">{candidate.nextDateLabel}</div>
-                <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.lastChargedLabel}</div>
-                <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.observedCount.toLocaleString()}</div>
-                <div className={RECURRING_CATEGORY_CELL}>
-                  <CategoryPill category={candidate.category} className="max-w-full" />
-                </div>
-              </Link>
-            ))}
-            {candidateRows.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">No recurring candidates found in synced transactions yet.</p>
-            ) : null}
-          </CardContent>
-        </Card>
       </div>
     </main>
   );

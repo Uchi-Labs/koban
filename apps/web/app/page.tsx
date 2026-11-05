@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { DashboardView } from "@/components/dashboard-view";
 import { buildTopCategoryCells } from "@/lib/dashboard-top-categories";
 import { createMonthlySpendingProjection } from "@/lib/finance-projection";
@@ -8,6 +9,9 @@ import { deriveInsights } from "@/lib/insights";
 import { buildDashboardTrends } from "@/lib/net-worth-trend";
 import { isReviewActionableTransaction } from "@/lib/transaction-classification";
 import { getTransactionViews, getUpcomingRecurringViews } from "@/lib/view-models";
+
+// The root page shares the layout segment, so the "%s · Koban" template skips it.
+export const metadata: Metadata = { title: { absolute: "Dashboard · Koban" } };
 
 export default async function DashboardPage() {
   const [financeData, budgetOverrides, dismissedInsights] = await Promise.all([

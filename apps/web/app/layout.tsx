@@ -12,6 +12,7 @@ import { FONT_CHOICE_COOKIE, fontChoiceStyle, parseFontChoice } from "@/lib/font
 import { MONEY_COLORS_COOKIE, moneyColorStyle, parseMoneyColors } from "@/lib/money-colors";
 import { parseSidebarWidth, SIDEBAR_WIDTH_COOKIE } from "@/lib/sidebar-width";
 import { parseUiMode, UI_MODE_COOKIE } from "@/lib/ui-mode";
+import { themeColors } from "@/lib/theme-colors";
 import "./shadcn.css";
 import "./globals.css";
 import { Inter } from "next/font/google";
@@ -65,7 +66,6 @@ const cabinetGrotesk = localFont({
 });
 
 const quietFonts = cn(satoshi.variable, cabinetGrotesk.variable, selectableFontVariables);
-const pwaThemeColor = "#07090b";
 
 export const metadata: Metadata = {
   applicationName: "Koban",
@@ -74,7 +74,8 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Koban"
   },
-  title: "Koban",
+  // Pages set their own title; the tab reads "Transactions · Koban".
+  title: { default: "Koban", template: "%s · Koban" },
   description: "Private personal finance app",
   icons: {
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
@@ -86,19 +87,29 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest"
 };
 
-export const viewport: Viewport = {
-  colorScheme: "light dark",
-  initialScale: 1,
-  themeColor: pwaThemeColor,
-  viewportFit: "cover",
-  width: "device-width"
-};
+async function resolveTheme(): Promise<"dark" | "light"> {
+  // A visitor's own toggle wins; otherwise the public demo opens in light mode.
+  const themeCookie = (await cookies()).get("koban_theme")?.value;
+  return themeCookie === "light" || themeCookie === "dark" ? themeCookie : isPublicDemo() ? "light" : "dark";
+}
+
+export async function generateViewport(): Promise<Viewport> {
+  return {
+    colorScheme: "light dark",
+    initialScale: 1,
+    // Android Chrome shrinks the layout for the keyboard, so bottom-pinned
+    // composers stay above it as they do on iOS.
+    interactiveWidget: "resizes-content",
+    // Follows the koban_theme cookie (the in-app toggle), not the OS setting.
+    themeColor: themeColors[await resolveTheme()],
+    viewportFit: "cover",
+    width: "device-width"
+  };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
-  // A visitor's own toggle wins; otherwise the public demo opens in light mode.
-  const themeCookie = cookieStore.get("koban_theme")?.value;
-  const theme = themeCookie === "light" || themeCookie === "dark" ? themeCookie : isPublicDemo() ? "light" : "dark";
+  const theme = await resolveTheme();
   // Read server-side so the correct design renders on first paint, with no
   // flash of the other one. See lib/ui-mode.ts — migration scaffolding.
   const uiMode = parseUiMode(cookieStore.get(UI_MODE_COOKIE)?.value);

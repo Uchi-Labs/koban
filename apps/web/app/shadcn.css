@@ -24,7 +24,8 @@
   --accent-foreground: oklch(0.24 0.02 60);
   --destructive: oklch(0.54 0.19 22);
   --input: oklch(0.87 0.015 75);
-  --ring: oklch(0.54 0.13 165);
+  /* Neutral focus ring: a brand-coloured ring clashes with tinted controls. */
+  --ring: oklch(0.45 0.015 60);
   --chart-1: oklch(0.62 0.16 245);
   --chart-2: oklch(0.72 0.16 80);
   --chart-3: oklch(0.62 0.18 340);
@@ -36,18 +37,30 @@
   --sidebar-primary-foreground: oklch(0.975 0.014 85);
   --sidebar-accent: oklch(0.915 0.024 78);
   --sidebar-accent-foreground: oklch(0.24 0.02 60);
-  --sidebar-border: oklch(0.865 0.015 75);
-  --sidebar-ring: oklch(0.54 0.13 165);
+  --sidebar-border: oklch(0.2 0.014 60 / 14%);
+  --sidebar-ring: oklch(0.45 0.015 60);
   --sidebar: oklch(0.958 0.015 82);
-  --border: oklch(0.87 0.015 75);
+  /* Alpha so hairlines take the tint of whatever surface they sit on. */
+  --border: oklch(0.2 0.014 60 / 15%);
   --muted: oklch(0.945 0.012 80);
   --positive: oklch(0.46 0.12 165);
   --negative: oklch(0.54 0.18 22);
+  --warning: oklch(0.53 0.12 70);
 }
 
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
+  /* Type scale additions. Use the role, not a pixel value:
+     text-ui   13px  chips, nav rows, dense controls
+     text-2xs  11px  uppercase eyebrows, column headers, chart and meta captions
+     text-3xs  10px  only a glyph inside a fixed-size badge, key cap or avatar */
+  --text-ui: 0.8125rem;
+  --text-ui--line-height: calc(1.25 / 0.8125);
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(1 / 0.6875);
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: calc(0.875 / 0.625);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -79,6 +92,9 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -103,13 +119,13 @@
   --secondary: oklch(0.24 0.01 250);
   --secondary-foreground: oklch(0.955 0.004 230);
   --muted: oklch(0.235 0.01 250);
-  --muted-foreground: oklch(0.68 0.012 245);
+  --muted-foreground: oklch(0.74 0.012 245);
   --accent: oklch(0.245 0.014 250);
   --accent-foreground: oklch(0.965 0.004 230);
   --destructive: oklch(0.66 0.2 22);
   --border: oklch(0.94 0.01 230 / 9%);
   --input: oklch(0.94 0.01 230 / 13%);
-  --ring: oklch(0.82 0.14 168 / 55%);
+  --ring: oklch(0.86 0.006 240 / 60%);
   --chart-1: oklch(0.72 0.13 235);
   --chart-2: oklch(0.82 0.14 82);
   --chart-3: oklch(0.72 0.16 340);
@@ -122,10 +138,11 @@
   --sidebar-accent: oklch(0.235 0.012 250);
   --sidebar-accent-foreground: oklch(0.965 0.004 230);
   --sidebar-border: oklch(0.94 0.01 230 / 8%);
-  --sidebar-ring: oklch(0.82 0.14 168 / 55%);
+  --sidebar-ring: oklch(0.86 0.006 240 / 60%);
   /* semantic money colors, used by charts and amount text */
   --positive: oklch(0.8 0.15 165);
-  --negative: oklch(0.68 0.18 15);
+  --negative: oklch(0.73 0.16 15);
+  --warning: oklch(0.82 0.14 82);
 }
 
 /* Iconiq registry components inherit Koban's theme instead of carrying a
@@ -164,7 +181,7 @@
   --status-dot-canceled: var(--muted-foreground);
   --status-dot-active: var(--primary);
   --status-dot-success: var(--positive);
-  --status-dot-warning: var(--chart-2);
+  --status-dot-warning: var(--warning);
   --status-dot-error: var(--negative);
 }
 
@@ -193,6 +210,15 @@
    emoji background, so only icon and initial swatches get the tile. */
 .pill-tint.category-tag [data-swatch][data-emoji] {
   background-color: transparent;
+}
+
+/* Stacking scale. Everyday layers use Tailwind's z-10..z-50 (popups are 50);
+   these name the few layers that must sit above popups. */
+:root {
+  --z-history-menu: 60;
+  --z-tour: 60;
+  --z-toast: 90;
+  --z-floating-alert: 300;
 }
 
 /* ── Motion tokens (transitions.dev scale + Emil's curves) ─────────── */
@@ -255,8 +281,9 @@
   --modal-scale: var(--scale-large);
   --modal-scale-close: var(--scale-large);
   --modal-ease: var(--ease-smooth-out);
-  --panel-open-dur: var(--duration-slow);
-  --panel-close-dur: var(--duration-medium);
+  /* The inspector panel opens on every row click: keep it quick, exit faster. */
+  --panel-open-dur: var(--duration-fast);
+  --panel-close-dur: 180ms;
   --panel-translate-y: 100px;
   --panel-blur: var(--blur-small);
   --panel-ease: var(--ease-smooth-out);
@@ -775,37 +802,17 @@
   }
 }
 
-/* Chat-history insertions can push the last row through the sidebar fold.
-   The ScrollArea mask handles opacity; this viewport-edge veil adds the soft
-   blur visible in the reference while remaining truthful to overflow state. */
-.sidebar-fold-blur::after {
-  position: absolute;
-  z-index: 10;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: var(--scroll-fade-size, 2.25rem);
-  pointer-events: none;
-  content: "";
-  opacity: 0;
-  backdrop-filter: blur(2px);
-  mask-image: linear-gradient(to bottom, transparent, black);
-  transition: opacity 180ms var(--ease-smooth-out);
-}
-
-.sidebar-fold-blur:has([data-overflow-y-end])::after {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-fold-blur::after {
-    transition: none;
-  }
+/* Set for one frame while the theme flips (motion/theme-toggle.tsx). */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   body {
     @apply bg-background text-foreground;
@@ -844,7 +851,7 @@
   }
 
   .app-page-description {
-    @apply max-w-2xl text-sm leading-relaxed text-muted-foreground;
+    @apply max-w-prose text-sm leading-relaxed text-muted-foreground;
     text-wrap: pretty;
   }
 }
@@ -866,10 +873,24 @@
     var(--background);
 }
 
-:root:not(.dark) [data-slot="card"] {
-  box-shadow:
+/* Card elevation: a 1px ring stands in for the border, then a crisp contact
+   shadow and a soft ambient one. Dark mode can't show drop shadows on near
+   black, so it collapses to the top highlight plus a faint white ring. */
+:root {
+  --elevation-card:
+    0 0 0 1px oklch(0.2 0.014 60 / 0.06),
     0 1px 2px oklch(0.2 0.014 60 / 0.05),
     0 12px 32px -24px oklch(0.25 0.03 60 / 0.24);
+}
+
+.dark {
+  --elevation-card:
+    inset 0 1px 0 oklch(1 0 0 / 0.055),
+    0 0 0 1px oklch(1 0 0 / 0.06);
+}
+
+[data-slot="card"] {
+  box-shadow: var(--elevation-card);
 }
 
 .dark [data-slot="card"] {
@@ -877,10 +898,6 @@
     linear-gradient(180deg, oklch(1 0 0 / 0.025), transparent 34%),
     var(--card);
   border-color: oklch(0.94 0.01 230 / 7%);
-  box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.055),
-    0 1px 2px oklch(0 0 0 / 0.35),
-    0 8px 24px -12px oklch(0 0 0 / 0.5);
 }
 
 .dark [data-dashboard-card="layered"] {

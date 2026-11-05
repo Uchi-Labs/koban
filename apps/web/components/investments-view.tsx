@@ -17,6 +17,7 @@ import { normalizeProviderCurrencyCode } from "@/lib/currency";
 import { formatCurrency } from "@/lib/format";
 import type { HoldingView, InvestmentsData } from "@/lib/investments";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/page-header";
 
 // Only ever mounts once a holding row is expanded, and it injects a third-party
 // script tag itself -- code-split it out of the initial /investments bundle
@@ -136,13 +137,16 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
   const historySpan = describeSpan(data.history);
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6 lg:px-8" data-testid="investments-page">
-      <div className="mb-5 flex items-center gap-3">
-        <h1 className="app-page-title">Investment accounts</h1>
-        <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
-          {data.accounts.length.toLocaleString()} accounts
-        </Badge>
-      </div>
+    <main className="mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="investments-page">
+      <PageHeader
+        className="mb-5"
+        meta={
+          <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
+            {data.accounts.length.toLocaleString()} {data.accounts.length === 1 ? "account" : "accounts"}
+          </Badge>
+        }
+        title="Investment accounts"
+      />
 
       <InvestmentTotalsSection
         change={change}
@@ -227,7 +231,7 @@ function InvestmentTotalsSection({
           <>
             <LivelineChart className="mt-4" height={188} points={data.history} showValue />
             {historySpan ? (
-              <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+              <div className="mt-2 flex items-center justify-between text-2xs text-muted-foreground">
                 <span>{historySpan}</span>
                 <span className="tabular-nums">{data.history.length} snapshots</span>
               </div>
@@ -309,7 +313,7 @@ function InvestmentAccountsSection({
                 </div>
               </div>
               <LivelineChart className="mt-1" height={44} points={account.history} sparkline emptyText="No history yet" />
-              <div className="pl-1 text-[11px] text-muted-foreground tabular-nums">
+              <div className="pl-1 text-2xs text-muted-foreground tabular-nums">
                 {account.positions.length.toLocaleString()} holdings
               </div>
             </div>
@@ -641,7 +645,7 @@ function HoldingDetailRow({
                 <DetailStat accent={accent} label="Weight" value={`${holding.weight.toFixed(1)}%`} />
               </div>
 
-              <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">Price & performance</div>
+              <div className="mb-2 text-2xs uppercase tracking-wide text-muted-foreground">Price & performance</div>
               <TradingViewAdvancedChart height={620} symbol={holding.tradingViewSymbol} theme={theme} />
               <div className="mt-2 text-xs text-muted-foreground">{holding.accountName}</div>
             </div>
@@ -689,7 +693,7 @@ function DetailStat({
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div
         className={cn(
           "truncate text-sm tabular-nums",

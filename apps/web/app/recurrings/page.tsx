@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { RecurringItem, Transaction } from "@ai-finances/schema";
 import type { CalendarRecurring, RecurringDonutSegment } from "@/components/recurring-calendar";
 import { RecurringsView } from "@/components/recurrings-view";
@@ -5,6 +6,8 @@ import { getFinanceData } from "@/lib/finance-data";
 import { merchantBrandColor } from "@/lib/merchant-domain";
 import { isSpendingTransaction } from "@/lib/transaction-classification";
 import { getAccountName, getUpcomingRecurringViews } from "@/lib/view-models";
+
+export const metadata: Metadata = { title: "Recurrings" };
 
 const shortDateFormatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
 

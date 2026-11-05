@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import type { ReviewContext } from "@/components/review-context-panel";
 import { ReviewStack } from "@/components/review-stack";
 import { listEnrichmentSuggestionItems, listReviewQueueContext } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
 import { isReviewActionableTransaction } from "@/lib/transaction-classification";
 import { createViewModelLookups, getTransactionViews } from "@/lib/view-models";
+
+export const metadata: Metadata = { title: "Review" };
 
 export default async function ReviewPage() {
   const [{ accounts, categories, transactions }, suggestionItems] = await Promise.all([

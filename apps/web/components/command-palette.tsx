@@ -376,7 +376,7 @@ function InlineAgentPanel({
             className="overflow-hidden"
             exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
             initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={reduce ? { duration: 0.15 } : { duration: 0.35, ease: EASE_OUT }}
+            transition={reduce ? { duration: 0 } : { duration: 0.22, ease: EASE_OUT }}
           >
             <ScrollArea
               className="max-h-[30rem]"

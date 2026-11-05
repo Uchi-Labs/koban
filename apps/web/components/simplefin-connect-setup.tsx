@@ -101,7 +101,7 @@ export function SimpleFinConnectSetup({
     updateState({
       busy: true,
       error: "",
-      message: "Syncing SimpleFIN accounts and transactions...",
+      message: "Syncing SimpleFIN accounts and transactions…",
       syncSummary: ""
     });
 
@@ -157,7 +157,7 @@ export function SimpleFinConnectSetup({
         <div className="flex max-w-sm flex-col items-end gap-2">
           <Button variant="tonal" disabled={!status.readyForSync || busy} onClick={syncSimpleFin} type="button">
             {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
-            {busy ? "Syncing..." : "Sync SimpleFIN"}
+            {busy ? "Syncing…" : "Sync SimpleFIN"}
           </Button>
           <ProviderConsentLine className="text-right" />
         </div>

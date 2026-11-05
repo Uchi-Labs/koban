@@ -257,7 +257,7 @@ export function NetWorthChart({
             <span className="text-xs font-semibold tabular-nums text-foreground">
               {scrubPoint.value.toLocaleString("en-US", { currency, style: "currency" })}
             </span>
-            <span className="text-[11px] text-muted-foreground">{scrubPoint.label}</span>
+            <span className="text-2xs text-muted-foreground">{scrubPoint.label}</span>
           </div>
         ) : null}
       </div>

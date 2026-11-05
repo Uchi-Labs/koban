@@ -30,7 +30,7 @@ export function CategoryPill({ category, className }: { category: Category; clas
   return (
     <span
       className={cn(
-        "pill-tint category-tag inline-flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] border pl-[3px] pr-2.5 text-[13px] font-medium leading-none whitespace-nowrap",
+        "pill-tint category-tag inline-flex h-[26px] min-w-0 items-center gap-1.5 rounded-[8px] border pl-[3px] pr-2.5 text-ui font-medium leading-none whitespace-nowrap",
         className
       )}
       data-transfer={category.id === "cat_transfer" ? "true" : undefined}
@@ -40,7 +40,7 @@ export function CategoryPill({ category, className }: { category: Category; clas
           paints above the baseline at small sizes; nudge only the emoji case. */}
       <span
         aria-hidden="true"
-        className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-[14px] leading-none"
+        className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-sm leading-none"
         data-emoji={emoji ? "" : undefined}
         data-swatch=""
       >

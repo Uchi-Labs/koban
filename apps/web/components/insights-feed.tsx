@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 const toneClasses = {
   negative: "bg-[var(--negative)]",
   positive: "bg-[var(--positive)]",
-  warning: "bg-[var(--chart-2)]"
+  warning: "bg-warning"
 };
 
 export function InsightsFeed({ compact = false, initialInsights }: { compact?: boolean; initialInsights: FinanceInsight[] }) {
@@ -44,7 +44,7 @@ export function InsightsFeed({ compact = false, initialInsights }: { compact?: b
           {visible.length > 0 ? visible.map((insight) => (
             <m.article
               animate={{ opacity: 1, transform: "translateY(0) scale(1)" }}
-              className="group flex gap-3 rounded-xl border border-border/60 bg-background/45 p-3"
+              className="group flex gap-3 rounded-lg border border-border/60 bg-background/45 p-3"
               exit={reduce
                 ? { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }
                 : { opacity: 0, transform: "translateY(-4px) scale(0.98)", transition: { duration: 0.15, ease: EASE_OUT } }}

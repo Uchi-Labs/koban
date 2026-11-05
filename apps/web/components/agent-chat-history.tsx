@@ -344,7 +344,7 @@ function ConversationRow({
               value={draft}
             />
             {renameError ? (
-              <p className="px-2 pt-1 text-[11px] leading-tight text-destructive" id={renameErrorId} role="alert">
+              <p className="px-2 pt-1 text-2xs leading-tight text-destructive" id={renameErrorId} role="alert">
                 {renameError}
               </p>
             ) : null}
@@ -483,7 +483,7 @@ function ConversationActionsMenu({
 }) {
   return (
     <PopoverPortal>
-      <PopoverPositioner align="end" className="isolate z-[60]" side="bottom" sideOffset={4}>
+      <PopoverPositioner align="end" className="isolate z-(--z-history-menu)" side="bottom" sideOffset={4}>
         <PopoverPopup
           aria-label="Conversation actions"
           className="relative z-50 w-36 overflow-hidden rounded-xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/5 outline-none dark:ring-foreground/10"
