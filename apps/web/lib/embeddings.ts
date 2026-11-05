@@ -13,7 +13,7 @@ export interface EmbeddingModelInfo {
 }
 
 export class EmbeddingProviderError extends Error {
-  readonly code: "configuration" | "provider_failure" | "rate_limited";
+  readonly code: "configuration" | "provider_failure" | "rate_limited" | "timeout";
 
   constructor({
     cause,
@@ -35,6 +35,8 @@ const localEmbeddingModelId = "model_local_hashing_v1";
 const localEmbeddingModelName = "hashing-token-v1";
 const defaultVoyageEmbeddingModel = "voyage-4-large";
 const voyageBatchSize = 128;
+// Bound for one embedTexts call to Voyage, across all batches and the 429 retry.
+export const defaultEmbeddingTimeoutMs = 60_000;
 
 const voyageModelDimensions = new Map<string, number>([
   ["voyage-4-large", 1024],
@@ -87,6 +89,8 @@ export async function embedTexts(
   options: {
     inputType?: EmbeddingInputType;
     model?: EmbeddingModelInfo;
+    signal?: AbortSignal;
+    timeoutMs?: number;
   } = {}
 ): Promise<number[][]> {
   const model = options.model ?? activeEmbeddingModel();
@@ -99,7 +103,22 @@ export async function embedTexts(
     return texts.map(localHashEmbedText);
   }
 
-  return embedTextsWithVoyage(texts, model, options.inputType ?? "document");
+  const timeoutMs = options.timeoutMs ?? defaultEmbeddingTimeoutMs;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+
+  try {
+    return await embedTextsWithVoyage(texts, model, options.inputType ?? "document", signal);
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      throw new EmbeddingProviderError({
+        cause: error,
+        code: "timeout",
+        message: `Voyage embedding for ${model.model} did not finish within ${timeoutMs}ms.`
+      });
+    }
+    throw error;
+  }
 }
 
 function localHashEmbedText(text: string): number[] {
@@ -131,7 +150,8 @@ export function setEmbeddingFetchForTests(fetchOverride: typeof fetch | undefine
 async function embedTextsWithVoyage(
   texts: string[],
   model: EmbeddingModelInfo,
-  inputType: EmbeddingInputType
+  inputType: EmbeddingInputType,
+  signal: AbortSignal
 ): Promise<number[][]> {
   const env = readWorkspaceEnv();
   const provider = createVoyage({
@@ -143,7 +163,7 @@ async function embedTextsWithVoyage(
 
   for (let index = 0; index < texts.length; index += voyageBatchSize) {
     const chunk = texts.slice(index, index + voyageBatchSize);
-    const chunkEmbeddings = await embedVoyageChunk({ chunk, embeddingModel, inputType, model });
+    const chunkEmbeddings = await embedVoyageChunk({ chunk, embeddingModel, inputType, model, signal });
     embeddings.push(...chunkEmbeddings);
   }
 
@@ -154,17 +174,19 @@ async function embedVoyageChunk({
   chunk,
   embeddingModel,
   inputType,
-  model
+  model,
+  signal
 }: {
   chunk: string[];
   embeddingModel: ReturnType<ReturnType<typeof createVoyage>["textEmbeddingModel"]>;
   inputType: EmbeddingInputType;
   model: EmbeddingModelInfo;
+  signal: AbortSignal;
 }): Promise<number[][]> {
   try {
-    return await callVoyageEmbeddingModel({ chunk, embeddingModel, inputType, model });
+    return await callVoyageEmbeddingModel({ chunk, embeddingModel, inputType, model, signal });
   } catch (error) {
-    if (!isRateLimitError(error)) {
+    if (signal.aborted || !isRateLimitError(error)) {
       throw new EmbeddingProviderError({
         cause: error,
         code: "provider_failure",
@@ -172,10 +194,10 @@ async function embedVoyageChunk({
       });
     }
 
-    await sleep(500);
+    await sleep(500, signal);
 
     try {
-      return await callVoyageEmbeddingModel({ chunk, embeddingModel, inputType, model });
+      return await callVoyageEmbeddingModel({ chunk, embeddingModel, inputType, model, signal });
     } catch (retryError) {
       throw new EmbeddingProviderError({
         cause: retryError,
@@ -190,14 +212,17 @@ async function callVoyageEmbeddingModel({
   chunk,
   embeddingModel,
   inputType,
-  model
+  model,
+  signal
 }: {
   chunk: string[];
   embeddingModel: ReturnType<ReturnType<typeof createVoyage>["textEmbeddingModel"]>;
   inputType: EmbeddingInputType;
   model: EmbeddingModelInfo;
+  signal: AbortSignal;
 }): Promise<number[][]> {
   const { embeddings } = await embedMany({
+    abortSignal: signal,
     maxParallelCalls: 1,
     maxRetries: 0,
     model: embeddingModel,
@@ -252,9 +277,21 @@ function isRateLimitError(error: unknown): boolean {
   return isRateLimitError(record.cause);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

@@ -169,6 +169,50 @@ async function runSnapTradeSchedule(request: ScheduledSyncRequest): Promise<Sche
   }
 }
 
+export type ExclusiveSyncResult<T> =
+  | { reason: "busy" | "claimed"; status: "skipped" }
+  | { status: "ran"; value: T };
+
+/**
+ * Run a manual sync under the same lock the scheduler uses: the process-local
+ * running flag plus a lease on each schedule in `scheduleIds`, held with a
+ * heartbeat until `operation` settles. When another sync holds either, nothing
+ * runs and the caller gets "skipped".
+ */
+export async function runExclusiveSync<T>(
+  request: { claimedBy: string; scheduleIds: SyncScheduleId[] },
+  operation: (signal: AbortSignal) => Promise<T>
+): Promise<ExclusiveSyncResult<T>> {
+  const state = getCoordinatorState();
+  if (state.running) {
+    return { reason: "busy", status: "skipped" };
+  }
+
+  state.running = true;
+  const claimed: SyncScheduleId[] = [];
+  try {
+    for (const scheduleId of request.scheduleIds) {
+      if (!(await claimAppSyncScheduleForRunNow(scheduleId, request.claimedBy))) {
+        return { reason: "claimed", status: "skipped" };
+      }
+      claimed.push(scheduleId);
+    }
+
+    const withLeases = claimed.reduceRight<(signal: AbortSignal) => Promise<T>>(
+      (inner, scheduleId) => (outerSignal) =>
+        withSyncScheduleClaimHeartbeat(scheduleId, request.claimedBy, (leaseSignal) =>
+          inner(AbortSignal.any([outerSignal, leaseSignal]))
+        ),
+      operation
+    );
+
+    return { status: "ran", value: await withLeases(new AbortController().signal) };
+  } finally {
+    await clearOwnedClaims(request.claimedBy, claimed);
+    state.running = false;
+  }
+}
+
 async function clearOwnedClaims(claimedBy: string, scheduleIds: SyncScheduleId[]): Promise<void> {
   const results = await Promise.allSettled(
     scheduleIds.map((scheduleId) => clearAppSyncScheduleClaim(scheduleId, claimedBy))

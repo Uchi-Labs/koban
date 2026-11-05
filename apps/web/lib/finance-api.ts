@@ -52,6 +52,17 @@ export function parseBoundedLimit(value: unknown, defaultLimit: number, maxLimit
   return Math.min(Math.max(Math.trunc(parsed), 1), maxLimit);
 }
 
+export class UnknownCursorError extends Error {
+  readonly code = "resource_missing";
+  readonly param = "starting_after";
+  readonly status = 400;
+
+  constructor(cursor: string) {
+    super(`starting_after ${JSON.stringify(cursor.slice(0, 100))} is not an id in this list. Restart from the first page.`);
+    this.name = "UnknownCursorError";
+  }
+}
+
 export function paginateById<T extends { id: string }>(
   rows: T[],
   {
@@ -63,8 +74,11 @@ export function paginateById<T extends { id: string }>(
   }
 ): ListPage<T> {
   const startIndex = startingAfter ? rows.findIndex((row) => row.id === startingAfter) + 1 : 0;
-  const safeStartIndex = startIndex > 0 ? startIndex : 0;
-  const page = rows.slice(safeStartIndex, safeStartIndex + limit + 1);
+  if (startingAfter && startIndex === 0) {
+    // Restarting at page 1 would hand a paging client duplicate rows forever.
+    throw new UnknownCursorError(startingAfter);
+  }
+  const page = rows.slice(startIndex, startIndex + limit + 1);
 
   return {
     data: page.slice(0, limit),

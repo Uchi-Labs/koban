@@ -28,6 +28,37 @@ describe("public demo", () => {
     expect(isPublicDemoRequestAllowed("GET", "/api/auth/chatgpt/callback")).toBe(false);
   });
 
+  it("serves only allowlisted API reads", () => {
+    for (const path of [
+      "/api/v1/accounts",
+      "/api/v1/categories",
+      "/api/v1/dashboard-summary",
+      "/api/v1/icons/chase.com",
+      "/api/v1/transactions/demo_txn_00001",
+      "/api/v1/transactions/demo_txn_00001/evidence"
+    ]) {
+      expect(isPublicDemoRequestAllowed("GET", path)).toBe(true);
+    }
+    for (const path of [
+      "/api/v1/mail-accounts",
+      "/api/v1/mail-accounts/icloud_1/verify",
+      "/api/v1/sources",
+      "/api/v1/sources/source_shop_orders/session",
+      "/api/v1/source-items",
+      "/api/v1/backups/ledger",
+      "/api/v1/sync-runs",
+      "/api/v1/sync-schedule",
+      "/api/v1/plaid/status",
+      "/api/v1/simplefin/status",
+      "/api/v1/snaptrade/status",
+      "/api/better-auth/get-session",
+      "/api/v1/some-future-route"
+    ]) {
+      expect(isPublicDemoRequestAllowed("GET", path)).toBe(false);
+      expect(isPublicDemoRequestAllowed("HEAD", path)).toBe(false);
+    }
+  });
+
   it("opens only the stateless agent stream and keeps shared conversations closed", () => {
     expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant/stream")).toBe(true);
     expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant")).toBe(false);

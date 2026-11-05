@@ -1,16 +1,24 @@
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import type { FinanceDbDriver, FinanceDbQueryResult } from "@/lib/db/finance-db-driver";
+import { acquirePgliteStoreLock, PgliteStoreLockedError, type PgliteStoreLock } from "@/lib/db/pglite-store-lock";
 
 class PgliteFinanceDbDriver implements FinanceDbDriver {
   readonly dialect = "pglite" as const;
 
-  constructor(private readonly db: PGlite) {}
+  constructor(
+    private readonly db: PGlite,
+    private readonly lock: PgliteStoreLock | null
+  ) {}
 
   async close(): Promise<void> {
-    await this.db.close();
+    try {
+      await this.db.close();
+    } finally {
+      this.lock?.release();
+    }
   }
 
   async exec(sql: string): Promise<void> {
@@ -29,13 +37,69 @@ class PgliteFinanceDbDriver implements FinanceDbDriver {
   }
 }
 
-export async function openPgliteFinanceDb(dbPath: string): Promise<FinanceDbDriver> {
-  if (dbPath !== ":memory:") {
-    mkdirSync(dbPath, { recursive: true });
-    removeStalePglitePostmasterFile(dbPath);
+/**
+ * Open a PGlite store under an exclusive cross-process lock and run `prepare`
+ * (migrations) on it. If startup fails with a recoverable error, the store is
+ * quarantined and reopened empty, still under the same lock, so a directory
+ * another live process holds is never renamed. A store held by another live
+ * process fails with PgliteStoreLockedError before anything is touched.
+ */
+export async function openLockedPgliteFinanceDb(
+  dbPath: string,
+  prepare: (db: FinanceDbDriver) => Promise<void>
+): Promise<{ db: FinanceDbDriver; quarantinedPath: string | null }> {
+  if (dbPath === ":memory:") {
+    const db = new PgliteFinanceDbDriver(new PGlite(dbPath, { extensions: { vector } }), null);
+    await prepareOrClose(db, prepare);
+    return { db, quarantinedPath: null };
   }
 
-  return new PgliteFinanceDbDriver(new PGlite(dbPath, { extensions: { vector } }));
+  const lock = acquirePgliteStoreLock(dbPath);
+  try {
+    try {
+      return { db: await openPreparedUnderLock(dbPath, lock, prepare), quarantinedPath: null };
+    } catch (error) {
+      if (!isRecoverablePgliteStartupError(error)) {
+        throw error;
+      }
+
+      const quarantinedPath = quarantinePgliteDirectory(dbPath);
+      return { db: await openPreparedUnderLock(dbPath, lock, prepare), quarantinedPath };
+    }
+  } catch (error) {
+    lock.release();
+    throw error;
+  }
+}
+
+async function openPreparedUnderLock(
+  dbPath: string,
+  lock: PgliteStoreLock,
+  prepare: (db: FinanceDbDriver) => Promise<void>
+): Promise<FinanceDbDriver> {
+  mkdirSync(dbPath, { recursive: true });
+  // We hold the store lock, so any postmaster.pid left in the directory belongs
+  // to a process that is gone.
+  removePglitePostmasterFile(dbPath);
+
+  const pglite = new PGlite(dbPath, { extensions: { vector } });
+  // The lock is attached only once prepare succeeds; a failed attempt closes
+  // its handle without releasing the lock the caller still needs.
+  const attempt = new PgliteFinanceDbDriver(pglite, null);
+  await prepareOrClose(attempt, prepare);
+  return new PgliteFinanceDbDriver(pglite, lock);
+}
+
+async function prepareOrClose(
+  db: FinanceDbDriver,
+  prepare: (db: FinanceDbDriver) => Promise<void>
+): Promise<void> {
+  try {
+    await prepare(db);
+  } catch (error) {
+    await db.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 export function quarantinePgliteDirectory(dbPath: string): string {
@@ -49,53 +113,18 @@ export function quarantinePgliteDirectory(dbPath: string): string {
   return originalPath;
 }
 
-export function hasActivePglitePostmaster(dbPath: string): boolean {
-  const postmasterPath = path.join(dbPath, "postmaster.pid");
-
-  if (!existsSync(postmasterPath)) {
-    return false;
-  }
-
-  try {
-    const rawPid = readFileSync(postmasterPath, "utf8").split(/\r?\n/, 1)[0];
-    const pid = Number.parseInt(rawPid ?? "", 10);
-    return Number.isFinite(pid) && pid > 0 && processIsRunning(pid);
-  } catch {
-    return false;
-  }
-}
-
 export function isRecoverablePgliteStartupError(error: unknown): boolean {
+  if (error instanceof PgliteStoreLockedError) {
+    return false;
+  }
   const message = error instanceof Error ? error.message : String(error);
   return /aborted|postmaster|database system was interrupted|invalid checkpoint|could not read|could not open/i.test(message);
 }
 
-function removeStalePglitePostmasterFile(dbPath: string): void {
-  const postmasterPath = path.join(dbPath, "postmaster.pid");
-
-  if (!existsSync(postmasterPath)) {
-    return;
-  }
-
+function removePglitePostmasterFile(dbPath: string): void {
   try {
-    const rawPid = readFileSync(postmasterPath, "utf8").split(/\r?\n/, 1)[0];
-    const pid = Number.parseInt(rawPid ?? "", 10);
-
-    if (Number.isFinite(pid) && pid > 0 && processIsRunning(pid)) {
-      return;
-    }
-
-    unlinkSync(postmasterPath);
+    unlinkSync(path.join(dbPath, "postmaster.pid"));
   } catch {
-    // Let PGlite surface the original startup problem if the stale pid file cannot be inspected or removed.
-  }
-}
-
-function processIsRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    // Absent, or PGlite will surface the real startup problem.
   }
 }

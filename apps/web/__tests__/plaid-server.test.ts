@@ -18,15 +18,18 @@ import {
   readFinanceDbSnapshot,
   readSyncStateValue,
   replacePlaidLedgerSnapshot,
-  updateDbTransaction
+  updateDbTransaction,
+  writeSyncStateValue
 } from "@/lib/db/finance-db";
 import {
   accountIdForPlaid,
   encodeStoredPlaidItems,
+  exchangePlaidPublicToken,
   mapPlaidAccountToDomain,
   mapPlaidTransactionToDomain,
   parseStoredPlaidItems,
   plaidItemsStateKey,
+  PlaidStoredItemsCorruptError,
   providerConnectionIdForPlaid,
   readStoredPlaidItems,
   syncPlaidDataForTests,
@@ -346,6 +349,99 @@ describe("Plaid persistence", () => {
       includedInNetWorth: false
     });
   }, 15_000);
+});
+
+describe("Plaid stored item list safety", () => {
+  function configurePlaid(items: StoredPlaidItem[] = []) {
+    useTempDb();
+    process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
+    process.env.PLAID_CLIENT_ID = "client";
+    process.env.PLAID_SECRET = "secret";
+    process.env.PLAID_ENV = "production";
+    return items.length > 0
+      ? writeSyncStateValue(plaidItemsStateKey, encodeStoredPlaidItems(items))
+      : Promise.resolve();
+  }
+
+  it("keeps a bank linked while a slow sync is running", async () => {
+    await configurePlaid([
+      { accessToken: "access-old", institutionId: "ins_1", institutionName: "Old Bank", itemId: "item-old", linkedAt: "2026-01-01T00:00:00.000Z" }
+    ]);
+    let releaseSync: () => void = () => undefined;
+    const syncGate = new Promise<void>((resolve) => {
+      releaseSync = resolve;
+    });
+    let syncStarted: () => void = () => undefined;
+    const syncStartedPromise = new Promise<void>((resolve) => {
+      syncStarted = resolve;
+    });
+    const syncClient = createFakePlaidClient(async () => {
+      syncStarted();
+      await syncGate;
+      return createSyncResponse({
+        accounts: [createPlaidAccount({ accountId: "acct-old", name: "Checking", subtype: "checking", type: "depository" })],
+        hasMore: false,
+        nextCursor: "cursor-old-2"
+      });
+    });
+    const linkClient: PlaidApiClient = {
+      ...createFakePlaidClient(async () => {
+        throw new Error("not used");
+      }),
+      async itemPublicTokenExchange() {
+        return { data: { access_token: "access-new", item_id: "item-new", request_id: "req" } };
+      }
+    } as PlaidApiClient;
+
+    const sync = syncPlaidDataForTests(syncClient);
+    await syncStartedPromise;
+    await exchangePlaidPublicToken(
+      { institutionId: "ins_2", institutionName: "New Bank", publicToken: "public-new" },
+      linkClient
+    );
+    releaseSync();
+    await sync;
+
+    const stored = parseStoredPlaidItems(await readSyncStateValue(plaidItemsStateKey));
+    expect(stored).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ accessToken: "access-old", itemId: "item-old", nextCursor: "cursor-old-2" }),
+        expect.objectContaining({ accessToken: "access-new", itemId: "item-new" })
+      ])
+    );
+    expect(stored).toHaveLength(2);
+  });
+
+  it("refuses a corrupt stored item list and never overwrites it", async () => {
+    await configurePlaid();
+    const corrupt = Buffer.from("{not json", "utf8").toString("base64");
+    await writeSyncStateValue(plaidItemsStateKey, corrupt);
+    const linkClient = {
+      ...createFakePlaidClient(async () => {
+        throw new Error("not used");
+      }),
+      async itemPublicTokenExchange() {
+        return { data: { access_token: "access-new", item_id: "item-new", request_id: "req" } };
+      }
+    } as PlaidApiClient;
+
+    await expect(readStoredPlaidItems()).rejects.toBeInstanceOf(PlaidStoredItemsCorruptError);
+    await expect(
+      exchangePlaidPublicToken({ institutionId: "ins_2", publicToken: "public-new" }, linkClient)
+    ).rejects.toBeInstanceOf(PlaidStoredItemsCorruptError);
+    await expect(
+      syncPlaidDataForTests(createFakePlaidClient(async () => {
+        throw new Error("sync must not reach Plaid");
+      }))
+    ).rejects.toBeInstanceOf(PlaidStoredItemsCorruptError);
+
+    expect(await readSyncStateValue(plaidItemsStateKey)).toBe(corrupt);
+  });
+
+  it("treats an entry without an access token as corrupt instead of dropping it", () => {
+    const value = encodeStoredPlaidItems([{ itemId: "item-x" } as unknown as StoredPlaidItem]);
+    expect(() => parseStoredPlaidItems(value)).toThrow(PlaidStoredItemsCorruptError);
+  });
 });
 
 function useTempDb() {

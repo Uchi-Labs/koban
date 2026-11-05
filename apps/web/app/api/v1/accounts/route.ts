@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { unknownCursorResponse } from "@/lib/api-error";
 import { paginateById, parseListParams, serializeAccount } from "@/lib/finance-api";
 import { getFinanceData } from "@/lib/finance-data";
 
@@ -13,7 +14,9 @@ export async function GET(request: NextRequest) {
     .filter((account) => (type ? account.type === type : true))
     .filter((account) => (institution ? account.institutionName.toLowerCase().includes(institution.toLowerCase()) : true))
     .sort((left, right) => left.institutionName.localeCompare(right.institutionName) || left.name.localeCompare(right.name));
-  const page = paginateById(rows.map(serializeAccount), { limit, startingAfter });
-
-  return NextResponse.json(page);
+  try {
+    return NextResponse.json(paginateById(rows.map(serializeAccount), { limit, startingAfter }));
+  } catch (error) {
+    return unknownCursorResponse(error) ?? Promise.reject(error);
+  }
 }

@@ -1,11 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { syncInProgressResponse } from "@/lib/api-error";
 import { readOptionalJsonObject } from "@/lib/api-request";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
 import { runAppSync } from "@/lib/app-sync-service";
 import {
+  appSyncScheduleId,
   ensureAppSyncSchedule,
   getLatestAppSyncRun,
-  listAppSyncRuns
+  listAppSyncRuns,
+  snapTradeSyncScheduleId
 } from "@/lib/db/finance-db";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
 import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
@@ -14,6 +18,7 @@ import { getSourceAdapterDiagnostics, summarizeSourceReadiness } from "@/lib/sou
 import { getPlaidSetupStatus } from "@/lib/plaid-server";
 import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
 import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
+import { runExclusiveSync } from "@/lib/sync-schedule-coordinator";
 import { parseOptionalEnrichmentLimit, parseOptionalSourceIds } from "@/lib/sync-request";
 
 export const runtime = "nodejs";
@@ -109,12 +114,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: sourceIds.error }, { status: 400 });
   }
 
-  const run = await runAppSync({
-    enrichmentLimit: enrichmentLimit.value,
-    includePlaid: true,
-    includeSimpleFin: true,
-    sourceIds: sourceIds.value
-  });
+  const result = await runExclusiveSync(
+    {
+      claimedBy: `sync-runs-api:${process.pid}:${randomUUID()}`,
+      scheduleIds: [appSyncScheduleId, snapTradeSyncScheduleId]
+    },
+    (signal) =>
+      runAppSync({
+        enrichmentLimit: enrichmentLimit.value,
+        includePlaid: true,
+        includeSimpleFin: true,
+        signal,
+        sourceIds: sourceIds.value
+      })
+  );
 
-  return NextResponse.json(appSyncRunRecordToPayload(run));
+  if (result.status === "skipped") {
+    return syncInProgressResponse();
+  }
+
+  return NextResponse.json(appSyncRunRecordToPayload(result.value));
 }

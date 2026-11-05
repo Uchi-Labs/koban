@@ -14,7 +14,8 @@ import {
   isPublicDemoEditAllowed,
   isPublicDemoEditCandidate,
   isPublicDemoRequestAllowed,
-  publicDemoRefusalMessage
+  publicDemoRefusalMessage,
+  publicDemoRefusalStatus
 } from "@/lib/public-demo";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
 
@@ -88,7 +89,10 @@ async function publicDemoResponse(request: NextRequest): Promise<NextResponse> {
         return NextResponse.next();
       }
     }
-    return NextResponse.json({ error: publicDemoRefusalMessage(pathname) }, { status: 403 });
+    return NextResponse.json(
+      { error: publicDemoRefusalMessage(pathname, request.method) },
+      { status: publicDemoRefusalStatus(request.method) }
+    );
   }
   if (pathname === loginPath) {
     const home = request.nextUrl.clone();

@@ -18,27 +18,65 @@ import type { WorkspaceEnv } from "@/lib/workspace-env";
 
 export const publicDemoReadOnlyMessage = "This demo saves categories, reviews, and budgets only, and resets every few hours.";
 export const publicDemoAgentMessage = "Chats in this demo stay in your browser.";
+export const publicDemoUnavailableMessage = "This is not available in the public demo.";
 
 const publicDemoAssistantStreamPath = "/api/v1/assistant/stream";
 
-export function publicDemoRefusalMessage(pathname: string): string {
-  return pathname.startsWith("/api/v1/assistant") || pathname.startsWith("/api/v1/conversations")
-    ? publicDemoAgentMessage
-    : publicDemoReadOnlyMessage;
+export function publicDemoRefusalMessage(pathname: string, method = "POST"): string {
+  if (pathname.startsWith("/api/v1/assistant") || pathname.startsWith("/api/v1/conversations")) {
+    return publicDemoAgentMessage;
+  }
+  return method === "GET" || method === "HEAD" ? publicDemoUnavailableMessage : publicDemoReadOnlyMessage;
+}
+
+// A refused API read answers 404, as if the route did not exist; a refused
+// write answers 403 with the read-only explanation.
+export function publicDemoRefusalStatus(method: string): 403 | 404 {
+  return method === "GET" || method === "HEAD" ? 404 : 403;
 }
 
 export function isPublicDemo(env: Partial<WorkspaceEnv> = process.env as Partial<WorkspaceEnv>): boolean {
   return env.KOBAN_PUBLIC_DEMO?.trim() === "1";
 }
 
-// Reads that are safe for anonymous visitors. Writes, OAuth starts for real
-// providers, and auth endpoints that could change credentials are not.
+// API reads an anonymous visitor may make: the ledger views the demo UI
+// renders. Every other API route is refused, including ones that log in to a
+// mail account, list mail accounts or local CLI paths, export the ledger,
+// report provider setup, or write a row on GET. A new read route stays closed
+// in the demo until it is added here.
+const publicDemoApiReadRoutes: readonly RegExp[] = [
+  /^\/api\/health$/,
+  /^\/api\/v1\/accounts$/,
+  /^\/api\/v1\/accounts\/[^/]+$/,
+  /^\/api\/v1\/categories$/,
+  /^\/api\/v1\/dashboard-summary$/,
+  /^\/api\/v1\/enrichment\/provider$/,
+  /^\/api\/v1\/enrichment\/suggestions$/,
+  /^\/api\/v1\/evidence$/,
+  /^\/api\/v1\/goals$/,
+  /^\/api\/v1\/icons\/[^/]+$/,
+  /^\/api\/v1\/investments$/,
+  /^\/api\/v1\/line-items$/,
+  /^\/api\/v1\/recurrings$/,
+  /^\/api\/v1\/rules$/,
+  /^\/api\/v1\/rules\/preview$/,
+  /^\/api\/v1\/search$/,
+  /^\/api\/v1\/tag-colors$/,
+  /^\/api\/v1\/transactions$/,
+  /^\/api\/v1\/transactions\/[^/]+$/,
+  /^\/api\/v1\/transactions\/[^/]+\/evidence$/,
+  /^\/api\/v1\/transactions\/[^/]+\/line-items$/
+];
+
+// Pages are readable; API reads only from the allowlist above. Writes, OAuth
+// starts for real providers, and auth endpoints are not.
 export function isPublicDemoRequestAllowed(method: string, pathname: string): boolean {
   if (method === "POST") return pathname === publicDemoAssistantStreamPath;
   if (method !== "GET" && method !== "HEAD") return false;
-  return !pathname.startsWith("/api/auth/") &&
-    !pathname.startsWith("/api/v1/assistant") &&
-    !pathname.startsWith("/api/v1/conversations");
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
+    return publicDemoApiReadRoutes.some((route) => route.test(pathname));
+  }
+  return true;
 }
 
 // Keeps whether the agent is ready, drops what would name the model account.

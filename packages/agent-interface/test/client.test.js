@@ -145,6 +145,47 @@ test("redacts the configured token from bounded backend errors", async () => {
   });
 });
 
+test("surfaces an object-shaped backend error's message and type", async () => {
+  await withServer((_request, response) => {
+    json(response, 400, {
+      error: { message: "from must be on or before to, within 31 days.", type: "invalid_request_error" }
+    });
+  }, async (baseUrl) => {
+    await assert.rejects(
+      executeOperation("koban_get_sync_status", {}, {
+        configuration: configuration(baseUrl, "token")
+      }),
+      (error) => {
+        assert.equal(error.code, "HTTP_ERROR");
+        assert.equal(error.status, 400);
+        assert.equal(
+          error.message,
+          "Koban backend returned HTTP 400: from must be on or before to, within 31 days. (invalid_request_error)"
+        );
+        return true;
+      }
+    );
+  });
+});
+
+test("redacts the token from an object-shaped backend error", async () => {
+  const token = "test-secret-token";
+  await withServer((_request, response) => {
+    json(response, 400, { error: { code: "resource_missing", message: `bad ${token}`, param: "starting_after" } });
+  }, async (baseUrl) => {
+    await assert.rejects(
+      executeOperation("koban_get_sync_status", {}, {
+        configuration: configuration(baseUrl, token)
+      }),
+      (error) => {
+        assert.doesNotMatch(error.message, /test-secret-token/);
+        assert.match(error.message, /bad \[REDACTED\] \(resource_missing, param starting_after\)/);
+        return true;
+      }
+    );
+  });
+});
+
 test("redacts tokens before truncating a backend error at its length boundary", async () => {
   const token = "test-secret-token";
   await withServer((_request, response) => {
