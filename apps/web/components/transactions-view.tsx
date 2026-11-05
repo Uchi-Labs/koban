@@ -81,6 +81,7 @@ import { isReviewActionableTransaction } from "@/lib/transaction-classification"
 import { playClose, playOpen, playSelect, playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 import type { TransactionView } from "@/lib/view-models";
+import { useModifierKeyLabel } from "@/lib/hooks/use-modifier-key";
 
 interface TransactionEvidenceView {
   confidence: number;
@@ -2249,6 +2250,7 @@ function TransactionsViewLayout({ model }: { model: TransactionsViewModel }) {
 }
 
 function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
+  const modifierKey = useModifierKeyLabel();
   const { syncNow, syncing } = useSyncControls();
   const commandHintId = React.useId();
   const searchClearRef = React.useRef<HTMLDivElement>(null);
@@ -2347,10 +2349,10 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
               {/* Pill badge inside a pill input — corner language follows the container.
                   Flex-centered spans: ⌘ and K sit on different baselines otherwise. */}
               <kbd
-                aria-label="Command K"
+                aria-label={modifierKey === "⌘" ? "Command K" : "Control K"}
                 className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-muted-foreground"
               >
-                <span aria-hidden="true" className="text-2xs leading-none">⌘</span>
+                <span aria-hidden="true" className="text-2xs leading-none">{modifierKey}</span>
                 <span className="text-3xs leading-none">K</span>
               </kbd>
             </InputGroupText>

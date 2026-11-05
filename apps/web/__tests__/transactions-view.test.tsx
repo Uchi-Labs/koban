@@ -220,7 +220,8 @@ describe("TransactionsView", () => {
   it("shows the command palette hint and clears transaction search", async () => {
     renderTransactions();
 
-    expect(screen.getByLabelText("Command K")).toBeInTheDocument();
+    // The hint names the platform modifier: Command on Apple devices, Control elsewhere.
+    expect(screen.getByLabelText(/^(Command|Control) K$/)).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("Search transactions"), "Uber");
     expect(screen.getByLabelText("Search transactions")).toHaveValue("Uber");

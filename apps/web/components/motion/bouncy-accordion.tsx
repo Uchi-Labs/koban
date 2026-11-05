@@ -208,6 +208,9 @@ function BouncyAccordionRow({
           role="region"
           aria-labelledby={triggerId}
           aria-hidden={!open}
+          // Collapsed content is zero-height but still in the DOM; keep its
+          // controls out of the tab order.
+          inert={!open}
           initial={false}
           animate={{
             height: open && item.description ? contentHeight : 0,
