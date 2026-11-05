@@ -343,12 +343,12 @@ function getContainerVariants(
       scale: 1,
       filter: "blur(0px)",
       transition: {
-        opacity: { duration: 0.42, ease: FLUID_EASE },
-        y: { duration: 0.48, ease: FLUID_EASE },
-        scale: { duration: 0.48, ease: FLUID_EASE },
-        filter: { duration: 0.52, ease: FLUID_EASE },
-        staggerChildren: 0.055,
-        delayChildren: 0.12,
+        opacity: { duration: 0.24, ease: FLUID_EASE },
+        y: { duration: 0.28, ease: FLUID_EASE },
+        scale: { duration: 0.28, ease: FLUID_EASE },
+        filter: { duration: 0.28, ease: FLUID_EASE },
+        staggerChildren: 0.04,
+        delayChildren: 0.06,
       },
     },
     exit: {
@@ -357,10 +357,10 @@ function getContainerVariants(
       scale: 0.986,
       filter: "blur(2px)",
       transition: {
-        opacity: { duration: 0.3, ease: FLUID_EXIT_EASE },
-        y: { duration: 0.34, ease: FLUID_EXIT_EASE },
-        scale: { duration: 0.32, ease: FLUID_EXIT_EASE },
-        filter: { duration: 0.28, ease: FLUID_EXIT_EASE },
+        opacity: { duration: 0.18, ease: FLUID_EXIT_EASE },
+        y: { duration: 0.2, ease: FLUID_EXIT_EASE },
+        scale: { duration: 0.2, ease: FLUID_EXIT_EASE },
+        filter: { duration: 0.18, ease: FLUID_EXIT_EASE },
       },
     },
   };
@@ -372,7 +372,7 @@ const childVariants: Variants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.38, ease: FLUID_EASE },
+    transition: { duration: 0.24, ease: FLUID_EASE },
   },
 };
 
@@ -387,7 +387,7 @@ const iconVariants: Variants = {
   visible: {
     opacity: 1,
     scale: 1,
-    transition: { duration: 0.44, ease: FLUID_EASE, delay: 0.1 },
+    transition: { duration: 0.26, ease: FLUID_EASE, delay: 0.05 },
   },
 };
 

@@ -13,7 +13,6 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { EmptyState } from "@/components/ui/card";
 import { FaviconBadge } from "@/components/ui/favicon-badge";
 import { FinanceStatItem, FinanceStatStrip, MoneyHero } from "@/components/money-hero";
-import { TextReveal } from "@/components/motion/text-reveal";
 import type { FinanceData } from "@/lib/finance-data";
 import { formatCurrency } from "@/lib/format";
 import type { FinanceInsight } from "@/lib/insights";
@@ -72,14 +71,7 @@ export function DashboardView({
   return (
     <main className="@container/dashboard mx-auto w-full max-w-[1400px] px-4 py-5 md:px-6 lg:px-8" data-testid="dashboard-page">
       <div className="mb-5 flex items-center gap-3">
-        <TextReveal
-          as="h1"
-          blur={4}
-          className="app-page-title"
-          stagger={0}
-          text="Dashboard"
-          yOffset={6}
-        />
+        <h1 className="app-page-title">Dashboard</h1>
         {source === "koban" ? (
           <Badge appearance="dot" dotColor="positive" variant="synced" className="font-normal">
             Synced accounts

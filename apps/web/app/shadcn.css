@@ -271,8 +271,9 @@
   --modal-scale: var(--scale-large);
   --modal-scale-close: var(--scale-large);
   --modal-ease: var(--ease-smooth-out);
-  --panel-open-dur: var(--duration-slow);
-  --panel-close-dur: var(--duration-medium);
+  /* The inspector panel opens on every row click: keep it quick, exit faster. */
+  --panel-open-dur: var(--duration-fast);
+  --panel-close-dur: 180ms;
   --panel-translate-y: 100px;
   --panel-blur: var(--blur-small);
   --panel-ease: var(--ease-smooth-out);
@@ -789,6 +790,14 @@
   .t-success-check svg path {
     stroke-dashoffset: 0 !important;
   }
+}
+
+/* Set for one frame while the theme flips (motion/theme-toggle.tsx). */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
 }
 
 @layer base {

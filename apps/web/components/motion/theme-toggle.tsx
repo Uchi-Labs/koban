@@ -118,8 +118,14 @@ export function useThemeToggle({
     document.head.appendChild(el);
   }, []);
   const applyTheme = (theme: "dark" | "light") => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    document.documentElement.style.colorScheme = theme;
+    const root = document.documentElement;
+    // Freeze per-element color transitions so the whole page flips at once
+    // instead of fading in a ragged cascade.
+    root.classList.add("theme-switching");
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+    void root.offsetHeight;
+    requestAnimationFrame(() => root.classList.remove("theme-switching"));
     document.cookie = `koban_theme=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;
     setIsDark(theme === "dark");
   };
