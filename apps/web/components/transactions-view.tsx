@@ -2317,7 +2317,8 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           <InputGroupInput
             aria-describedby={commandHintId}
             aria-label="Search transactions"
-            className="h-9 px-2 text-sm"
+            spellCheck={false}
+            className="h-9 px-2 text-base md:text-sm"
             onChange={(event) => model.setQuery(event.target.value)}
             value={model.query}
           />
@@ -2362,7 +2363,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             </InputGroupAddon>
             <InputGroupInput
               aria-label="Minimum transaction amount"
-              className="h-9 px-2 text-sm"
+              className="h-9 px-2 text-base md:text-sm"
               inputMode="decimal"
               onChange={(event) => model.setMinAmount(
                 clampAmountInput(event.target.value, model.maxAmount, model.amountRangeMax, "minimum")
@@ -2377,7 +2378,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             </InputGroupAddon>
             <InputGroupInput
               aria-label="Maximum transaction amount"
-              className="h-9 px-2 text-sm"
+              className="h-9 px-2 text-base md:text-sm"
               inputMode="decimal"
               onChange={(event) => model.setMaxAmount(
                 clampAmountInput(event.target.value, model.minAmount, model.amountRangeMax, "maximum")
@@ -3465,6 +3466,7 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
         <Textarea
           aria-label="Context note"
           className="min-h-20"
+          aria-keyshortcuts="Meta+Enter Control+Enter"
           id="transaction-context-note"
           onChange={(event) =>
             model.setNoteDraftState({
@@ -3472,6 +3474,12 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
               value: event.target.value
             })
           }
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              void model.saveContextNote(transaction);
+            }
+          }}
           placeholder="Add context for this transaction"
           value={model.noteDraft}
         />
@@ -3485,6 +3493,7 @@ function TransactionInspectorNotes({ model, transaction }: { model: Transactions
           size="sm"
           state={model.noteSaveState}
           successText="Saved"
+          title="Save note (⌘↵ or Ctrl+Enter)"
           type="button"
           variant="outline"
         >

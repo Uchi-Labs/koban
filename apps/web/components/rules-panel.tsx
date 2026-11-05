@@ -13,6 +13,14 @@ import { CategoryPill } from "@/components/category-pill";
 import { TagChip } from "@/components/tag-chip";
 import { tagStyleMap } from "@/components/tag-style-map";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { MorphingPanel } from "@/components/ui/morphing-modal";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
@@ -956,7 +964,7 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
                 autoComplete="off"
                 id="transaction-rule-name"
                 onChange={(event) => model.setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="OpenAI subscriptions"
+                placeholder="e.g. AI subscriptions"
                 value={model.form.name}
               />
             </label>
@@ -965,8 +973,9 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
               <Input
                 autoComplete="off"
                 id="transaction-rule-pattern"
+                spellCheck={false}
                 onChange={(event) => model.setForm((current) => ({ ...current, pattern: event.target.value }))}
-                placeholder="OPENAI"
+                placeholder="e.g. OPENAI"
                 value={model.form.pattern}
               />
             </label>
@@ -980,8 +989,9 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
               <Input
                 autoComplete="off"
                 id="transaction-rule-tags"
+                spellCheck={false}
                 onChange={(event) => model.setForm((current) => ({ ...current, tags: event.target.value }))}
-                placeholder="ai, work"
+                placeholder="e.g. ai, work"
                 value={model.form.tags}
               />
             </label>
@@ -1005,12 +1015,27 @@ function RuleForm({ model }: { model: RulesPanelModel }) {
   );
 }
 
+const RULE_FIELD_ITEMS = [
+  { label: "Merchant or description", value: "merchant_or_description" },
+  { label: "Merchant", value: "merchant_name" },
+  { label: "Description", value: "description" }
+] satisfies Array<{ label: string; value: RuleView["matchField"] }>;
+
+const RULE_OPERATOR_ITEMS = [
+  { label: "Contains", value: "contains" },
+  { label: "Equals", value: "equals" },
+  { label: "Matches regex", value: "regex" }
+] satisfies Array<{ label: string; value: RuleView["matchOperator"] }>;
+
+// SelectValue renders the raw value unless the root knows each value's label.
 function RuleSelects({ model }: { model: RulesPanelModel }) {
+  const categoryItems = model.categories.map((category) => ({ label: category.name, value: category.id }));
   return (
     <>
       <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Field</span>
         <Select
+          items={RULE_FIELD_ITEMS}
           onValueChange={(value) =>
             model.setForm((current) => ({ ...current, matchField: value as RuleView["matchField"] }))
           }
@@ -1029,6 +1054,7 @@ function RuleSelects({ model }: { model: RulesPanelModel }) {
       <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Operator</span>
         <Select
+          items={RULE_OPERATOR_ITEMS}
           onValueChange={(value) =>
             model.setForm((current) => ({ ...current, matchOperator: value as RuleView["matchOperator"] }))
           }
@@ -1040,13 +1066,14 @@ function RuleSelects({ model }: { model: RulesPanelModel }) {
           <SelectContent>
             <SelectItem value="contains">Contains</SelectItem>
             <SelectItem value="equals">Equals</SelectItem>
-            <SelectItem value="regex">matches regex</SelectItem>
+            <SelectItem value="regex">Matches regex</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="flex min-w-0 flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Category</span>
         <Select
+          items={categoryItems}
           onValueChange={(value) => model.setForm((current) => ({ ...current, categoryId: value ?? current.categoryId }))}
           value={model.form.categoryId}
         >
@@ -1079,6 +1106,7 @@ function RuleRow({
   rule: RuleView;
   tagStyleByName: Map<string, TagStyle>;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   return (
     // The actions wrap below the details once the row is narrower than ~15rem
     // of content plus the buttons (phones).
@@ -1113,7 +1141,7 @@ function RuleRow({
         </Button>
         <Button
           aria-label={`Delete rule ${rule.name}`}
-          onClick={() => onDelete(rule)}
+          onClick={() => setConfirmingDelete(true)}
           size="icon-sm"
           type="button"
           variant="destructive"
@@ -1121,6 +1149,32 @@ function RuleRow({
           <Trash2 size={15} />
         </Button>
       </div>
+
+      <Dialog onOpenChange={setConfirmingDelete} open={confirmingDelete}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete this rule?</DialogTitle>
+            <DialogDescription>
+              “{rule.name}” stops running on new transactions. Categories it already set stay as they are.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setConfirmingDelete(false)} type="button" variant="outline">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDelete(rule);
+              }}
+              type="button"
+              variant="destructive"
+            >
+              Delete rule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

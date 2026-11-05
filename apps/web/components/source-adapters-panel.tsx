@@ -1197,7 +1197,7 @@ function SourceAdapterPasteActions({
       <div className="mt-2 flex flex-col gap-2">
         <Textarea
           aria-label={`${adapter.displayName} JSON, JSONL, CSV, EML, MBOX, or ICS`}
-          className="min-h-24 font-mono text-xs"
+          className="min-h-24 font-mono text-base md:text-xs"
           disabled={model.actionsBusy}
           onChange={(event) => {
             model.setPastedImports((current) => ({

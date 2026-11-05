@@ -189,7 +189,7 @@ function GoalCreateForm() {
               <span className="text-muted-foreground">$</span>
               <input
                 aria-label="Target amount"
-                className="w-20 bg-transparent text-right outline-hidden placeholder:text-muted-foreground/50"
+                className="w-20 bg-transparent text-right text-base outline-hidden placeholder:text-muted-foreground/50 md:text-sm"
                 inputMode="decimal"
                 onChange={(event) => setTarget(event.target.value.replace(/[^0-9.]/g, ""))}
                 placeholder="Target"
