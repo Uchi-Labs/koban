@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export type WorkspaceEnv = Record<string, string>;
@@ -17,122 +17,43 @@ export function findWorkspaceRoot(startDirectory = process.cwd()): string {
   return startDirectory;
 }
 
-let workspaceEnvWriteQueue = Promise.resolve();
-
 function getWorkspaceEnvPath(): string {
   return path.join(findWorkspaceRoot(), ".env");
 }
 
+// Parsed once per path: this runs on every proxied request (system-design F15).
+// Nothing in the app writes .env at runtime, so a restart picks up edits.
+const workspaceEnvFileCache = new Map<string, WorkspaceEnv>();
+const warnedConflictKeys = new Set<string>();
+
+/**
+ * Shell environment first, the workspace `.env` as a fallback. A key set in
+ * both with different values keeps the shell value and logs one warning per
+ * key (names only, never values).
+ */
 export function readWorkspaceEnv(): WorkspaceEnv {
-  const envPath = getWorkspaceEnvPath();
-  const fileEnv =
-    process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV === "1"
-      ? {}
-      : existsSync(envPath)
-        ? parseEnvFile(readFileSync(envPath, "utf8"))
-        : {};
+  const processEnv = compactProcessEnv(process.env);
+  const fileEnv = process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV === "1" ? {} : readWorkspaceEnvFile(getWorkspaceEnvPath());
+
+  for (const [key, value] of Object.entries(fileEnv)) {
+    if (key in processEnv && processEnv[key] !== value && !warnedConflictKeys.has(key)) {
+      warnedConflictKeys.add(key);
+      console.warn(`[config] ${key} is set in both the shell and .env with different values; using the shell value.`);
+    }
+  }
 
   return {
-    ...compactProcessEnv(process.env),
-    ...fileEnv
+    ...fileEnv,
+    ...processEnv
   };
 }
 
-export function upsertWorkspaceEnv(updates: WorkspaceEnv): Promise<void> {
-  const write = workspaceEnvWriteQueue.then(() => upsertWorkspaceEnvNow(updates));
-  workspaceEnvWriteQueue = write.catch(() => undefined);
-  return write;
-}
-
-export function deleteWorkspaceEnv(keys: string[]): Promise<void> {
-  const write = workspaceEnvWriteQueue.then(() => deleteWorkspaceEnvNow(keys));
-  workspaceEnvWriteQueue = write.catch(() => undefined);
-  return write;
-}
-
-function upsertWorkspaceEnvNow(updates: WorkspaceEnv): void {
-  const envPath = getWorkspaceEnvPath();
-  const existing = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
-  const lines = existing.length > 0 ? existing.split(/\r?\n/) : [];
-  const handledKeys = new Set<string>();
-  const nextLines = lines.map((line) => {
-    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
-
-    if (!match) {
-      return line;
-    }
-
-    const key = match[1];
-
-    if (!(key in updates)) {
-      return line;
-    }
-
-    handledKeys.add(key);
-    return `${key}=${formatEnvValue(updates[key])}`;
-  });
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (!handledKeys.has(key)) {
-      nextLines.push(`${key}=${formatEnvValue(value)}`);
-    }
-  }
-
-  const envDirectory = path.dirname(envPath);
-  const tmpPath = path.join(envDirectory, `.env.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-
-  mkdirSync(envDirectory, { recursive: true });
-
-  try {
-    writeFileSync(tmpPath, `${trimTrailingBlankLines(nextLines).join("\n")}\n`, { mode: 0o600 });
-    renameSync(tmpPath, envPath);
-    chmodSync(envPath, 0o600);
-  } catch (error) {
-    try {
-      if (existsSync(tmpPath)) {
-        unlinkSync(tmpPath);
-      }
-    } catch {
-      // Best effort cleanup; preserve the original write error.
-    }
-
-    throw error;
-  }
-}
-
-function deleteWorkspaceEnvNow(keys: string[]): void {
-  const envPath = getWorkspaceEnvPath();
-
-  if (!existsSync(envPath)) {
-    return;
-  }
-
-  const keysToDelete = new Set(keys);
-  const existing = readFileSync(envPath, "utf8");
-  const lines = existing.length > 0 ? existing.split(/\r?\n/) : [];
-  const nextLines = lines.filter((line) => {
-    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
-    return !match || !keysToDelete.has(match[1]);
-  });
-
-  const envDirectory = path.dirname(envPath);
-  const tmpPath = path.join(envDirectory, `.env.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-
-  try {
-    writeFileSync(tmpPath, `${trimTrailingBlankLines(nextLines).join("\n")}\n`, { mode: 0o600 });
-    renameSync(tmpPath, envPath);
-    chmodSync(envPath, 0o600);
-  } catch (error) {
-    try {
-      if (existsSync(tmpPath)) {
-        unlinkSync(tmpPath);
-      }
-    } catch {
-      // Best effort cleanup; preserve the original write error.
-    }
-
-    throw error;
-  }
+function readWorkspaceEnvFile(envPath: string): WorkspaceEnv {
+  const cached = workspaceEnvFileCache.get(envPath);
+  if (cached) return cached;
+  const parsed = existsSync(envPath) ? parseEnvFile(readFileSync(envPath, "utf8")) : {};
+  workspaceEnvFileCache.set(envPath, parsed);
+  return parsed;
 }
 
 function compactProcessEnv(env: NodeJS.ProcessEnv): WorkspaceEnv {
@@ -184,22 +105,4 @@ function parseEnvValue(rawValue: string): string {
 
   const commentIndex = rawValue.indexOf(" #");
   return commentIndex === -1 ? rawValue : rawValue.slice(0, commentIndex).trim();
-}
-
-function formatEnvValue(value: string): string {
-  if (/^[A-Za-z0-9_./:@+=-]*$/.test(value)) {
-    return value;
-  }
-
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
-function trimTrailingBlankLines(lines: string[]): string[] {
-  const nextLines = [...lines];
-
-  while (nextLines.length > 0 && nextLines[nextLines.length - 1] === "") {
-    nextLines.pop();
-  }
-
-  return nextLines;
 }

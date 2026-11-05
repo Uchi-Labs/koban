@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import "@testing-library/jest-dom/vitest";
@@ -88,3 +89,8 @@ afterEach(() => {
 
 // Tests must not discover or mutate the operator's registered mailboxes.
 process.env.KOBAN_MAIL_ACCOUNTS_FILE = path.join(os.tmpdir(), `koban-unused-mail-registry-${process.pid}.json`);
+
+// The app runtime's SecretBox reads KOBAN_SECRET_KEY; without it, local mode
+// would write a key file next to the data directory. A per-process random key
+// keeps tests off disk.
+process.env.KOBAN_SECRET_KEY ??= randomBytes(32).toString("base64");

@@ -1,63 +1,62 @@
 import type { TransactionRule } from "@ai-finances/schema";
-import { NextResponse } from "next/server";
-import { readJsonObject } from "@/lib/api-request";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { deleteTransactionRule, getCategoryIdsForValidation, getTransactionRule, updateTransactionRule } from "@/lib/db/finance-db";
+import { InvalidRequest, ResourceNotFound } from "@/lib/effect/errors";
+import { fromPromise, handler, JsonObjectBody } from "@/lib/effect/http";
 import { validateTransactionRuleUpdateBody } from "@/lib/transaction-rule-input";
 
 export const runtime = "nodejs";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ ruleId: string }> }) {
-  const { ruleId } = await params;
-  const decodedRuleId = decodeURIComponent(ruleId);
-  const parsed = await readJsonObject(request);
+const RuleParams = Schema.Struct({ ruleId: Schema.String });
 
-  if (!parsed.ok) {
-    return parsed.response;
-  }
+export const PATCH = handler(
+  { body: JsonObjectBody, operation: "Rules.update", params: RuleParams },
+  ({ body, params }) =>
+    Effect.gen(function* () {
+      const id = decodeURIComponent(params.ruleId);
+      const existing = yield* fromPromise("Rules.get", () => getTransactionRule(id));
 
-  const existing = await getTransactionRule(decodedRuleId);
+      if (!existing) {
+        return yield* new ResourceNotFound({ id, resource: "Rule" });
+      }
 
-  if (!existing) {
-    return NextResponse.json({ error: "Rule not found." }, { status: 404 });
-  }
+      const categoryIds = yield* fromPromise("Rules.categoryIds", () => getCategoryIdsForValidation());
+      const validation = validateTransactionRuleUpdateBody(body, categoryIds, {
+        matchOperator: existing.matchOperator,
+        pattern: existing.pattern
+      });
 
-  const categoryIds = await getCategoryIdsForValidation();
-  const validation = validateTransactionRuleUpdateBody(parsed.body, categoryIds, {
-    matchOperator: existing.matchOperator,
-    pattern: existing.pattern
-  });
+      if (!validation.ok) {
+        return yield* new InvalidRequest({ reason: validation.error });
+      }
 
-  if (!validation.ok) {
-    return NextResponse.json({ error: validation.error }, { status: 400 });
-  }
+      const result = yield* fromPromise("Rules.update", () => updateTransactionRule(id, validation.value));
 
-  const result = await updateTransactionRule(decodedRuleId, validation.value);
+      if (!result) {
+        return yield* new ResourceNotFound({ id, resource: "Rule" });
+      }
 
-  if (!result) {
-    return NextResponse.json({ error: "Rule not found." }, { status: 404 });
-  }
+      return {
+        object: "transaction_rule",
+        apply_result: result.applyResult,
+        rule: ruleToApi(result.rule)
+      };
+    })
+);
 
-  return NextResponse.json({
-    object: "transaction_rule",
-    apply_result: result.applyResult,
-    rule: ruleToApi(result.rule)
-  });
-}
+export const DELETE = handler({ operation: "Rules.delete", params: RuleParams }, ({ params }) =>
+  Effect.gen(function* () {
+    const id = decodeURIComponent(params.ruleId);
+    const deleted = yield* fromPromise("Rules.delete", () => deleteTransactionRule(id));
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ ruleId: string }> }) {
-  const { ruleId } = await params;
-  const deleted = await deleteTransactionRule(decodeURIComponent(ruleId));
+    if (!deleted) {
+      return yield* new ResourceNotFound({ id, resource: "Rule" });
+    }
 
-  if (!deleted) {
-    return NextResponse.json({ error: "Rule not found." }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    deleted: true,
-    id: decodeURIComponent(ruleId),
-    object: "transaction_rule"
-  });
-}
+    return { deleted: true, id, object: "transaction_rule" };
+  })
+);
 
 function ruleToApi(rule: TransactionRule) {
   return {
