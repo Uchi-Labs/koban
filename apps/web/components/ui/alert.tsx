@@ -943,7 +943,7 @@ function AlertCard({
                 : "transform-gpu will-change-[transform,opacity,filter]",
               alertWidth.className,
               position ? positionClasses[position] : undefined,
-              position && "z-[300] shadow-[var(--ic-shadow-soft)]",
+              position && "z-(--z-floating-alert) shadow-[var(--ic-shadow-soft)]",
               className
             )}
             data-slot="alert"

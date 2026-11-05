@@ -232,7 +232,7 @@ function TourLayer({
 
   return (
     <LazyMotion features={domAnimation}>
-      <div className="fixed inset-0 z-[60]" data-koban-tour="">
+      <div className="fixed inset-0 z-(--z-tour)" data-koban-tour="">
         {/* Catches clicks so the page under the light stays still while the cat talks. */}
         <div aria-hidden="true" className="absolute inset-0" />
 

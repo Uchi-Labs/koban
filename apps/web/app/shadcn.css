@@ -24,7 +24,8 @@
   --accent-foreground: oklch(0.24 0.02 60);
   --destructive: oklch(0.54 0.19 22);
   --input: oklch(0.87 0.015 75);
-  --ring: oklch(0.54 0.13 165);
+  /* Neutral focus ring: a brand-coloured ring clashes with tinted controls. */
+  --ring: oklch(0.45 0.015 60);
   --chart-1: oklch(0.62 0.16 245);
   --chart-2: oklch(0.72 0.16 80);
   --chart-3: oklch(0.62 0.18 340);
@@ -37,7 +38,7 @@
   --sidebar-accent: oklch(0.915 0.024 78);
   --sidebar-accent-foreground: oklch(0.24 0.02 60);
   --sidebar-border: oklch(0.2 0.014 60 / 14%);
-  --sidebar-ring: oklch(0.54 0.13 165);
+  --sidebar-ring: oklch(0.45 0.015 60);
   --sidebar: oklch(0.958 0.015 82);
   /* Alpha so hairlines take the tint of whatever surface they sit on. */
   --border: oklch(0.2 0.014 60 / 15%);
@@ -124,7 +125,7 @@
   --destructive: oklch(0.66 0.2 22);
   --border: oklch(0.94 0.01 230 / 9%);
   --input: oklch(0.94 0.01 230 / 13%);
-  --ring: oklch(0.82 0.14 168 / 55%);
+  --ring: oklch(0.86 0.006 240 / 60%);
   --chart-1: oklch(0.72 0.13 235);
   --chart-2: oklch(0.82 0.14 82);
   --chart-3: oklch(0.72 0.16 340);
@@ -137,7 +138,7 @@
   --sidebar-accent: oklch(0.235 0.012 250);
   --sidebar-accent-foreground: oklch(0.965 0.004 230);
   --sidebar-border: oklch(0.94 0.01 230 / 8%);
-  --sidebar-ring: oklch(0.82 0.14 168 / 55%);
+  --sidebar-ring: oklch(0.86 0.006 240 / 60%);
   /* semantic money colors, used by charts and amount text */
   --positive: oklch(0.8 0.15 165);
   --negative: oklch(0.73 0.16 15);
@@ -209,6 +210,15 @@
    emoji background, so only icon and initial swatches get the tile. */
 .pill-tint.category-tag [data-swatch][data-emoji] {
   background-color: transparent;
+}
+
+/* Stacking scale. Everyday layers use Tailwind's z-10..z-50 (popups are 50);
+   these name the few layers that must sit above popups. */
+:root {
+  --z-history-menu: 60;
+  --z-tour: 60;
+  --z-toast: 90;
+  --z-floating-alert: 300;
 }
 
 /* ── Motion tokens (transitions.dev scale + Emil's curves) ─────────── */
@@ -802,7 +812,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   body {
     @apply bg-background text-foreground;
