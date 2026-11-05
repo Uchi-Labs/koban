@@ -114,13 +114,14 @@ export function SidebarAccountRow({
       onMouseEnter={onMouseEnter}
       ref={rowRef}
     >
-      {/* The pill renders absolutely positioned behind the row, so the link
-          sits above it rather than being covered by it. */}
+      {/* The pill is absolutely positioned, and a positioned element paints over
+          unpositioned siblings regardless of source order, so the link needs its
+          own stacking (relative z-10) or the 70% pill washes its text out. */}
       {children}
       <Link
         aria-current={active ? "page" : undefined}
         aria-label={`Open account page for ${account.name}`}
-        className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
+        className="relative z-10 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/60"
         href={href}
         title={`${account.name} · right-click to rename`}
         unstable_dynamicOnHover
