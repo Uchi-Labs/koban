@@ -65,7 +65,9 @@ const cabinetGrotesk = localFont({
 });
 
 const quietFonts = cn(satoshi.variable, cabinetGrotesk.variable, selectableFontVariables);
-const pwaThemeColor = "#07090b";
+// Browser chrome and status bar match the page background (--background) of
+// the active theme, which comes from the koban_theme cookie, not the OS.
+const themeColors = { dark: "#07090b", light: "#fbf7ee" } as const;
 
 export const metadata: Metadata = {
   applicationName: "Koban",
@@ -86,19 +88,28 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest"
 };
 
-export const viewport: Viewport = {
-  colorScheme: "light dark",
-  initialScale: 1,
-  themeColor: pwaThemeColor,
-  viewportFit: "cover",
-  width: "device-width"
-};
+async function resolveTheme(): Promise<"dark" | "light"> {
+  // A visitor's own toggle wins; otherwise the public demo opens in light mode.
+  const themeCookie = (await cookies()).get("koban_theme")?.value;
+  return themeCookie === "light" || themeCookie === "dark" ? themeCookie : isPublicDemo() ? "light" : "dark";
+}
+
+export async function generateViewport(): Promise<Viewport> {
+  return {
+    colorScheme: "light dark",
+    initialScale: 1,
+    // Android Chrome shrinks the layout for the keyboard, so bottom-pinned
+    // composers stay above it as they do on iOS.
+    interactiveWidget: "resizes-content",
+    themeColor: themeColors[await resolveTheme()],
+    viewportFit: "cover",
+    width: "device-width"
+  };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
-  // A visitor's own toggle wins; otherwise the public demo opens in light mode.
-  const themeCookie = cookieStore.get("koban_theme")?.value;
-  const theme = themeCookie === "light" || themeCookie === "dark" ? themeCookie : isPublicDemo() ? "light" : "dark";
+  const theme = await resolveTheme();
   // Read server-side so the correct design renders on first paint, with no
   // flash of the other one. See lib/ui-mode.ts — migration scaffolding.
   const uiMode = parseUiMode(cookieStore.get(UI_MODE_COOKIE)?.value);

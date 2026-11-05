@@ -11,6 +11,36 @@ body {
   min-height: 100%;
 }
 
+/* Native-feeling touch: no grey tap flash (controls carry their own press
+   state), no font inflation in landscape, and no page bounce or
+   pull-to-refresh behind the app's own scroll containers. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+@layer base {
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Long-press on a control shouldn't select its label. Content stays selectable. */
+  button,
+  [role="button"],
+  [role="tab"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
 body {
   font-optical-sizing: auto;
   font-synthesis: none;

@@ -124,6 +124,10 @@ export function useThemeToggle({
     root.classList.add("theme-switching");
     root.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
+    // Keep the browser chrome / status bar in step (values from app/layout.tsx).
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#07090b" : "#fbf7ee"));
     void root.offsetHeight;
     requestAnimationFrame(() => root.classList.remove("theme-switching"));
     document.cookie = `koban_theme=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;

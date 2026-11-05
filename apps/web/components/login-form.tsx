@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 import { useShakeReplay } from "@/lib/transitions";
 import { cn } from "@/lib/utils";
+import { shouldAutoFocus } from "@/lib/should-auto-focus";
 
 interface HostedLoginFormProps {
   googleEnabled: boolean;
@@ -235,7 +236,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
           </div>
           <div className="grid gap-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" required autoFocus />
+            <Input id="email" name="email" type="email" autoComplete="email" required autoFocus={shouldAutoFocus()} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="password">Password</Label>
@@ -279,7 +280,7 @@ export function HostedLoginForm({ googleEnabled, mode, nextPath }: HostedLoginFo
                   type="email"
                   autoComplete="email webauthn"
                   required
-                  autoFocus
+                  autoFocus={shouldAutoFocus()}
                 />
               </div>
               <div className="grid gap-2">
@@ -340,7 +341,7 @@ export function LegacyTokenForm({ invalid, nextPath }: LegacyTokenFormProps) {
       </div>
       <div className="grid gap-2">
         <Label htmlFor="token">Access token</Label>
-        <Input id="token" name="token" type="password" autoComplete="current-password" required autoFocus />
+        <Input id="token" name="token" type="password" autoComplete="current-password" required autoFocus={shouldAutoFocus()} />
         <p className="t-error-msg text-sm text-destructive">Token was not accepted.</p>
       </div>
       <Button type="submit" size="lg" className="w-full">

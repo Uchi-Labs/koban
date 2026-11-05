@@ -16,6 +16,7 @@ import {
 } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { shouldAutoFocus } from "@/lib/should-auto-focus";
 
 // The ring keeps the persisted palette on its outer edge; Bloom remains the
 // arbitrary-color affordance for hex and shades between those anchors.
@@ -225,8 +226,8 @@ export function NewCategoryDialog({
                       />
                       <input
                         aria-label="Search emoji"
-                        autoFocus
-                        className="h-8 w-full rounded-xl bg-muted/60 pr-3 pl-8 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
+                        autoFocus={shouldAutoFocus()}
+                        className="h-8 w-full rounded-xl bg-muted/60 pr-3 pl-8 text-base outline-hidden md:text-sm transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
                         onChange={(event) => updateState({ emojiQuery: event.target.value })}
                         placeholder="Search emoji"
                         value={emojiQuery}
