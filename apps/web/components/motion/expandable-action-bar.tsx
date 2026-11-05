@@ -177,7 +177,7 @@ export function ExpandableActionBar({
         <motion.div
           layout={reduce ? false : "size"}
           className={cn(
-            "relative inline-flex items-center overflow-hidden rounded-full border border-border bg-card/90 shadow-2xl backdrop-blur-xl",
+            "relative inline-flex items-center overflow-hidden rounded-full border border-border bg-card/90 shadow-2xl backdrop-blur-md",
             SIZE_CLASS[size],
             classNames?.track,
           )}

@@ -2505,7 +2505,7 @@ function TransactionBulkActions({ ids, model }: { ids: Set<string>; model: Trans
   return (
     <div
       aria-label="Bulk transaction actions"
-      className="sticky bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/88 px-4 py-2.5 backdrop-blur-xl sm:px-6"
+      className="sticky bottom-0 z-30 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/88 px-4 py-2.5 backdrop-blur-md sm:px-6"
     >
       <span className="inline-flex items-center gap-2 text-sm">
         <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold tabular-nums text-primary">
