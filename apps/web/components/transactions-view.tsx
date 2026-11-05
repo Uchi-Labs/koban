@@ -3576,7 +3576,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
               </span>
               <p className="mt-0.5 text-xs text-muted-foreground">{item.sourceItem.summary}</p>
               {item.sourceItem.lines?.length ? (
-                <ItemizedLines className="mt-1.5" currency={item.sourceItem.currency} lines={item.sourceItem.lines} max={8} />
+                <ItemizedLines categories={model.categories} className="mt-1.5" currency={item.sourceItem.currency} lines={item.sourceItem.lines} max={8} />
               ) : null}
             </div>
             {item.status === "suggested" ? (

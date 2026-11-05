@@ -21,6 +21,8 @@ import {
   isChatGptOAuthEnabled,
   parseChatGptOAuthTokens
 } from "@/lib/ai/chatgpt-oauth";
+import { claudeConnectionState, type ClaudeConnectionState } from "@/lib/ai/claude-oauth";
+import { isPrivateNetworkUrl, llmChoiceEnvKey, resolveLlmEnv } from "@/lib/ai/llm-settings";
 import {
   claudeSubscriptionBaseUrl,
   claudeSubscriptionMinTimeoutMs,
@@ -40,6 +42,8 @@ export interface LlmProviderStatus {
   baseUrl?: string;
   chatGptOAuthConnected?: boolean;
   chatGptOAuthEnabled?: boolean;
+  /** How the Claude subscription is authenticated, when it is the provider. */
+  claudeCredential?: ClaudeConnectionState["source"];
   configured: boolean;
   credentialSource?: LlmCredentialSource;
   errorMessage?: string;
@@ -239,41 +243,60 @@ export function getLlmEnrichmentStatus(
 }
 
 export async function getLlmEnrichmentStatusWithStorage(
-  env: WorkspaceEnv = readWorkspaceEnv(),
+  workspaceEnv: WorkspaceEnv = readWorkspaceEnv(),
   modelUseCase: LlmModelUseCase = "simple"
 ): Promise<LlmProviderStatus> {
+  const env = await resolveLlmEnv(workspaceEnv);
   const chatGptOAuthConnected = isChatGptOAuthEnabled(env)
     ? (await getStoredChatGptOAuthSession(env)) !== null
     : false;
+  const usesClaude =
+    normalizeProvider(env.AI_FINANCES_LLM_PROVIDER) === "claude_subscription" || isClaudeSubscriptionFallbackEnabled(env);
 
   return createLlmEnrichmentStatus(
     env,
     modelUseCase,
-    chatGptOAuthConnected
+    chatGptOAuthConnected,
+    usesClaude ? await claudeConnectionState(env) : undefined
   );
 }
 
+/**
+ * `claude` is the subscription's connection state when it was checked; the
+ * synchronous status (no storage) leaves it undefined and assumes connected.
+ */
 function createLlmEnrichmentStatus(
   env: WorkspaceEnv,
   modelUseCase: LlmModelUseCase,
-  chatGptOAuthConnected: boolean
+  chatGptOAuthConnected: boolean,
+  claude?: ClaudeConnectionState
 ): LlmProviderStatus {
   const configuredProvider = normalizeProvider(env.AI_FINANCES_LLM_PROVIDER);
 
   // An explicit Claude subscription choice wins over an OpenAI key or a
   // connected ChatGPT session, which otherwise take over the provider.
   if (configuredProvider === "claude_subscription") {
-    return {
+    const claudeStatus = {
       baseUrl: claudeSubscriptionBaseUrl,
       chatGptOAuthConnected,
       chatGptOAuthEnabled: isChatGptOAuthEnabled(env),
-      configured: true,
-      credentialSource: "claude_subscription",
+      claudeCredential: claude?.source,
+      credentialSource: "claude_subscription" as const,
       model: selectClaudeSubscriptionModel(env, modelUseCase),
       provider: configuredProvider,
-      status: "stale",
       timeoutMs: Math.max(parseTimeoutMs(env.AI_FINANCES_LLM_TIMEOUT_MS), claudeSubscriptionMinTimeoutMs)
     };
+
+    if (claude && !claude.connected) {
+      return {
+        ...claudeStatus,
+        configured: false,
+        errorMessage: claude.errorMessage ?? "Connect your Claude subscription in Settings to use Claude.",
+        status: "not_configured"
+      };
+    }
+
+    return { ...claudeStatus, configured: true, status: "stale" };
   }
 
   const explicitOpenAiKey = openAiCompatibleApiKey(env);
@@ -288,6 +311,19 @@ function createLlmEnrichmentStatus(
     chatGptOAuthEnabled,
     timeoutMs
   };
+
+  if (env[llmChoiceEnvKey] === "chatgpt" && !(chatGptOAuthEnabled && chatGptOAuthConnected)) {
+    return {
+      ...baseStatus,
+      configured: false,
+      credentialSource: "none",
+      errorMessage: chatGptOAuthEnabled
+        ? "Sign in to ChatGPT in Settings to use your ChatGPT subscription."
+        : "ChatGPT sign-in is off. Set AI_FINANCES_ENABLE_CHATGPT_OAUTH=1 to enable it.",
+      provider: "openai_compatible",
+      status: "not_configured"
+    };
+  }
 
   if (provider === "none") {
     return {
@@ -307,6 +343,7 @@ function createLlmEnrichmentStatus(
     // Opt-in: prefer the ChatGPT subscription even when an OPENAI_API_KEY is
     // present (e.g. exported globally in the shell for other tools).
     explicitOpenAiKey: env.AI_FINANCES_PREFER_CHATGPT_OAUTH === "1" ? undefined : explicitOpenAiKey,
+    baseUrl: env.AI_FINANCES_LLM_BASE_URL?.trim(),
     provider
   });
   const baseUrl = resolveLlmBaseUrl(env, provider, credentialSource);
@@ -342,7 +379,7 @@ function createLlmEnrichmentStatus(
     baseUrl: sanitizeUrl(baseUrl),
     configured: true,
     credentialSource,
-    ...(isClaudeSubscriptionFallbackEnabled(env)
+    ...(isClaudeSubscriptionFallbackEnabled(env) && claude?.connected !== false
       ? {
           fallback: {
             model: selectClaudeSubscriptionModel(env, modelUseCase),
@@ -1081,11 +1118,13 @@ function normalizeProvider(value: string | undefined): LlmProviderName {
 }
 
 function resolveCredentialSource({
+  baseUrl,
   chatGptOAuthConnected,
   chatGptOAuthEnabled,
   explicitOpenAiKey,
   provider
 }: {
+  baseUrl: string | undefined;
   chatGptOAuthConnected: boolean;
   chatGptOAuthEnabled: boolean;
   explicitOpenAiKey: string | undefined;
@@ -1100,7 +1139,9 @@ function resolveCredentialSource({
       return "chatgpt_oauth";
     }
 
-    return "none";
+    // A server on the user's own machine or network (llama.cpp, LM Studio,
+    // vLLM) needs no key and keeps the prompt local.
+    return isPrivateNetworkUrl(baseUrl) ? "local" : "none";
   }
 
   if (provider === "ollama") {

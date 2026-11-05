@@ -32,7 +32,7 @@ test("real MCP client lists annotated tools and calls the shared backend client"
     const listed = await client.listTools();
     const readTool = listed.tools.find((tool) => tool.name === "koban_get_sync_status");
     const writeTool = listed.tools.find((tool) => tool.name === "koban_update_transaction");
-    assert.equal(listed.tools.length, 34);
+    assert.equal(listed.tools.length, 35);
     assert.deepEqual(readTool?.annotations, {
       destructiveHint: false,
       idempotentHint: true,

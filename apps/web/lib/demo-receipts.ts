@@ -21,7 +21,15 @@ export interface DemoEvidenceLink {
   transactionId: string;
 }
 
+/** A receipt line filed under its own category: the user's split of a mixed charge. */
+export interface DemoLineCategory {
+  categoryId: string;
+  position: number;
+  sourceItemId: string;
+}
+
 export interface DemoReceipts {
+  lineCategories: DemoLineCategory[];
   links: DemoEvidenceLink[];
   sources: DemoContextSource[];
 }
@@ -56,6 +64,15 @@ const costcoShelf: Product[] = [
   ["Oat milk, 6 pack", 11.99],
   ["Laundry detergent", 19.99]
 ];
+
+// A warehouse run is groceries, household supplies and the dog's treats in one
+// charge; each Costco line is filed under the category it belongs to.
+const costcoLineCategory: Record<string, string> = {
+  "Dog treats": "cat_custom_pets",
+  "Kirkland household restock": "cat_household",
+  "Laundry detergent": "cat_household",
+  "Paper towels, 12 rolls": "cat_household"
+};
 
 const sourceIdFor = (sourceId: string, externalId: string) => `src_demo_${sourceId.replace(/^source_/, "")}_${externalId}`;
 const cents = (value: number) => Math.round(value * 100);
@@ -96,6 +113,7 @@ export function createDemoReceipts(transactions: Transaction[]): DemoReceipts {
   const gmail: SourceItemInput[] = [];
   const amazon: SourceItemInput[] = [];
   const links: DemoEvidenceLink[] = [];
+  const lineCategories: DemoLineCategory[] = [];
   const paid = (transaction: Transaction) => Math.abs(transaction.amount);
 
   for (const transaction of transactions) {
@@ -134,6 +152,13 @@ export function createDemoReceipts(transactions: Transaction[]): DemoReceipts {
         title: "Costco warehouse receipt"
       });
       links.push({ confidence: 0.93, relationship: "receipt", sourceItemId: sourceIdFor("source_gmail", externalId), status: "accepted", transactionId: transaction.id });
+      for (const [position, line] of lines.entries()) {
+        lineCategories.push({
+          categoryId: costcoLineCategory[line.name] ?? "cat_groceries",
+          position,
+          sourceItemId: sourceIdFor("source_gmail", externalId)
+        });
+      }
     } else if (merchant === "AMZN MKTP US*2K4LQ") {
       const externalId = "113-4471902-8835461";
       const batteries = (cents(paid(transaction)) - cents(38.99) - cents(14.99)) / 100;
@@ -180,6 +205,7 @@ export function createDemoReceipts(transactions: Transaction[]): DemoReceipts {
   }
 
   return {
+    lineCategories,
     links,
     sources: [
       { command: "instacart-pp-cli", displayName: "Instacart groceries", id: "source_instacart", items: instacart, kind: "instacart" },

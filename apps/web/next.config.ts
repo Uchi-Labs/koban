@@ -87,7 +87,7 @@ const nextConfig: NextConfig = {
     ];
   },
   output: "standalone",
-  serverExternalPackages: ["@electric-sql/pglite", "ai-sdk-provider-claude-code", "pg"],
+  serverExternalPackages: ["@electric-sql/pglite", "pg"],
   transpilePackages: [
     "@ai-finances/schema",
     "@ai-finances/sync-protocol"

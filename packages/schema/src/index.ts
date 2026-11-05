@@ -264,6 +264,8 @@ export interface SourceItemLine {
   unitPrice?: number;
   amount?: number;
   sku?: string;
+  /** User overlay: the category this line is split into. Survives source re-import. */
+  categoryId?: string;
 }
 
 export interface SourceItem {

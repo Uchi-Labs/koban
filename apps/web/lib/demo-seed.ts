@@ -20,7 +20,7 @@ export const demoRecurringRange = { max: 30, min: 10 };
 export const demoDatabaseTables = new Set([
   "account", "account_balance_snapshots", "accounts", "agent_conversation_turns", "agent_conversations",
   "apikey", "app_sync_runs", "categories", "embedding_models", "enrichment_suggestions", "external_sources",
-  "financial_goals", "investment_positions", "passkey", "provider_connections", "semantic_documents",
+  "financial_goals", "investment_positions", "line_item_categories", "passkey", "provider_connections", "semantic_documents",
   "semantic_embeddings", "session", "source_item_lines", "source_items", "source_sync_runs", "sync_run_items", "sync_runs",
   "sync_schedules", "sync_state", "tag_registry", "transaction_evidence_links", "transaction_rules",
   "transactions", "twoFactor", "user", "verification"
@@ -157,6 +157,8 @@ const cat = {
   income: "cat_income",
   housing: "cat_housing",
   food: "cat_food",
+  groceries: "cat_groceries",
+  household: "cat_household",
   transportation: "cat_transportation",
   software: "cat_software",
   shopping: "cat_shopping",
@@ -185,7 +187,9 @@ const demoCategories: DemoCategory[] = [
 // visibly run over.
 const budgetOverrides: Record<string, number> = {
   [cat.housing]: 1_500,
-  [cat.food]: 1_300,
+  [cat.food]: 550,
+  [cat.groceries]: 800,
+  [cat.household]: 90,
   [cat.transportation]: 420,
   [cat.software]: 25,
   [cat.shopping]: 550,
@@ -400,7 +404,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     add("visa", day(month, 25), "Food Bank of Riverside", "Monthly donation", -25, cat.gifts);
     if (index % 2 === 1) add("jordan", day(month, 27), "Lumière Salon", "Cut and color", -routine(day(month, 27), 64, 82), cat.other);
     const costcoDay = nextWeekday(day(month, 8), 0);
-    add("visa", costcoDay, "Costco", "Bulk groceries and household", -routine(costcoDay, 165, 255), cat.food);
+    add("visa", costcoDay, "Costco", "Bulk groceries and household", -routine(costcoDay, 165, 255), cat.groceries);
 
     const lastDay = monthEnd(month);
     add("emergency", lastDay, "Northstar Interest", "High-yield savings interest", roundMoney((14_000 + 500 * index) * 0.041 / 12), cat.income);
@@ -411,7 +415,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     const weekday = weekdayOf(date);
     const monthNumber = Number(date.slice(5, 7));
     const weekIndex = Math.floor(daysBetween(startDate, date) / 7);
-    if (weekday === 6 && chance(0.95)) add("visa", date, "Juniper Market", "Weekly groceries", -routine(date, 104, 168), cat.food);
+    if (weekday === 6 && chance(0.95)) add("visa", date, "Juniper Market", "Weekly groceries", -routine(date, 104, 168), cat.groceries);
     if (weekday === 2 && chance(0.85)) add("visa", date, "Sunline Fuel", "Fuel", -routine(date, 38, 56), cat.transportation);
     if ((weekday === 1 || weekday === 3 || weekday === 5) && chance(0.7)) add("alex", date, "Starbucks", "Coffee", -routine(date, 5.25, 7.85), cat.food);
     if (weekday >= 2 && weekday <= 4 && chance(0.7)) add("jordan", date, "Riverside Hospital Café", "Lunch on shift", -routine(date, 7, 12.5), cat.food);
@@ -420,10 +424,10 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     if (weekday === 0 && chance(0.25)) add("amex", date, "Target", "Household and kids", -routine(date, 28, 118), cat.shopping);
     if (chance(0.09)) add("amex", date, "Amazon", "Online order", -routine(date, 14, 86), cat.shopping);
     if (weekday >= 1 && weekday <= 5 && chance(0.05)) add("alex", date, "ParkMobile", "Downtown parking", -routine(date, 3.5, 12), cat.transportation);
-    if (weekday === 3 && chance(0.3)) add("visa", date, "Walmart", "Household supplies", -routine(date, 22, 88), cat.shopping);
+    if (weekday === 3 && chance(0.3)) add("visa", date, "Walmart", "Household supplies", -routine(date, 22, 88), cat.household);
     if (weekday === 6 && chance(0.15)) add("visa", date, "Home Depot", "House projects", -routine(date, 24, 140), cat.shopping, { tags: ["home"] });
     if (weekday === 5 && chance(0.12)) add("amex", date, "Brightside Cinema", "Movie night", -routine(date, 28, 46), cat.entertainment);
-    if (weekday === 6 && monthNumber >= 5 && monthNumber <= 10 && chance(0.5)) add("cash", date, "Farmers Market", "Produce and flowers", -routine(date, 12, 28), cat.food);
+    if (weekday === 6 && monthNumber >= 5 && monthNumber <= 10 && chance(0.5)) add("cash", date, "Farmers Market", "Produce and flowers", -routine(date, 12, 28), cat.groceries);
   }
 
   for (let year = Number(startDate.slice(0, 4)); year <= Number(endDate.slice(0, 4)); year += 1) {
@@ -457,7 +461,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
     }
 
     add("amex", `${year}-09-23`, "The Ember Room", "Birthday dinner", -168.5, cat.food, { notes: "Jordan's birthday dinner." });
-    add("visa", `${year}-11-26`, "Juniper Market", "Thanksgiving groceries", -96.2, cat.food, { notes: "Hosting Thanksgiving this year." });
+    add("visa", `${year}-11-26`, "Juniper Market", "Thanksgiving groceries", -96.2, cat.groceries, { notes: "Hosting Thanksgiving this year." });
 
     // December: gifts, a toy drive, and Alex's year-end bonus.
     for (const giftDay of ["12-02", "12-05", "12-09", "12-14"]) {
@@ -479,7 +483,7 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
   add("visa", daysAgo(11), "Riverside Animal Hospital", "Biscuit · X-ray and follow-up", -412.6, cat.pets, { notes: "Biscuit ate a sock. He's fine." });
 
   const ambiguous: Array<{ account: AccountKey; daysAgo: number; merchant: string; description: string; amount: number; suggestion: string; confidence: number; reason: string }> = [
-    { account: "visa", daysAgo: 1, merchant: "SQ *MAPLE ST MARKET", description: "Square purchase", amount: -23.4, suggestion: cat.food, confidence: 0.82, reason: "Square seller on Maple St; similar weekend purchases were groceries." },
+    { account: "visa", daysAgo: 1, merchant: "SQ *MAPLE ST MARKET", description: "Square purchase", amount: -23.4, suggestion: cat.groceries, confidence: 0.82, reason: "Square seller on Maple St; similar weekend purchases were groceries." },
     { account: "amex", daysAgo: 2, merchant: "TST* RIVERFRONT TACOS", description: "Toast purchase", amount: -41.7, suggestion: cat.food, confidence: 0.91, reason: "Toast is a restaurant point-of-sale system." },
     { account: "amex", daysAgo: 3, merchant: "AMZN MKTP US*2K4LQ", description: "Marketplace order", amount: -64.18, suggestion: cat.shopping, confidence: 0.88, reason: "Amazon Marketplace orders are usually Shopping in this household." },
     { account: "joint", daysAgo: 4, merchant: "VENMO PAYMENT 1023", description: "Venmo", amount: -60, suggestion: cat.childcare, confidence: 0.64, reason: "Friday-evening Venmo payments of $60 match past babysitting." },
@@ -518,7 +522,8 @@ export function createDemoDataset(asOfDate: string = defaultDemoAsOfDate): DemoD
   }
   const categoryNames = new Map<string, string>([
     ...demoCategories.map((category) => [category.id, category.name] as const),
-    [cat.food, "Food & Dining"], [cat.transportation, "Transportation"], [cat.shopping, "Shopping"],
+    [cat.food, "Food & Dining"], [cat.groceries, "Groceries"], [cat.household, "Household"],
+    [cat.transportation, "Transportation"], [cat.shopping, "Shopping"],
     [cat.software, "Software"], [cat.housing, "Housing"], [cat.travel, "Travel"], [cat.other, "Other"]
   ]);
   for (const transaction of transactions) {
@@ -808,7 +813,7 @@ function goal(window: DemoWindow, id: string, name: string, emoji: string, targe
 // in the ledger.
 function createRules(transactions: Transaction[]): DemoRule[] {
   const specs: Array<Omit<DemoRule, "id">> = [
-    { name: "Groceries at Juniper Market", matchField: "merchant_name", matchOperator: "contains", pattern: "Juniper Market", categoryId: cat.food, tags: [], markReviewed: true },
+    { name: "Groceries at Juniper Market", matchField: "merchant_name", matchOperator: "contains", pattern: "Juniper Market", categoryId: cat.groceries, tags: [], markReviewed: true },
     { name: "Daycare tuition", matchField: "merchant_name", matchOperator: "equals", pattern: "Little Acorns Early Learning", categoryId: cat.childcare, tags: ["kids"], markReviewed: true },
     { name: "Home utilities", matchField: "merchant_name", matchOperator: "regex", pattern: "greenlight energy|keystone gas|clearwater|fiberlane|cedar mobile", categoryId: cat.utilities, tags: [], markReviewed: true },
     { name: "Streaming and music", matchField: "merchant_name", matchOperator: "regex", pattern: "netflix|spotify|nytimes", categoryId: cat.entertainment, tags: ["subscription"], markReviewed: true },

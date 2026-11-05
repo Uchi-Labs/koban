@@ -232,7 +232,7 @@ export function ReviewStack({ categories, confidences, contexts, initialTransact
           <div className="relative">
           {current ? (
             <div aria-hidden="true" className="invisible rounded-3xl border p-6">
-              <CardBody confidence={confidenceFor(current.id)} context={contextFor(current)} evidence={contexts?.[current.id]?.evidence} reason={contexts?.[current.id]?.reason} suggestedCategory={categoryById.get(suggestions[current.id] ?? current.categoryId) ?? current.category} suggestedId={suggestions[current.id] ?? current.categoryId} transaction={current} />
+              <CardBody categories={categories} confidence={confidenceFor(current.id)} context={contextFor(current)} evidence={contexts?.[current.id]?.evidence} reason={contexts?.[current.id]?.reason} suggestedCategory={categoryById.get(suggestions[current.id] ?? current.categoryId) ?? current.category} suggestedId={suggestions[current.id] ?? current.categoryId} transaction={current} />
             </div>
           ) : null}
           <AnimatePresence initial={false}>
@@ -288,7 +288,7 @@ export function ReviewStack({ categories, confidences, contexts, initialTransact
                     transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                     whileDrag={front ? { cursor: "grabbing", rotate: 1.5, scale: 1.015 } : undefined}
                   >
-                    <CardBody confidence={confidenceFor(transaction.id)} context={contextFor(transaction)} evidence={contexts?.[transaction.id]?.evidence} reason={contexts?.[transaction.id]?.reason} suggestedCategory={cardSuggestedCategory} suggestedId={cardSuggestedId} transaction={transaction} />
+                    <CardBody categories={categories} confidence={confidenceFor(transaction.id)} context={contextFor(transaction)} evidence={contexts?.[transaction.id]?.evidence} reason={contexts?.[transaction.id]?.reason} suggestedCategory={cardSuggestedCategory} suggestedId={cardSuggestedId} transaction={transaction} />
                   </m.article>
                 );
               })
@@ -344,7 +344,8 @@ export function ReviewStack({ categories, confidences, contexts, initialTransact
   );
 }
 
-function CardBody({ confidence, context, evidence, reason, suggestedCategory, suggestedId, transaction }: {
+function CardBody({ categories, confidence, context, evidence, reason, suggestedCategory, suggestedId, transaction }: {
+  categories: Category[];
   confidence: ReviewConfidence;
   context: string | undefined;
   evidence?: ReviewContext["evidence"];
@@ -380,7 +381,7 @@ function CardBody({ confidence, context, evidence, reason, suggestedCategory, su
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-foreground">{item.title}</span>
                 <span className="block truncate">{item.sourceLabel} · {Math.round(item.confidence * 100)}% match</span>
-                {item.lines?.length ? <ItemizedLines className="mt-1" currency={transaction.currency} lines={item.lines} /> : null}
+                {item.lines?.length ? <ItemizedLines categories={categories} className="mt-1" currency={transaction.currency} lines={item.lines} /> : null}
               </span>
             </li>
           ))}

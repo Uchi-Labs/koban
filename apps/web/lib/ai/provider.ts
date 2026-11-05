@@ -16,6 +16,7 @@ import {
   claudeSubscriptionMinTimeoutMs,
   createClaudeSubscriptionLanguageModel
 } from "@/lib/ai/claude-subscription";
+import { isPrivateNetworkUrl, resolveLlmEnv } from "@/lib/ai/llm-settings";
 import type { LlmChatMessage, LlmFallbackStatus, LlmProviderStatus } from "@/lib/llm-enrichment";
 import type { WorkspaceEnv } from "@/lib/workspace-env";
 
@@ -237,9 +238,9 @@ async function* streamParts(fullStream: AsyncIterable<TextStreamPart<ToolSet>>):
   }
 }
 
-function buildConfiguredLanguageModel(
+async function buildConfiguredLanguageModel(
   provider: LlmProviderStatus,
-  env: WorkspaceEnv,
+  workspaceEnv: WorkspaceEnv,
   fetcher?: FetchLike
 ): Promise<LanguageModel> {
   if (provider.credentialSource === "claude_subscription") {
@@ -247,7 +248,7 @@ function buildConfiguredLanguageModel(
       throw new Error(provider.errorMessage ?? "No LLM model is configured.");
     }
 
-    return Promise.resolve(createClaudeSubscriptionLanguageModel(provider.model, env));
+    return createClaudeSubscriptionLanguageModel(provider.model, workspaceEnv);
   }
 
   if (provider.credentialSource === "chatgpt_oauth") {
@@ -258,14 +259,18 @@ function buildConfiguredLanguageModel(
     // The ChatGPT subscription flows through the package's AI SDK provider, so
     // it shares the same generateText/generateObject/streamText calls as every
     // other provider — no bespoke transport.
-    return Promise.resolve(createChatGptLanguageModel(provider.model, fetcher));
+    return createChatGptLanguageModel(provider.model, fetcher);
   }
 
   if (!provider.configured || !provider.model || !provider.baseUrl) {
     throw new Error(provider.errorMessage ?? "No LLM provider is configured.");
   }
 
-  return Promise.resolve(createOpenAICompatible<string, string, string, string>({
+  // The API key may come from a server URL and key saved in Settings.
+  const env = await resolveLlmEnv(workspaceEnv);
+  const localSampling = localModelSampling(provider);
+
+  return createOpenAICompatible<string, string, string, string>({
     apiKey: provider.provider === "openai_compatible" ? openAiCompatibleApiKey(env) : undefined,
     baseURL: aiSdkBaseUrl(provider),
     fetch: fetcher,
@@ -276,8 +281,37 @@ function buildConfiguredLanguageModel(
       supportsOpenAiStructuredOutputs(provider.model),
     transformRequestBody: usesCompletionTokenParameter(provider.model)
       ? transformGpt5RequestBody
-      : undefined
-  }).chatModel(provider.model));
+      : localSampling
+        ? (body) => ({ ...body, ...localSampling })
+        : undefined
+  }).chatModel(provider.model);
+}
+
+/**
+ * LFM-family models (Liquid AI) ship sampling in their model card: temperature
+ * 0.1, top_k 50, repetition penalty 1.1. Measured on LFM3-1.7B, the card's
+ * settings with thinking left on answered 15 of 20 Ask questions against 9 of
+ * 20 with thinking off, so nothing here turns thinking off. The OpenAI schema
+ * has no top_k or repetition penalty; llama.cpp and LM Studio read
+ * `repeat_penalty`, vLLM reads `repetition_penalty`, and each ignores the other.
+ */
+export function localModelSampling(provider: Pick<LlmProviderStatus, "baseUrl" | "model" | "provider">) {
+  const isLocalServer = provider.provider === "ollama" || isPrivateNetworkUrl(provider.baseUrl);
+
+  if (!isLocalServer || !provider.model || !isLfmModel(provider.model)) {
+    return undefined;
+  }
+
+  return { repeat_penalty: 1.1, repetition_penalty: 1.1, top_k: 50 };
+}
+
+export function isLfmModel(model: string): boolean {
+  return /(?:^|[/:_-])lfm/i.test(model);
+}
+
+/** A model on the user's own machine, whose reasoning shares the output budget with the answer. */
+export function isLocalLlmProvider(provider: Pick<LlmProviderStatus, "baseUrl" | "provider">): boolean {
+  return provider.provider === "ollama" || (provider.provider === "openai_compatible" && isPrivateNetworkUrl(provider.baseUrl));
 }
 
 // The subscription backend never stores responses, so a second step (after a

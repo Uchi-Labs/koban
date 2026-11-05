@@ -20,6 +20,7 @@
   "dependencies": {
     "@ai-finances/schema": "workspace:*",
     "@ai-finances/sync-protocol": "workspace:*",
+    "@ai-sdk/anthropic": "^4.0.97",
     "@ai-sdk/openai": "^4.0.17",
     "@ai-sdk/openai-compatible": "3.0.5",
     "@base-ui/react": "^1.6.0",
@@ -32,7 +33,6 @@
     "@tanstack/react-virtual": "^3.14.5",
     "@web-kits/audio": "^0.1.0",
     "ai": "^7.0.15",
-    "ai-sdk-provider-claude-code": "4.3.2",
     "better-auth": "^1.6.23",
     "chatgpt-oauth": "^0.2.1",
     "class-variance-authority": "^0.7.1",

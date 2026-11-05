@@ -1225,7 +1225,7 @@ function credentialSourceLabel(source: AiProviderView["credential_source"]): str
   }
 
   if (source === "claude_subscription") {
-    return "Claude Code CLI";
+    return "Claude subscription";
   }
 
   if (source === "ollama") {

@@ -17,10 +17,14 @@ import {
 import { lineItemQuestion } from "@/lib/line-item-questions";
 import {
   answerFinanceQuestion,
+  createThinkTagFilter,
+  emptyModelAnswerMessage,
+  goalsToolResult,
   lineItemToolResult,
   recurringChargesToolResult,
   sourceSetupActionsFromDiagnostics,
   streamFinanceAnswer,
+  transactionSearchToolResult,
   type AgentStreamEvent,
   summarizeAssistantSourceDiagnostics
 } from "@/lib/finance-assistant";
@@ -372,7 +376,7 @@ describe("finance assistant", () => {
       events.push(event);
     }
 
-    expect(offeredTools).toEqual(["show_visual", "query_line_items", "list_recurring_charges"]);
+    expect(offeredTools).toEqual(["show_visual", "query_line_items", "list_recurring_charges", "search_transactions", "list_goals"]);
     expect(payload.monthly_history?.months).toHaveLength(12);
     expect(payload.monthly_history?.as_of).toBe("2026-05-21");
     expect(payload.monthly_history?.budgets.monthly_total).toEqual(expect.any(Number));
@@ -382,6 +386,95 @@ describe("finance assistant", () => {
     expect(events.findIndex((event) => event.type === "visual")).toBeLessThan(events.findIndex((event) => event.type === "delta"));
     expect(events.filter((event) => event.type === "delta").map((event) => (event as { text: string }).text).join("")).toBe("Coffee led the month.");
   }, 15_000);
+
+  it("says the model returned no answer instead of streaming the local answer to another question", async () => {
+    useTempDb();
+    await replaceLedgerInDb(createLedger());
+    const events: AgentStreamEvent[] = [];
+
+    for await (const event of streamFinanceAnswer("Why was our Pets spending higher in October?", {
+      llmEnv: { AI_FINANCES_LLM_BASE_URL: "http://127.0.0.1:8099/v1", AI_FINANCES_LLM_MODEL: "lfm3-1.7b", AI_FINANCES_LLM_PROVIDER: "openai_compatible" },
+      llmClient: createAssistantLlmClient({
+        streamText: async (input: LlmTextGenerationInput) => {
+          // A local reasoning model on a private URL gets a larger budget for its thinking.
+          expect(input.maxOutputTokens).toBe(16_000);
+          return {
+            getText: async () => "",
+            parts: (async function* () {
+              yield { input: {}, toolName: "list_recurring_charges", type: "tool-call" as const };
+            })(),
+            textStream: (async function* () {})()
+          };
+        }
+      })
+    })) {
+      events.push(event);
+    }
+
+    expect(events.filter((event) => event.type === "delta")).toEqual([]);
+    expect(events.at(-1)).toEqual({ message: emptyModelAnswerMessage, type: "error" });
+    expect(emptyModelAnswerMessage).toContain("may have run out of output tokens");
+  });
+
+  it("reports a failed model call as an error, not as a local answer", async () => {
+    useTempDb();
+    await replaceLedgerInDb(createLedger());
+    const events: AgentStreamEvent[] = [];
+
+    for await (const event of streamFinanceAnswer("What is our Netflix charge?", {
+      llmEnv: { AI_FINANCES_LLM_API_KEY: "test-key", AI_FINANCES_LLM_MODEL: "gpt-test", AI_FINANCES_LLM_PROVIDER: "openai_compatible" },
+      llmClient: createAssistantLlmClient({
+        streamText: async () => {
+          throw new Error("connect ECONNREFUSED 127.0.0.1:8099");
+        }
+      })
+    })) {
+      events.push(event);
+    }
+
+    expect(events.filter((event) => event.type === "delta")).toEqual([]);
+    expect(events.at(-1)).toEqual({ message: "The model could not answer: connect ECONNREFUSED 127.0.0.1:8099", type: "error" });
+  });
+
+  it("drops a leading think block and stray think tags from streamed text", () => {
+    const filter = createThinkTagFilter();
+    const chunks = ["<thi", "nk>We need to add", " the charges.</th", "ink>\n\nYou spend ", "$17.99</", "think> a month."];
+    const out = chunks.map((chunk) => filter.push(chunk)).join("") + filter.flush();
+    expect(out).toBe("You spend $17.99 a month.");
+
+    const plain = createThinkTagFilter();
+    expect(plain.push("A < B and ") + plain.push("C.") + plain.flush()).toBe("A < B and C.");
+
+    const unfinished = createThinkTagFilter();
+    expect(unfinished.push("<think>still reasoning when the budget ran out") + unfinished.flush()).toBe("");
+  });
+
+  it("finds bank charges by merchant and date, leaving transfers out of the total", () => {
+    const names = new Map([["cat_food", "Food & Dining"], ["cat_transfer", "Transfer"]]);
+    const base = { accountId: "a", currency: "USD" as const, providerConnectionId: "p", reviewed: true, status: "posted" as const, tags: [] as string[] };
+    const transactions = [
+      { ...base, amount: -6.25, categoryId: "cat_food", date: "2026-10-03", description: "Coffee", id: "t1", merchantName: "Starbucks" },
+      { ...base, amount: -7.1, categoryId: "cat_food", date: "2026-10-20", description: "Coffee", id: "t2", merchantName: "Starbucks" },
+      { ...base, amount: -5.5, categoryId: "cat_food", date: "2026-09-30", description: "Coffee", id: "t3", merchantName: "Starbucks" },
+      { ...base, amount: -500, categoryId: "cat_transfer", date: "2026-10-05", description: "Starbucks card reload transfer", id: "t4", merchantName: "Internal Transfer" }
+    ] satisfies Transaction[];
+
+    const result = transactionSearchToolResult(transactions, names, { from: "2026-10-01", merchant: "starbucks", to: "2026-10-31" });
+
+    expect(result.transactions_matched).toBe(3);
+    expect(result.total_spent).toBe(13.35);
+    expect(result.transactions.map((transaction) => transaction.date)).toEqual(["2026-10-20", "2026-10-05", "2026-10-03"]);
+    expect(transactionSearchToolResult(transactions, names, { category: "food & dining", from: "2026-10-01" }).total_spent).toBe(13.35);
+  });
+
+  it("lists goals with saved amounts in dollars, or none", () => {
+    expect(goalsToolResult([])).toEqual({ goals: [] });
+    const [goal] = goalsToolResult([
+      { createdAt: "", id: "g", name: "Lisbon", savedAmountMinor: 340_000, state: "active", targetAmountMinor: 600_000, transactionCount: 4, updatedAt: "" }
+    ]).goals;
+    expect(goal).toMatchObject({ saved: 3400, state: "active", target: 6000 });
+    expect(goal.name).toContain("Lisbon");
+  });
 
   it("keeps source status answers local even when an LLM provider is configured", async () => {
     useTempDb();
