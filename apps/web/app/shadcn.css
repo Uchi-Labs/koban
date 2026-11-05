@@ -36,13 +36,15 @@
   --sidebar-primary-foreground: oklch(0.975 0.014 85);
   --sidebar-accent: oklch(0.915 0.024 78);
   --sidebar-accent-foreground: oklch(0.24 0.02 60);
-  --sidebar-border: oklch(0.865 0.015 75);
+  --sidebar-border: oklch(0.2 0.014 60 / 14%);
   --sidebar-ring: oklch(0.54 0.13 165);
   --sidebar: oklch(0.958 0.015 82);
-  --border: oklch(0.87 0.015 75);
+  /* Alpha so hairlines take the tint of whatever surface they sit on. */
+  --border: oklch(0.2 0.014 60 / 15%);
   --muted: oklch(0.945 0.012 80);
   --positive: oklch(0.46 0.12 165);
   --negative: oklch(0.54 0.18 22);
+  --warning: oklch(0.53 0.12 70);
 }
 
 @theme inline {
@@ -89,6 +91,9 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -113,7 +118,7 @@
   --secondary: oklch(0.24 0.01 250);
   --secondary-foreground: oklch(0.955 0.004 230);
   --muted: oklch(0.235 0.01 250);
-  --muted-foreground: oklch(0.68 0.012 245);
+  --muted-foreground: oklch(0.74 0.012 245);
   --accent: oklch(0.245 0.014 250);
   --accent-foreground: oklch(0.965 0.004 230);
   --destructive: oklch(0.66 0.2 22);
@@ -135,7 +140,8 @@
   --sidebar-ring: oklch(0.82 0.14 168 / 55%);
   /* semantic money colors, used by charts and amount text */
   --positive: oklch(0.8 0.15 165);
-  --negative: oklch(0.68 0.18 15);
+  --negative: oklch(0.73 0.16 15);
+  --warning: oklch(0.82 0.14 82);
 }
 
 /* Iconiq registry components inherit Koban's theme instead of carrying a
@@ -174,7 +180,7 @@
   --status-dot-canceled: var(--muted-foreground);
   --status-dot-active: var(--primary);
   --status-dot-success: var(--positive);
-  --status-dot-warning: var(--chart-2);
+  --status-dot-warning: var(--warning);
   --status-dot-error: var(--negative);
 }
 

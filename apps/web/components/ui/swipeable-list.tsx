@@ -38,8 +38,8 @@ const ACTION_TONE_CLASS = {
   danger: "text-destructive",
   neutral: "text-muted-foreground group-hover:text-foreground",
   primary: "text-primary",
-  success: "text-emerald-600 dark:text-emerald-400",
-  warning: "text-amber-600 dark:text-amber-400"
+  success: "text-positive",
+  warning: "text-warning"
 };
 
 function clampReleaseVelocity(velocity: number) {

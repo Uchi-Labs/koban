@@ -47,8 +47,8 @@ const STATUS_CLASS: Record<AnimatedBadgeStatus, string> = {
   info: "border-primary/30 bg-primary/10 text-primary",
   loading: "border-primary/30 bg-primary/10 text-primary",
   neutral: "border-border bg-card text-muted-foreground",
-  success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  warning: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+  success: "border-positive/30 bg-positive/10 text-positive",
+  warning: "border-warning/30 bg-warning/10 text-warning"
 };
 
 const SIZE_CLASS: Record<AnimatedBadgeSize, string> = {

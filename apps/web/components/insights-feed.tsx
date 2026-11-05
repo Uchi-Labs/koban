@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 const toneClasses = {
   negative: "bg-[var(--negative)]",
   positive: "bg-[var(--positive)]",
-  warning: "bg-[var(--chart-2)]"
+  warning: "bg-warning"
 };
 
 export function InsightsFeed({ compact = false, initialInsights }: { compact?: boolean; initialInsights: FinanceInsight[] }) {

@@ -13,7 +13,7 @@ const statToneClasses: Record<FinanceStatTone, { dot: string; value: string }> =
   negative: { dot: "bg-(--negative)", value: "text-(--negative)" },
   positive: { dot: "bg-(--positive)", value: "text-(--positive)" },
   primary: { dot: "bg-primary", value: "text-primary" },
-  warning: { dot: "bg-[oklch(0.8_0.14_80)]", value: "text-[oklch(0.8_0.14_80)]" }
+  warning: { dot: "bg-warning", value: "text-warning" }
 };
 
 export function FinanceStatStrip({

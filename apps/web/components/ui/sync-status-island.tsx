@@ -30,7 +30,7 @@ export function SyncStatusIsland({ state }: { state: SyncIslandState }) {
     <DynamicIsland
       className={cn(
         "max-w-full",
-        state.tone === "success" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        state.tone === "success" && "border-positive/30 bg-positive/10 text-positive",
         state.tone === "error" && "border-destructive/30 bg-destructive/10 text-destructive",
         state.tone === "syncing" && "border-primary/25 bg-primary/10 text-primary"
       )}

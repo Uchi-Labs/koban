@@ -31,7 +31,7 @@ const badgeVariants = cva(
         recurring:
           "border-border bg-transparent text-muted-foreground ring-1 ring-border/70",
         review:
-          "bg-[color-mix(in_oklch,oklch(0.8_0.14_80)_14%,transparent)] text-[oklch(0.8_0.14_80)] focus-visible:ring-[oklch(0.8_0.14_80/0.25)]",
+          "bg-warning/12 text-warning focus-visible:ring-warning/25",
         synced:
           "bg-primary/10 text-primary focus-visible:ring-primary/25",
         pending:
@@ -50,7 +50,7 @@ const badgeDotColorClasses = {
   muted: "bg-muted-foreground",
   negative: "bg-(--negative)",
   positive: "bg-(--positive)",
-  warning: "bg-[oklch(0.8_0.14_80)]",
+  warning: "bg-warning",
 } as const
 
 type BadgeDotColor = keyof typeof badgeDotColorClasses
