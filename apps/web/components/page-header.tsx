@@ -1,9 +1,8 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export interface PageHeaderProps {
+export interface PageHeaderProps extends Omit<ComponentProps<"header">, "title"> {
   actions?: ReactNode;
-  className?: string;
   description?: ReactNode;
   // Sits beside the title, e.g. a status badge.
   meta?: ReactNode;
@@ -12,9 +11,9 @@ export interface PageHeaderProps {
 
 // The one page header every top-level screen uses, so titles land in the same
 // place and size wherever the sidebar takes you.
-export function PageHeader({ actions, className, description, meta, title }: PageHeaderProps) {
+export function PageHeader({ actions, className, description, meta, title, ...props }: PageHeaderProps) {
   return (
-    <header className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-3", className)}>
+    <header className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-3", className)} {...props}>
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
           {typeof title === "string" ? <h1 className="app-page-title">{title}</h1> : title}

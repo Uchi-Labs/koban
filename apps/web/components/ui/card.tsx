@@ -98,7 +98,8 @@ function EmptyState({
   mascot = false,
   size = "default",
   title,
-}: {
+  ...props
+}: Omit<React.ComponentProps<"div">, "title"> & {
   actions?: React.ReactNode
   className?: string
   description?: React.ReactNode
@@ -123,6 +124,7 @@ function EmptyState({
         "data-[size=lg]:gap-5 data-[size=lg]:px-10 data-[size=lg]:py-16",
         className
       )}
+      {...props}
     >
       {mascot ? (
         <ManekiMoment priority size={80} />

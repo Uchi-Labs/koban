@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { BouncyAccordion } from "@/components/motion/bouncy-accordion";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, EmptyState } from "@/components/ui/card";
 import { CategoryPill } from "@/components/category-pill";
 import { TagChip } from "@/components/tag-chip";
 import { tagStyleMap } from "@/components/tag-style-map";
@@ -920,7 +920,11 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
             items={accordionItems}
           />
         ) : (
-          <p className="text-sm text-muted-foreground">No local transaction rules yet.</p>
+          <EmptyState
+            description="Fill in the form above to categorize and tag matching transactions automatically."
+            size="sm"
+            title="No rules yet"
+          />
         )}
 
         {model.message ? <p className="text-sm text-muted-foreground">{model.message}</p> : null}

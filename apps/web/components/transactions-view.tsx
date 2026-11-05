@@ -3560,7 +3560,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
           description="Link receipts, emails, or imported source items when a transaction needs supporting context."
           icon={<Link2 className="size-5" />}
           size="sm"
-          title="No linked evidence yet."
+          title="No linked evidence yet"
         />
       ) : null}
       <div className="mt-2 flex flex-col gap-2">
@@ -3657,7 +3657,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
             description="Try the merchant name, amount, or a receipt keyword from your imported evidence sources."
             icon={<Search className="size-5" />}
             size="sm"
-            title="No source items found."
+            title="No matching source items"
           />
         ) : null}
         {!model.linkEvidenceLoading && model.linkEvidenceResults.length > 0 ? (

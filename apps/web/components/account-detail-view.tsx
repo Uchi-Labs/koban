@@ -64,7 +64,7 @@ export function AccountDetailView({
     <main className="flex min-h-svh flex-col" data-testid="account-detail-page">
       <header className="flex items-center justify-between gap-3 h-14 shrink-0 border-b border-border px-6">
         <Link
-          className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-ui font-semibold tracking-tight text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+          className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "-ml-2 rounded-full text-muted-foreground")}
           href="/accounts"
         >
           <ArrowLeft className="size-3.5" />
