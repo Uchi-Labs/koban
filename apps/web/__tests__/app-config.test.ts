@@ -8,8 +8,9 @@ import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import * as AppConfig from "@/lib/config/AppConfig";
+import { bootServerRuntime } from "@/lib/effect/boot";
 import { bootAppRuntime, disposeAppRuntime } from "@/lib/effect/runtime";
 import * as SecretBox from "@/lib/security/SecretBox";
 
@@ -118,6 +119,24 @@ describe("app runtime boot", () => {
     process.env.DATABASE_URL = "postgresql://koban@db.internal/finances";
 
     await expect(bootAppRuntime()).rejects.toMatchObject({ _tag: "AppConfigError", setting: "KOBAN_PUBLIC_DEMO" });
+  });
+
+  it("stops the server process with one line naming the setting", async () => {
+    await disposeAppRuntime();
+    process.env.KOBAN_PUBLIC_DEMO = "1";
+    process.env.DATABASE_URL = "postgresql://koban@db.internal/finances";
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const logError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      await bootServerRuntime();
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(logError).toHaveBeenCalledTimes(1);
+      expect(String(logError.mock.calls[0]?.[0])).toMatch(/^\[koban\] Invalid configuration \(KOBAN_PUBLIC_DEMO\)/);
+    } finally {
+      exit.mockRestore();
+      logError.mockRestore();
+    }
   });
 });
 

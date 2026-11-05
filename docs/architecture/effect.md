@@ -1,6 +1,6 @@
 # Effect on the server
 
-Koban's server code is moving onto [Effect](https://effect.website) v4 (`effect` pinned to `4.1.2` in `apps/web/package.json`), one slice at a time. This page holds the rules for code that is already on Effect. It is adapted from t3code's `docs/internals/effect-services.md`.
+Koban's server code is moving onto [Effect](https://effect.website) v4 (`effect` pinned to `4.1.2` in `apps/web/package.json`, the newest stable 4.x on npm when it was pinned in November 2026), one slice at a time. This page holds the rules for code that is already on Effect. It is adapted from t3code's `docs/internals/effect-services.md`.
 
 Example of a request on the new path, `PATCH /api/v1/rules/r_1` with `{"match_operator":"contains"}` on a rule whose pattern is too broad:
 
