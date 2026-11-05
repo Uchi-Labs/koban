@@ -18,7 +18,8 @@ html {
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  overscroll-behavior: none;
+  /* Vertical only: horizontal overscroll is the trackpad back/forward swipe. */
+  overscroll-behavior-y: none;
 }
 
 @layer base {

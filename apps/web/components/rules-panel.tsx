@@ -634,7 +634,7 @@ function EnrichmentSuggestionsCard({ model }: { model: RulesPanelModel }) {
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-medium">AI enrichment suggestions</h2>
           <p className="text-sm text-muted-foreground">
-            An optional AI model suggests categories, tags, and rules. Nothing changes until you approve it.
+            An optional AI model suggests categories, tags, and rules for you to approve. Clear transfers between your own accounts are matched automatically.
           </p>
         </div>
         <CardAction>
@@ -907,7 +907,7 @@ function TransactionRulesCard({ model }: { model: RulesPanelModel }) {
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-medium">Transaction rules</h2>
           <p className="text-sm text-muted-foreground">
-            Rules categorize and tag matching transactions as they arrive. Apply them to existing transactions any time.
+            Rules categorize and tag matching transactions as soon as you create or enable them, and again on every sync.
           </p>
         </div>
         <CardAction>

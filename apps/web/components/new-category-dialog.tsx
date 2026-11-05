@@ -16,7 +16,7 @@ import {
 } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { shouldAutoFocus } from "@/lib/should-auto-focus";
+import { useFinePointerAutoFocus } from "@/lib/hooks/use-fine-pointer-auto-focus";
 
 // The ring keeps the persisted palette on its outer edge; Bloom remains the
 // arbitrary-color affordance for hex and shades between those anchors.
@@ -77,6 +77,7 @@ export function NewCategoryDialog({
   open: boolean;
   uncategorizedMerchants: string[];
 }) {
+  const autoFocusRef = useFinePointerAutoFocus<HTMLInputElement>();
   const router = useRouter();
   const reduce = useReducedMotion();
   const [state, dispatch] = React.useReducer(newCategoryReducer, INITIAL_NEW_CATEGORY_STATE);
@@ -226,7 +227,7 @@ export function NewCategoryDialog({
                       />
                       <input
                         aria-label="Search emoji"
-                        autoFocus={shouldAutoFocus()}
+                        ref={autoFocusRef}
                         className="h-8 w-full rounded-xl bg-muted/60 pr-3 pl-8 text-base outline-hidden md:text-sm transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none"
                         onChange={(event) => updateState({ emojiQuery: event.target.value })}
                         placeholder="Search emoji"

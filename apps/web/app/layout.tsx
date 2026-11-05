@@ -12,6 +12,7 @@ import { FONT_CHOICE_COOKIE, fontChoiceStyle, parseFontChoice } from "@/lib/font
 import { MONEY_COLORS_COOKIE, moneyColorStyle, parseMoneyColors } from "@/lib/money-colors";
 import { parseSidebarWidth, SIDEBAR_WIDTH_COOKIE } from "@/lib/sidebar-width";
 import { parseUiMode, UI_MODE_COOKIE } from "@/lib/ui-mode";
+import { themeColors } from "@/lib/theme-colors";
 import "./shadcn.css";
 import "./globals.css";
 import { Inter } from "next/font/google";
@@ -65,9 +66,6 @@ const cabinetGrotesk = localFont({
 });
 
 const quietFonts = cn(satoshi.variable, cabinetGrotesk.variable, selectableFontVariables);
-// Browser chrome and status bar match the page background (--background) of
-// the active theme, which comes from the koban_theme cookie, not the OS.
-const themeColors = { dark: "#07090b", light: "#fbf7ee" } as const;
 
 export const metadata: Metadata = {
   applicationName: "Koban",
@@ -101,6 +99,7 @@ export async function generateViewport(): Promise<Viewport> {
     // Android Chrome shrinks the layout for the keyboard, so bottom-pinned
     // composers stay above it as they do on iOS.
     interactiveWidget: "resizes-content",
+    // Follows the koban_theme cookie (the in-app toggle), not the OS setting.
     themeColor: themeColors[await resolveTheme()],
     viewportFit: "cover",
     width: "device-width"

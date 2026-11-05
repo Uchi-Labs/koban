@@ -6,6 +6,7 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
 import { ActionSwapIcon } from "@/components/ui/action-swap";
 import { cn } from "@/lib/utils";
+import { themeColors } from "@/lib/theme-colors";
 
 export type ThemeVariant = "rectangle" | "circle" | "circle-blur" | "fade";
 
@@ -124,10 +125,10 @@ export function useThemeToggle({
     root.classList.add("theme-switching");
     root.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
-    // Keep the browser chrome / status bar in step (values from app/layout.tsx).
+    // Keep the browser chrome / status bar in step with the page.
     document
       .querySelectorAll('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute("content", theme === "dark" ? "#07090b" : "#fbf7ee"));
+      .forEach((meta) => meta.setAttribute("content", themeColors[theme]));
     void root.offsetHeight;
     requestAnimationFrame(() => root.classList.remove("theme-switching"));
     document.cookie = `koban_theme=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;
