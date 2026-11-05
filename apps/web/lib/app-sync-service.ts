@@ -61,7 +61,7 @@ type StepResult<T> = {
   status: SyncStepStatus;
 };
 
-const syncStepRetryPolicy = Schedule.exponential("50 millis").pipe(Schedule.compose(Schedule.recurs(2)));
+const syncStepRetryPolicy = Schedule.max([Schedule.exponential("50 millis"), Schedule.recurs(2)]);
 
 export function runAppSync(options: AppSyncOptions = {}): Promise<AppSyncRunRecord> {
   return runServerEffect(runAppSyncEffect(options), { signal: options.signal });
@@ -303,14 +303,14 @@ export function runSyncStepEffect<T, E extends SyncPipelineError>(
   step: Effect.Effect<T, E, never>,
   options: {
     retry?: boolean;
-    timeout: Duration.DurationInput;
+    timeout: Duration.Input;
     timeoutError: () => E;
   }
 ): Effect.Effect<StepResult<T>, never, never> {
   const timedStep = step.pipe(
-    Effect.timeoutFail({
+    Effect.timeoutOrElse({
       duration: options.timeout,
-      onTimeout: options.timeoutError
+      orElse: () => Effect.fail(options.timeoutError())
     })
   );
   const retryableStep = options.retry ? timedStep.pipe(Effect.retry(syncStepRetryPolicy)) : timedStep;
@@ -320,7 +320,7 @@ export function runSyncStepEffect<T, E extends SyncPipelineError>(
       data,
       status: "succeeded" as const
     })),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       Effect.succeed({
         error: syncErrorMessage(error, "Sync step failed."),
         status: "error" as const
@@ -333,7 +333,7 @@ export function promiseSyncStepEffect<T, E extends SyncPipelineError>(
   task: (signal: AbortSignal) => Promise<T>,
   mapError: (error: unknown) => E
 ): Effect.Effect<T, E, never> {
-  return Effect.async<T, E>((resume, signal) => {
+  return Effect.callback<T, E>((resume, signal) => {
     const operation = Promise.resolve().then(() => task(signal));
     operation.then(
       (value) => resume(Effect.succeed(value)),
