@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import type { RuleView } from "@/components/rules-panel";
 import { RulesView } from "@/components/rules-view";
 import { listEnrichmentSuggestionItems, listTagStyles, listTransactionRules } from "@/lib/db/finance-db";
 import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
 import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
 import { getFinanceData } from "@/lib/finance-data";
+
+export const metadata: Metadata = { title: "Rules" };
 
 export default async function RulesPage() {
   const [financeData, rules, suggestions, provider, tagStyles] = await Promise.all([

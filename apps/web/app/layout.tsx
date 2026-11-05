@@ -74,7 +74,8 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Koban"
   },
-  title: "Koban",
+  // Pages set their own title; the tab reads "Transactions · Koban".
+  title: { default: "Koban", template: "%s · Koban" },
   description: "Private personal finance app",
   icons: {
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],

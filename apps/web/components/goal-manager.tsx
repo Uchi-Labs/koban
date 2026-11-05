@@ -185,7 +185,7 @@ function GoalCreateForm() {
               value={name}
             />
 
-            <span className="flex h-9 items-center gap-1 rounded-2xl border border-border bg-input/40 px-2.5 text-sm tabular-nums">
+            <span className="flex h-9 items-center gap-1 rounded-2xl border border-border bg-input/40 px-2.5 text-sm tabular-nums focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
               <span className="text-muted-foreground">$</span>
               <input
                 aria-label="Target amount"

@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { SearchView } from "@/components/search-view";
 import { semanticSearchFinanceResources } from "@/lib/db/finance-db";
 import { getFinanceData } from "@/lib/finance-data";
+
+export const metadata: Metadata = { title: "Search" };
 
 export default async function SearchPage({
   searchParams

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { SettingsView } from "@/components/settings-view";
 import { appSyncRunRecordToPayload, syncScheduleRecordToPayload } from "@/lib/app-sync-runs";
@@ -25,6 +26,8 @@ import { compactSourcePreviewSummary, compactSourcePreviewTitle } from "@/lib/so
 import { getSimpleFinSetupStatus } from "@/lib/simplefin-server";
 import { getFinanceKitSetupStatus } from "@/lib/financekit-server";
 import { getSnapTradeSetupStatus } from "@/lib/snaptrade-server";
+
+export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const demoModeEnabled = await isDemoModeEnabled();

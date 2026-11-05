@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { CashflowView, type CashflowCategoryMeta } from "@/components/cashflow-view";
 import type { CashflowTxn } from "@/lib/cashflow";
 import { filterTransactionsForIncludedAccounts, getFinanceData } from "@/lib/finance-data";
+
+export const metadata: Metadata = { title: "Cash flow" };
 
 export default async function CashFlowPage() {
   const { accounts, categories, dashboardSummary, transactions } = await getFinanceData();
