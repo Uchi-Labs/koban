@@ -337,7 +337,7 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
                 ? "Sign in under ChatGPT OAuth below, then save."
                 : "ChatGPT sign-in is off. Set AI_FINANCES_ENABLE_CHATGPT_OAUTH=1 and restart Koban to use it."}
             </p>
-            <ModelField formId={formId} label="Model (optional)" model={model} models={[]} placeholder="gpt-5.5" setModel={setModel} />
+            <ModelField formId={formId} label="Model (optional)" model={model} models={[]} placeholder="gpt-5.6-luna" setModel={setModel} />
           </div>
         ) : null}
 

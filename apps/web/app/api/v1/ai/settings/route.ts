@@ -7,12 +7,18 @@ import {
   writeStoredLlmSettings,
   type StoredLlmSettings
 } from "@/lib/ai/llm-settings";
-import { getEffectiveLlmEnrichmentStatus } from "@/lib/enrichment-runs";
+import { getLlmEnrichmentStatusWithStorage } from "@/lib/llm-enrichment";
+import { maskLlmStatusForPublicDemo } from "@/lib/public-demo";
+import { readWorkspaceEnv } from "@/lib/workspace-env";
 
 export const runtime = "nodejs";
 
 async function settingsResponse() {
-  const [settings, provider] = await Promise.all([readStoredLlmSettings(), getEffectiveLlmEnrichmentStatus()]);
+  // The model Ask answers with (its reasoning model), not enrichment's simple one.
+  const [settings, provider] = await Promise.all([
+    readStoredLlmSettings(),
+    getLlmEnrichmentStatusWithStorage(readWorkspaceEnv(), "reasoning").then(maskLlmStatusForPublicDemo)
+  ]);
 
   return NextResponse.json({
     object: "ai_settings",
