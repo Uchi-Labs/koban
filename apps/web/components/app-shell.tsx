@@ -61,7 +61,7 @@ import {
 } from "@/lib/sidebar-width";
 import { deriveSyncIslandState, SYNC_ISLAND_PHASE_COUNT } from "@/lib/sync-island-state";
 import { cn } from "@/lib/utils";
-import { useModifierKeyLabel } from "@/lib/hooks/use-modifier-key";
+import { ShortcutHint } from "@/components/shortcut-hint";
 
 const accountColorByType = {
   cash: "var(--muted-foreground)",
@@ -536,7 +536,6 @@ function AppSidebarSections({
   syncNow: () => void;
   transactionCount: number;
 }) {
-  const modifierKey = useModifierKeyLabel();
   const { toggleSidebar } = useSidebar();
   const syncButtonLabel = syncStatus === "syncing"
     ? "Syncing"
@@ -626,10 +625,10 @@ function AppSidebarSections({
               >
                 <MessageCircle aria-hidden="true" className="size-4 shrink-0" />
                 <span className="flex-1 truncate text-left group-data-[collapsible=icon]:hidden">Ask a question…</span>
-                <kbd className="inline-flex items-center gap-0.5 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-2 py-0.5 font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  <span aria-hidden="true" className="text-2xs leading-none">{modifierKey}</span>
-                  <span className="text-3xs leading-none">J</span>
-                </kbd>
+                <ShortcutHint
+                  className="border-sidebar-border bg-sidebar-accent/50 group-data-[collapsible=icon]:hidden"
+                  shortcutKey="J"
+                />
               </button>
               <button
                 aria-label="Open search"
@@ -640,10 +639,10 @@ function AppSidebarSections({
               >
                 <Search aria-hidden="true" className="size-4 shrink-0" />
                 <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Search</span>
-                <kbd className="inline-flex items-center gap-0.5 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-2 py-0.5 font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  <span aria-hidden="true" className="text-2xs leading-none">{modifierKey}</span>
-                  <span className="text-3xs leading-none">K</span>
-                </kbd>
+                <ShortcutHint
+                  className="border-sidebar-border bg-sidebar-accent/50 group-data-[collapsible=icon]:hidden"
+                  shortcutKey="K"
+                />
               </button>
             </div>
             <SharedLayoutBg

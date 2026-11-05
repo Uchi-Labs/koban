@@ -82,6 +82,7 @@ import { playClose, playOpen, playSelect, playSuccess } from "@/lib/ui-sound";
 import { cn } from "@/lib/utils";
 import type { TransactionView } from "@/lib/view-models";
 import { useModifierKeyLabel } from "@/lib/hooks/use-modifier-key";
+import { ShortcutHint } from "@/components/shortcut-hint";
 
 interface TransactionEvidenceView {
   confidence: number;
@@ -2348,13 +2349,11 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
             <InputGroupText>
               {/* Pill badge inside a pill input — corner language follows the container.
                   Flex-centered spans: ⌘ and K sit on different baselines otherwise. */}
-              <kbd
+              <ShortcutHint
                 aria-label={modifierKey === "⌘" ? "Command K" : "Control K"}
-                className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-muted-foreground"
-              >
-                <span aria-hidden="true" className="text-2xs leading-none">{modifierKey}</span>
-                <span className="text-3xs leading-none">K</span>
-              </kbd>
+                className="border-border bg-muted/60"
+                shortcutKey="K"
+              />
             </InputGroupText>
           </InputGroupAddon>
         </InputGroup>
