@@ -61,6 +61,11 @@ describe("public demo", () => {
 
   it("opens only the stateless agent stream and keeps shared conversations closed", () => {
     expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant/stream")).toBe(true);
+    // A model in the visitor's own browser reads the question's prompt and the read-only ledger tools.
+    expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant/prompt")).toBe(true);
+    expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant/tools/search_transactions")).toBe(true);
+    expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant/tools/a/b")).toBe(false);
+    expect(isPublicDemoRequestAllowed("GET", "/api/v1/assistant/prompt")).toBe(false);
     expect(isPublicDemoRequestAllowed("POST", "/api/v1/assistant")).toBe(false);
     expect(isPublicDemoRequestAllowed("GET", "/api/v1/assistant")).toBe(false);
     expect(isPublicDemoRequestAllowed("GET", "/api/v1/conversations")).toBe(false);

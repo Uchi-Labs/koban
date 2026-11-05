@@ -2,19 +2,23 @@
 
 import { ExternalLink, LogOut, RefreshCw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { BrowserModelOption } from "@/components/browser-model-option";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { browserModelLabel, readBrowserModelSettings, writeBrowserModelSettings } from "@/lib/browser-llm/settings";
 import { cn } from "@/lib/utils";
 import type { ProviderStatus } from "@ai-finances/schema";
 
-type Choice = "claude" | "chatgpt" | "ollama" | "openai_compatible";
+type ServerChoice = "claude" | "chatgpt" | "ollama" | "openai_compatible";
+/** `browser` is saved in this browser only (lib/browser-llm/settings.ts), never on the server. */
+type Choice = ServerChoice | "browser";
 
 interface AiSettingsResponse {
   base_url?: string;
-  choice?: Choice | "env";
+  choice?: ServerChoice | "env";
   error?: string;
   has_api_key?: boolean;
   model?: string;
@@ -41,7 +45,8 @@ const choices: Array<{ description: string; label: string; value: Choice }> = [
   { description: "Your Claude Pro or Max plan", label: "Claude", value: "claude" },
   { description: "Your ChatGPT plan", label: "ChatGPT", value: "chatgpt" },
   { description: "A model on this machine", label: "Ollama", value: "ollama" },
-  { description: "llama.cpp, LM Studio, vLLM", label: "Local server", value: "openai_compatible" }
+  { description: "llama.cpp, LM Studio, vLLM", label: "Local server", value: "openai_compatible" },
+  { description: "WebGPU, on this device", label: "In this browser", value: "browser" }
 ];
 
 const defaultOllamaUrl = "http://127.0.0.1:11434/v1";
@@ -55,12 +60,14 @@ const claudeSourceLabels: Record<NonNullable<ClaudeStatusResponse["source"]>, st
 
 /**
  * Which model answers Ask Koban: a subscription (Claude, ChatGPT) or a model
- * running on the user's own machine (Ollama, or any OpenAI-compatible server).
+ * running on the user's own machine (Ollama, any OpenAI-compatible server, or
+ * WebGPU in this browser).
  */
 export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }) {
   const formId = useId();
   const [loaded, setLoaded] = useState(false);
   const [choice, setChoice] = useState<Choice | "env">("env");
+  const [browserEnabled, setBrowserEnabled] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -92,6 +99,10 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
       .then(([settings, claudeStatus]) => {
         if (cancelled) return;
         applySettings(settings);
+        if (readBrowserModelSettings().enabled) {
+          setBrowserEnabled(true);
+          setChoice("browser");
+        }
         setClaude(claudeStatus);
         setLoaded(true);
       })
@@ -165,7 +176,7 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
 
   const save = () =>
     run(async () => {
-      if (choice === "env") return;
+      if (choice === "env" || choice === "browser") return;
       const body = await requestJson<AiSettingsResponse>("/api/v1/ai/settings", {
         body: JSON.stringify({
           base_url: choice === "ollama" || choice === "openai_compatible" ? baseUrl : undefined,
@@ -177,6 +188,9 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
       });
       applySettings(body);
       setApiKey("");
+      // Picking a server model here also ends this browser's own model, or it would keep answering.
+      writeBrowserModelSettings({ enabled: false });
+      setBrowserEnabled(false);
     }, "Saved. Ask Koban uses this model now.");
 
   const connectSetupToken = () =>
@@ -222,6 +236,7 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
   const isLocal = choice === "ollama" || choice === "openai_compatible";
   const canSave =
     choice !== "env" &&
+    choice !== "browser" &&
     !busy &&
     (choice !== "chatgpt" || chatGptEnabled) &&
     (!isLocal || (Boolean(model.trim()) && (choice === "ollama" || Boolean(baseUrl.trim()))));
@@ -239,7 +254,7 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Model for Ask Koban">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="radiogroup" aria-label="Model for Ask Koban">
           {choices.map((option) => (
             <button
               key={option.value}
@@ -381,15 +396,21 @@ export function AskModelSettings({ chatGptEnabled }: { chatGptEnabled: boolean }
           </div>
         ) : null}
 
+        {choice === "browser" ? <BrowserModelOption onEnabledChange={setBrowserEnabled} /> : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="truncate text-xs text-muted-foreground" data-testid="ask-model-active">
-            {provider?.configured
-              ? `Active: ${provider.model ?? "model"}${provider.base_url ? ` at ${provider.base_url}` : ""}`
-              : provider?.error_message ?? ""}
+            {browserEnabled
+              ? `Active in this browser: ${browserModelLabel} on WebGPU`
+              : provider?.configured
+                ? `Active: ${provider.model ?? "model"}${provider.base_url ? ` at ${provider.base_url}` : ""}`
+                : provider?.error_message ?? ""}
           </span>
-          <Button size="sm" disabled={!canSave} onClick={save} type="button">
-            Save
-          </Button>
+          {choice === "browser" ? null : (
+            <Button size="sm" disabled={!canSave} onClick={save} type="button">
+              Save
+            </Button>
+          )}
         </div>
 
         {message ? (
@@ -435,5 +456,25 @@ function ModelField({
         </datalist>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The public demo hides the owner's model settings; a visitor can still run a
+ * model in their own browser, off until they choose the download.
+ */
+export function DemoBrowserModelSettings() {
+  return (
+    <Card size="sm" data-testid="ask-model-settings">
+      <CardHeader className="flex flex-col gap-1 border-b pb-4">
+        <h2 className="text-base font-medium">Ask Koban in your browser</h2>
+        <p className="text-sm text-muted-foreground">
+          Ask answers with the demo&apos;s model unless you run one on your own GPU here.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <BrowserModelOption />
+      </CardContent>
+    </Card>
   );
 }

@@ -26,8 +26,15 @@ import {
   getLlmEnrichmentStatusWithStorage,
   type UntrustedPromptTextBudget
 } from "@/lib/llm-enrichment";
-import { tool } from "ai";
+import { asSchema, tool } from "ai";
 import { z } from "zod";
+import {
+  agentMaxSteps,
+  createThinkTagFilter,
+  emptyModelAnswerMessage,
+  localModelMaxOutputTokens,
+  modelFailureMessage
+} from "@/lib/agent-answer";
 import { aiSdkLlmClient, isLocalLlmProvider, type LlmGenerationClient } from "@/lib/ai/provider";
 import {
   agentVisualMaxPerAnswer,
@@ -142,6 +149,8 @@ interface AssistantLocalContext {
   transactions: Transaction[];
 }
 
+export { createThinkTagFilter, emptyModelAnswerMessage } from "@/lib/agent-answer";
+
 const defaultQuestion = "Where should I focus next?";
 
 export async function answerFinanceQuestion(
@@ -198,9 +207,8 @@ export async function* streamFinanceAnswer(
       env: llmEnv,
       fetcher: options.llmFetcher,
       // A visual's HTML counts against this budget, so it is far above the
-      // reply's own ~220 words. A local reasoning model also spends it on
-      // thinking: LFM3-1.7B used all 6,000 tokens thinking on 3 of 20 questions.
-      maxOutputTokens: isLocalLlmProvider(provider) ? 16_000 : 6000,
+      // reply's own ~220 words.
+      maxOutputTokens: isLocalLlmProvider(provider) ? localModelMaxOutputTokens : 6000,
       messages: buildAssistantProseLlmMessages({
         categoryBudgets: context.categoryBudgets,
         categoryNames: context.categoryNames,
@@ -212,7 +220,7 @@ export async function* streamFinanceAnswer(
         transactions: context.transactions
       }),
       provider,
-      tools: { ...showVisualTools, ...lineItemTools, ...recurringChargeTools, ...transactionSearchTools, ...goalTools }
+      tools: assistantTools
     });
     let emittedText = false;
     let visualCount = 0;
@@ -262,77 +270,6 @@ export async function* streamFinanceAnswer(
     console.error("Finance agent model stream failed.", error instanceof Error ? error.message : error);
     yield { message: modelFailureMessage(error), type: "error" };
   }
-}
-
-export const emptyModelAnswerMessage =
-  "The model returned no answer (it may have run out of output tokens). Try again, or ask a narrower question.";
-
-function modelFailureMessage(error: unknown): string {
-  const detail = error instanceof Error ? error.message.trim() : "";
-  return detail
-    ? `The model could not answer: ${detail.slice(0, 300)}`
-    : "The model could not answer. Check the AI provider in Settings.";
-}
-
-/**
- * Drops reasoning a server streamed as text instead of a separate field: a
- * leading `<think>…</think>` block, and any stray think tag. Reasoning written
- * as untagged prose cannot be told apart from an answer and passes through.
- */
-export function createThinkTagFilter() {
-  let pending = "";
-  let state: "start" | "thinking" | "answer" = "start";
-  const stripTags = (text: string) => text.replace(/<\/?think>/g, "");
-
-  return {
-    push(text: string): string {
-      if (state === "answer") {
-        pending += text;
-        // Hold a possible partial tag at the end until the next chunk.
-        const cut = pending.lastIndexOf("<");
-        const tail = cut >= 0 ? pending.slice(cut) : "";
-        const keep = tail && ("</think>".startsWith(tail) || "<think>".startsWith(tail)) ? cut : pending.length;
-        const out = stripTags(pending.slice(0, keep));
-        pending = pending.slice(keep);
-        return out;
-      }
-
-      pending += text;
-
-      if (state === "start") {
-        const trimmed = pending.trimStart();
-
-        if (trimmed.length < "<think>".length && "<think>".startsWith(trimmed)) {
-          return "";
-        }
-
-        if (!trimmed.startsWith("<think>")) {
-          state = "answer";
-          const out = pending;
-          pending = "";
-          return this.push(out);
-        }
-
-        state = "thinking";
-      }
-
-      const end = pending.indexOf("</think>");
-
-      if (end < 0) {
-        return "";
-      }
-
-      const after = pending.slice(end + "</think>".length).replace(/^\s+/, "");
-      pending = "";
-      state = "answer";
-      return after ? this.push(after) : "";
-    },
-    flush(): string {
-      const out = state === "thinking" ? "" : stripTags(pending);
-      pending = "";
-      return out;
-    }
-  };
 }
 
 export const queryLineItemsToolName = "query_line_items";
@@ -516,6 +453,92 @@ const showVisualTools = {
     execute: async () => "Shown to the user above your reply."
   })
 };
+
+/** The ledger lookups Ask may call: reads only, each also served at `/api/v1/assistant/tools/:name`. */
+export const assistantDataTools = { ...lineItemTools, ...recurringChargeTools, ...transactionSearchTools, ...goalTools };
+
+/** Every tool Ask offers the model; show_visual is drawn by the client, so it has no route. */
+export const assistantTools = { ...showVisualTools, ...assistantDataTools };
+
+export type AssistantDataToolName = keyof typeof assistantDataTools;
+
+export function isAssistantDataToolName(name: string): name is AssistantDataToolName {
+  return Object.hasOwn(assistantDataTools, name);
+}
+
+export interface AssistantToolDefinition {
+  description: string;
+  name: string;
+  parameters: unknown;
+}
+
+export interface AssistantPrompt {
+  max_steps: number;
+  messages: Array<{ content: string; role: "system" | "user" }>;
+  meta: Extract<AgentStreamEvent, { type: "meta" }>;
+  tools: AssistantToolDefinition[];
+}
+
+/**
+ * What server Ask would send its model, for a model running in the browser:
+ * the same messages, the same tools as JSON Schema, and the meta event the
+ * answer opens with. The browser runs the model and calls the data tools
+ * back through `/api/v1/assistant/tools/:name`.
+ */
+export async function buildAssistantPrompt(rawQuestion: string, options: AssistantOptions = {}): Promise<AssistantPrompt> {
+  const context = await buildAssistantLocalContext(rawQuestion, options);
+  const tools = await Promise.all(
+    Object.entries(assistantTools).map(async ([name, definition]) => ({
+      description: typeof definition.description === "string" ? definition.description : "",
+      name,
+      parameters: await asSchema(definition.inputSchema).jsonSchema
+    }))
+  );
+
+  return {
+    max_steps: agentMaxSteps,
+    messages: buildAssistantProseLlmMessages({
+      categoryBudgets: context.categoryBudgets,
+      categoryNames: context.categoryNames,
+      localResponse: context.localResponse,
+      question: context.question,
+      semanticSummary: context.semanticSummary,
+      sourceItemCount: context.sourceItemCount,
+      sourceLinkCount: context.sourceLinkCount,
+      transactions: context.transactions
+    }),
+    meta: {
+      chart: context.localResponse.chart,
+      evidence: context.localResponse.evidence,
+      generatedAt: new Date().toISOString(),
+      insights: context.localResponse.insights,
+      metrics: context.localResponse.metrics,
+      mode: "llm_finance_agent",
+      question: context.question,
+      type: "meta"
+    },
+    tools
+  };
+}
+
+export type AssistantToolRun = { ok: true; result: unknown } | { error: string; ok: false };
+
+/** Runs one data tool with input checked against the schema the model was given. */
+export async function runAssistantDataTool(name: AssistantDataToolName, input: unknown): Promise<AssistantToolRun> {
+  const definition = assistantDataTools[name];
+  const parsed = (definition.inputSchema as z.ZodTypeAny).safeParse(input ?? {});
+
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; "),
+      ok: false
+    };
+  }
+
+  // These tools read the ledger from their input alone and never look at the call options.
+  const execute = definition.execute as unknown as (input: unknown) => Promise<unknown>;
+  return { ok: true, result: await execute(parsed.data) };
+}
 
 async function buildAssistantLocalContext(
   rawQuestion: string,
