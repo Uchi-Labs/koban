@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listTransactionLineItems } from "@/lib/db/finance-db";
-import { lineToApi, sourceItemRefToApi } from "@/lib/line-items-api";
+import { lineSplitToApi, linesToApi, sourceItemRefToApi } from "@/lib/line-items-api";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tra
     data: groups.map((group) => ({
       object: "itemized_source",
       source_item: sourceItemRefToApi(group.sourceItem),
-      lines: group.lines.map(lineToApi)
+      lines: linesToApi(group.lines),
+      split: lineSplitToApi(group.lines)
     })),
     has_more: false
   });

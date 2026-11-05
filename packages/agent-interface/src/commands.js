@@ -25,6 +25,7 @@ const commands = [
   command("transactions evidence", "koban_list_transaction_evidence", ["transaction_id"]),
   command("transactions items", "koban_list_transaction_line_items", ["transaction_id"]),
   command("items search", "koban_search_line_items", ["q"]),
+  command("items split", "koban_split_line_item", ["source_item_id", "position"]),
   command("recurrings list", "koban_list_recurrings"),
   command("evidence list", "koban_list_evidence"),
   command("evidence attach", "koban_attach_transaction_evidence", ["transaction_id", "source_item_id"]),

@@ -119,7 +119,7 @@ interface TransactionEvidenceApiResponse {
       currency?: string | null;
       id: string;
       kind: string;
-      lines?: Array<{ amount: number | null; name: string; quantity: number | null; sku: string | null; unit_price: number | null }> | null;
+      lines?: Array<{ amount: number | null; category_id?: string | null; name: string; quantity: number | null; sku: string | null; unit_price: number | null }> | null;
       merchant_name?: string;
       occurred_at?: string;
       summary: string;
@@ -3576,7 +3576,7 @@ function TransactionInspectorEvidence({ model, transaction }: { model: Transacti
               </span>
               <p className="mt-0.5 text-xs text-muted-foreground">{item.sourceItem.summary}</p>
               {item.sourceItem.lines?.length ? (
-                <ItemizedLines className="mt-1.5" currency={item.sourceItem.currency} lines={item.sourceItem.lines} max={8} />
+                <ItemizedLines categories={model.categories} className="mt-1.5" currency={item.sourceItem.currency} lines={item.sourceItem.lines} max={8} />
               ) : null}
             </div>
             {item.status === "suggested" ? (
@@ -4118,7 +4118,8 @@ function evidenceFromApi(item: TransactionEvidenceApiResponse["data"][number]): 
         ...(line.quantity === null ? {} : { quantity: line.quantity }),
         ...(line.unit_price === null ? {} : { unitPrice: line.unit_price }),
         ...(line.amount === null ? {} : { amount: line.amount }),
-        ...(line.sku === null ? {} : { sku: line.sku })
+        ...(line.sku === null ? {} : { sku: line.sku }),
+        ...(line.category_id ? { categoryId: line.category_id } : {})
       })),
       merchantName: item.source_item.merchant_name,
       occurredAt: item.source_item.occurred_at,

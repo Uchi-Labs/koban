@@ -31,6 +31,17 @@ export const appCategories: Category[] = [
     budgetAmount: 1200,
     sortOrder: 30
   },
+  // Groceries and Household were split out of Food & Dining and Shopping. They
+  // are added to existing ledgers without moving any transaction into them.
+  {
+    archived: false,
+    color: categoryPaletteColor(8),
+    emoji: "🛒",
+    id: "cat_groceries",
+    icon: "shopping-cart",
+    name: "Groceries",
+    sortOrder: 32
+  },
   {
     archived: false,
     color: categoryPaletteColor(1),
@@ -60,6 +71,15 @@ export const appCategories: Category[] = [
     name: "Shopping",
     budgetAmount: 900,
     sortOrder: 60
+  },
+  {
+    archived: false,
+    color: categoryPaletteColor(4),
+    emoji: "🧺",
+    id: "cat_household",
+    icon: "home",
+    name: "Household",
+    sortOrder: 62
   },
   {
     archived: false,

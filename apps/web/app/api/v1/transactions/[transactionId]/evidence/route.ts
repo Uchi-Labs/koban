@@ -2,7 +2,7 @@ import type { EvidenceRelationship, TransactionEvidenceLink } from "@ai-finances
 import { NextResponse } from "next/server";
 import { readJsonObject } from "@/lib/api-request";
 import { createTransactionEvidenceLink, listTransactionEvidence, type TransactionEvidenceItem } from "@/lib/db/finance-db";
-import { lineToApi } from "@/lib/line-items-api";
+import { linesToApi } from "@/lib/line-items-api";
 
 export const runtime = "nodejs";
 
@@ -90,7 +90,7 @@ function evidenceToApi(item: TransactionEvidenceItem) {
       merchant_name: item.sourceItem.merchantName,
       amount: item.sourceItem.amount,
       currency: item.sourceItem.currency,
-      lines: item.sourceItem.lines ? item.sourceItem.lines.map(lineToApi) : null
+      lines: item.sourceItem.lines ? linesToApi(item.sourceItem.lines) : null
     },
     relationship: item.relationship,
     confidence: item.confidence,

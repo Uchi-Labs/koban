@@ -1103,6 +1103,7 @@ export async function resetLocalAppData(): Promise<LocalAppDataResetSummary> {
       await db.query("DELETE FROM semantic_documents");
       await db.query("DELETE FROM transaction_evidence_links");
       await db.query("DELETE FROM source_items");
+      await db.query("DELETE FROM line_item_categories");
       await db.query("DELETE FROM source_sync_runs");
       await db.query("DELETE FROM external_sources");
       await db.query("DELETE FROM enrichment_suggestions");
@@ -1200,8 +1201,8 @@ export async function updateCategory(categoryId: string, input: CategoryUpdateIn
 }
 
 const seededCategoryIds = new Set([
-  "cat_income", "cat_housing", "cat_food", "cat_transportation", "cat_software",
-  "cat_shopping", "cat_travel", "cat_transfer", "cat_other"
+  "cat_income", "cat_housing", "cat_food", "cat_groceries", "cat_transportation", "cat_software",
+  "cat_shopping", "cat_household", "cat_travel", "cat_transfer", "cat_other"
 ]);
 
 export async function deleteCustomCategoryAndReassign(categoryId: string, replacementCategoryId: string): Promise<boolean> {
@@ -6029,6 +6030,17 @@ async function runMigrations(db: FinanceDb): Promise<void> {
       PRIMARY KEY (source_item_id, position)
     );
     CREATE INDEX IF NOT EXISTS source_item_lines_name_idx ON source_item_lines(lower(name));
+    -- User overlay splitting a receipt's lines across categories. Kept apart from
+    -- source_item_lines, which a re-import replaces, and keyed by the line's name
+    -- as well as its position so a reordered receipt does not move a split.
+    CREATE TABLE IF NOT EXISTS line_item_categories (
+      source_item_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      line_name TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (source_item_id, position)
+    );
     CREATE INDEX IF NOT EXISTS app_sync_runs_started_idx ON app_sync_runs(started_at DESC);
     CREATE INDEX IF NOT EXISTS sync_schedules_next_run_idx ON sync_schedules(enabled, next_run_at);
     CREATE INDEX IF NOT EXISTS transaction_evidence_links_transaction_idx ON transaction_evidence_links(transaction_id);
@@ -6355,7 +6367,11 @@ async function ensureCategoryRegistrySeeded(db: FinanceDb): Promise<void> {
         sort_order,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, FALSE, $5, $6, $6)
+      )
+      SELECT $1::text, $2::text, $3::text, $4::text, FALSE, $5::integer, $6::text, $6::text
+      -- A ledger that already has its own category by this name keeps it; a
+      -- second "Groceries" would split the user's history in two.
+      WHERE NOT EXISTS (SELECT 1 FROM categories WHERE lower(name) = lower($2::text) AND id <> $1::text)
       ON CONFLICT (id) DO NOTHING`,
       [category.id, category.name, category.emoji, category.color, category.sortOrder, timestamp]
     );
@@ -6852,19 +6868,70 @@ async function readSourceItemLines(db: FinanceDb, sourceItemIds: string[]): Prom
   if (sourceItemIds.length === 0) {
     return byItem;
   }
-  const result = await db.query<SourceItemLineRow>(
-    `SELECT source_item_id, position, name, quantity, unit_price_minor, amount_minor, sku
-     FROM source_item_lines
-     WHERE source_item_id = ANY($1::text[])
-     ORDER BY source_item_id, position`,
+  const result = await db.query<SourceItemLineRow & { category_id: string | null }>(
+    `SELECT l.source_item_id, l.position, l.name, l.quantity, l.unit_price_minor, l.amount_minor, l.sku, c.category_id
+     FROM source_item_lines l
+     LEFT JOIN line_item_categories c
+       ON c.source_item_id = l.source_item_id AND c.position = l.position AND c.line_name = l.name
+     WHERE l.source_item_id = ANY($1::text[])
+     ORDER BY l.source_item_id, l.position`,
     [sourceItemIds]
   );
   for (const row of result.rows) {
     const list = byItem.get(row.source_item_id) ?? [];
-    list.push(sourceItemLineFromRow(row));
+    const line = sourceItemLineFromRow(row);
+    list.push(row.category_id ? { ...line, categoryId: row.category_id } : line);
     byItem.set(row.source_item_id, list);
   }
   return byItem;
+}
+
+export class LineItemCategoryError extends Error {
+  readonly status = 404;
+}
+
+/**
+ * Files one receipt line under a category (a split of the receipt), or clears
+ * it with `null`. Returns the receipt's lines after the change.
+ */
+export async function setSourceItemLineCategory(
+  sourceItemId: string,
+  position: number,
+  categoryId: string | null
+): Promise<SourceItemLine[]> {
+  return enqueueDbWrite(async () => {
+    const db = await getFinanceDb();
+    const line = await db.query<{ name: string }>(
+      "SELECT name FROM source_item_lines WHERE source_item_id = $1 AND position = $2",
+      [sourceItemId, position]
+    );
+    const lineName = line.rows[0]?.name;
+
+    if (lineName === undefined) {
+      throw new LineItemCategoryError(`No line ${position} on source item ${sourceItemId}.`);
+    }
+
+    if (categoryId === null) {
+      await db.query("DELETE FROM line_item_categories WHERE source_item_id = $1 AND position = $2", [sourceItemId, position]);
+    } else {
+      await ensureCategoryRegistrySeeded(db);
+      const category = await db.query("SELECT 1 FROM categories WHERE id = $1", [categoryId]);
+
+      if (category.rows.length === 0) {
+        throw new LineItemCategoryError(`No category ${categoryId}.`);
+      }
+
+      await db.query(
+        `INSERT INTO line_item_categories (source_item_id, position, line_name, category_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (source_item_id, position)
+         DO UPDATE SET line_name = EXCLUDED.line_name, category_id = EXCLUDED.category_id, updated_at = EXCLUDED.updated_at`,
+        [sourceItemId, position, lineName, categoryId, new Date().toISOString()]
+      );
+    }
+
+    return (await readSourceItemLines(db, [sourceItemId])).get(sourceItemId) ?? [];
+  });
 }
 
 /** A line's price paid: its stated amount, else quantity x unit price. */

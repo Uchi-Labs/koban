@@ -158,16 +158,17 @@ async function resetPreviousDemoRows(database: pg.Pool): Promise<void> {
       sync_run_items, sync_runs, account_balance_snapshots, investment_positions,
       transaction_evidence_links, enrichment_suggestions, transactions, accounts,
       provider_connections, financial_goals, agent_conversation_turns, agent_conversations,
-      transaction_rules, semantic_embeddings, semantic_documents, source_items,
+      transaction_rules, semantic_embeddings, semantic_documents, source_items, line_item_categories,
       source_sync_runs, external_sources, app_sync_runs, sync_schedules, tag_registry,
       "session", apikey, passkey, "twoFactor", verification, "account", "user"
       CASCADE`);
     await database.query(`DELETE FROM categories WHERE id NOT IN (
-      'cat_income', 'cat_housing', 'cat_food', 'cat_transportation', 'cat_software',
-      'cat_shopping', 'cat_travel', 'cat_transfer', 'cat_other'
+      'cat_income', 'cat_housing', 'cat_food', 'cat_groceries', 'cat_transportation', 'cat_software',
+      'cat_shopping', 'cat_household', 'cat_travel', 'cat_transfer', 'cat_other'
     )`);
-    // The agent's model sign-in lives here too and must survive every reseed.
-    await database.query(`DELETE FROM sync_state WHERE key <> 'demo_seed_marker' AND key NOT LIKE 'chatgpt_oauth%'`);
+    // The agent's model sign-in and model choice live here too and must survive every reseed.
+    await database.query(`DELETE FROM sync_state WHERE key <> 'demo_seed_marker'
+      AND key NOT LIKE 'chatgpt_oauth%' AND key NOT LIKE 'claude_oauth%' AND key <> 'llm_provider_settings_v1'`);
     await database.query("COMMIT");
   } catch (error) {
     await database.query("ROLLBACK");
@@ -331,6 +332,9 @@ async function seedReceipts(financeDb: typeof import("@/lib/db/finance-db"), dat
   await financeDb.clearSourceItemEvidenceLinks(sources.flatMap((source) => source.items.map((item) => item.id)));
   for (const link of links) {
     await financeDb.createTransactionEvidenceLink(link);
+  }
+  for (const split of dataset.receipts.lineCategories) {
+    await financeDb.setSourceItemLineCategory(split.sourceItemId, split.position, split.categoryId);
   }
 }
 

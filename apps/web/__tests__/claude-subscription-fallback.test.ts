@@ -130,10 +130,15 @@ describe("Claude subscription fallback status", () => {
 
   it("uses Haiku for simple work and Sonnet for reasoning by default", () => {
     expect(getLlmEnrichmentStatus(fallbackEnv, "simple").fallback).toEqual({
-      model: "haiku",
+      model: "claude-haiku-5-5",
       provider: "claude_subscription"
     });
-    expect(getLlmEnrichmentStatus(fallbackEnv, "reasoning").fallback?.model).toBe("sonnet");
+    expect(getLlmEnrichmentStatus(fallbackEnv, "reasoning").fallback?.model).toBe("claude-sonnet-5-5");
+  });
+
+  it("resolves the CLI-era short names to API model ids", () => {
+    expect(getLlmEnrichmentStatus({ ...fallbackEnv, AI_FINANCES_CLAUDE_REASONING_MODEL: "opus" }, "reasoning").fallback?.model)
+      .toBe("claude-opus-5-5");
   });
 
   it("honors configured Claude models", () => {
@@ -160,11 +165,11 @@ describe("Claude subscription as the chosen provider", () => {
       baseUrl: "https://api.anthropic.com",
       configured: true,
       credentialSource: "claude_subscription",
-      model: "haiku",
+      model: "claude-haiku-5-5",
       provider: "claude_subscription",
       timeoutMs: 90_000
     });
-    expect(getLlmEnrichmentStatus(claudeEnv, "reasoning").model).toBe("sonnet");
+    expect(getLlmEnrichmentStatus(claudeEnv, "reasoning").model).toBe("claude-sonnet-5-5");
   });
 
   it("sends calls straight to Claude without sampling overrides", async () => {
@@ -177,7 +182,7 @@ describe("Claude subscription as the chosen provider", () => {
       provider: getLlmEnrichmentStatus(claudeEnv, "simple")
     });
 
-    expect(createClaudeSubscriptionLanguageModel).toHaveBeenCalledWith("haiku", claudeEnv);
+    expect(createClaudeSubscriptionLanguageModel).toHaveBeenCalledWith("claude-haiku-5-5", claudeEnv);
     expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
     expect(aiMocks.generateText.mock.calls[0][0]).not.toHaveProperty("temperature");
   });
