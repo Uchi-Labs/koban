@@ -68,6 +68,25 @@ describe("embeddings", () => {
     expect(calls[1]?.input).toHaveLength(1);
   });
 
+  it("aborts a hanging Voyage call at the timeout", async () => {
+    process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
+    process.env.VOYAGE_API_KEY = "test-voyage-key";
+    let aborted = false;
+
+    setEmbeddingFetchForTests((_input, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+        reject(init.signal?.reason);
+      });
+    }));
+
+    await expect(embedTexts(["hanging"], { timeoutMs: 50 })).rejects.toMatchObject({
+      code: "timeout",
+      name: "EmbeddingProviderError"
+    });
+    expect(aborted).toBe(true);
+  });
+
   it("retries a Voyage 429 once before succeeding", async () => {
     process.env.AI_FINANCES_IGNORE_WORKSPACE_ENV = "1";
     process.env.VOYAGE_API_KEY = "test-voyage-key";

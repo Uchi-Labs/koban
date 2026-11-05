@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api-error";
+import { errorResponse, syncInProgressResponse } from "@/lib/api-error";
 import { readOptionalJsonObject } from "@/lib/api-request";
 import { appSyncRunRecordToPayload } from "@/lib/app-sync-runs";
 import { runSimpleFinSync } from "@/lib/app-sync-service";
+import { appSyncScheduleId } from "@/lib/db/finance-db";
+import { runExclusiveSync } from "@/lib/sync-schedule-coordinator";
 import { serializeSimpleFinStatus } from "@/lib/simplefin-api";
 
 export const runtime = "nodejs";
@@ -15,7 +18,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { run, simplefin } = await runSimpleFinSync();
+    const result = await runExclusiveSync(
+      { claimedBy: `simplefin-sync-api:${process.pid}:${randomUUID()}`, scheduleIds: [appSyncScheduleId] },
+      () => runSimpleFinSync()
+    );
+
+    if (result.status === "skipped") {
+      return syncInProgressResponse();
+    }
+
+    const { run, simplefin } = result.value;
 
     return NextResponse.json({
       object: "simplefin_sync_run",

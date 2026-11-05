@@ -1,6 +1,15 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
-import { isInDbWriteScope } from "@/lib/db/db-write-context";
+import { currentDbWriteScope, isInDbWriteScope, type DbWriteScope } from "@/lib/db/db-write-context";
 import type { FinanceDbDriver, FinanceDbQueryResult } from "@/lib/db/finance-db-driver";
+
+export class PgTransactionTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `Postgres transaction exceeded ${timeoutMs}ms and was rolled back; the rest of this write was refused.`
+    );
+    this.name = "PgTransactionTimeoutError";
+  }
+}
 
 export class PgFinanceDbDriver implements FinanceDbDriver {
   readonly dialect = "postgres" as const;
@@ -16,6 +25,14 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   // trusting that this state is always exited cleanly.
   private transactionOutsideWriteScope = false;
   private transactionWatchdog: ReturnType<typeof setTimeout> | null = null;
+  // The queued write that owns the open transaction. When the watchdog rolls
+  // the transaction back it marks this scope, and every later statement from
+  // that write fails instead of autocommitting on the pool.
+  private transactionScope: DbWriteScope | null = null;
+  // Same guard for a legacy transaction opened outside the write queue. Its
+  // statements cannot be told apart from unrelated reads, so only its closing
+  // COMMIT is refused.
+  private legacyTransactionTimeout: PgTransactionTimeoutError | null = null;
 
   // A transaction opened outside the write queue captures every query in the
   // process, so it gets the tight bound. A queued one only blocks other writes
@@ -38,6 +55,7 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
     const client = this.transactionClient;
     this.transactionClient = null;
     this.transactionOutsideWriteScope = false;
+    this.transactionScope = null;
 
     if (client) {
       try {
@@ -57,6 +75,7 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   }
 
   async query<T>(sql: string, params?: readonly unknown[]): Promise<FinanceDbQueryResult<T>> {
+    this.assertWriteNotTimedOut();
     const result = this.shouldUseTransactionClient()
       ? await this.transactionClient!.query<QueryResultRow>(sql, params ? [...params] : undefined)
       : await this.pool.query<QueryResultRow>(sql, params ? [...params] : undefined);
@@ -83,6 +102,13 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
     return this.transactionOutsideWriteScope || isInDbWriteScope();
   }
 
+  private assertWriteNotTimedOut(): void {
+    const timedOut = currentDbWriteScope()?.abortedTransaction;
+    if (timedOut) {
+      throw timedOut;
+    }
+  }
+
   /**
    * Bound how long ANY transaction can hold the shared client.
    *
@@ -96,6 +122,8 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
    *
    * A rollback is always safe (it is the absence of a partial commit), so the
    * worst case here is one lost transaction, logged, instead of a dead process.
+   * The owning write is marked so its remaining statements, including COMMIT,
+   * fail rather than run outside the transaction.
    */
   private armTransactionWatchdog(client: PoolClient, outsideWriteScope: boolean): void {
     this.clearTransactionWatchdog();
@@ -113,9 +141,17 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
         `[pg-driver] Transaction (${outsideWriteScope ? "outside" : "inside"} the write queue) exceeded ${timeoutMs}ms; rolling back and releasing so writes are not wedged.`
       );
 
+      const timeoutError = new PgTransactionTimeoutError(timeoutMs);
+      if (this.transactionScope) {
+        this.transactionScope.abortedTransaction = timeoutError;
+      } else if (outsideWriteScope) {
+        this.legacyTransactionTimeout = timeoutError;
+      }
+
       this.transactionWatchdog = null;
       this.transactionClient = null;
       this.transactionOutsideWriteScope = false;
+      this.transactionScope = null;
 
       void client
         .query("ROLLBACK")
@@ -137,6 +173,15 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
   private async execStatement(sql: string): Promise<void> {
     const transactionCommand = sql.trim().toUpperCase();
 
+    if (currentDbWriteScope()?.abortedTransaction) {
+      // The watchdog already rolled this write's transaction back; a ROLLBACK
+      // from its error path is a no-op, anything else is refused.
+      if (transactionCommand === "ROLLBACK") {
+        return;
+      }
+      this.assertWriteNotTimedOut();
+    }
+
     if (transactionCommand === "BEGIN") {
       if (this.transactionClient) {
         throw new Error("A Postgres transaction is already active.");
@@ -147,6 +192,8 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
         await client.query(sql);
         this.transactionClient = client;
         this.transactionOutsideWriteScope = !isInDbWriteScope();
+        this.transactionScope = currentDbWriteScope() ?? null;
+        this.legacyTransactionTimeout = null;
         if (this.transactionOutsideWriteScope) {
           // Carry a stack: this state captures every query in the process, so
           // when it shows up the owning call site is the only thing worth knowing.
@@ -168,6 +215,14 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
       const client = this.transactionClient;
 
       if (!client) {
+        const legacyTimeout = isInDbWriteScope() ? null : this.legacyTransactionTimeout;
+        if (legacyTimeout) {
+          this.legacyTransactionTimeout = null;
+          if (transactionCommand === "COMMIT") {
+            throw legacyTimeout;
+          }
+          return;
+        }
         await this.pool.query(sql);
         return;
       }
@@ -178,6 +233,7 @@ export class PgFinanceDbDriver implements FinanceDbDriver {
         this.clearTransactionWatchdog();
         this.transactionClient = null;
         this.transactionOutsideWriteScope = false;
+        this.transactionScope = null;
         client.release();
       }
       return;

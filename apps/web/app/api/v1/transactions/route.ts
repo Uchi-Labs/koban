@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { unknownCursorResponse } from "@/lib/api-error";
 import {
   filterTransactionsForList,
   paginateById,
@@ -37,7 +38,12 @@ export async function GET(request: NextRequest) {
     },
     lookups
   );
-  const page = paginateById(rows, { limit, startingAfter });
+  let page: ReturnType<typeof paginateById<(typeof rows)[number]>>;
+  try {
+    page = paginateById(rows, { limit, startingAfter });
+  } catch (error) {
+    return unknownCursorResponse(error) ?? Promise.reject(error);
+  }
 
   return NextResponse.json({
     ...page,

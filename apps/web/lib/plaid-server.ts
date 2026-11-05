@@ -23,7 +23,7 @@ import {
   listProviderConnections,
   readSyncStateValue,
   replacePlaidLedgerSnapshot,
-  writeSyncStateValue
+  withLockedSyncStateValue
 } from "@/lib/db/finance-db";
 import { PlaidSyncError } from "@/lib/effect/sync-errors";
 import { runServerEffect } from "@/lib/effect/runtime";
@@ -301,7 +301,6 @@ export async function exchangePlaidPublicToken(
     throw new PlaidSetupError("Plaid did not return an access token.", 502);
   }
 
-  const items = await readStoredPlaidItems();
   const item: StoredPlaidItem = {
     accessToken,
     institutionId: cleanString(input.institutionId),
@@ -309,9 +308,8 @@ export async function exchangePlaidPublicToken(
     itemId,
     linkedAt: new Date().toISOString()
   };
-  const nextItems = [...items.filter((candidate) => candidate.itemId !== itemId), item];
 
-  await writeStoredPlaidItems(nextItems);
+  await mutateStoredPlaidItems((items) => [...items.filter((candidate) => candidate.itemId !== itemId), item]);
 
   const status = await getPlaidSetupStatus();
   const summary = status.items.find((candidate) => candidate.id === itemId) ?? {
@@ -387,22 +385,44 @@ export function encodeStoredPlaidItems(items: StoredPlaidItem[]): string {
   return Buffer.from(JSON.stringify(items), "utf8").toString("base64");
 }
 
+/**
+ * The stored Plaid item list holds every linked bank's access token. A value
+ * that does not decode is an error, never an empty list: an empty list would
+ * be written back by the next link or sync and the tokens would be lost.
+ */
+export class PlaidStoredItemsCorruptError extends Error {
+  constructor(reason: string) {
+    super(
+      `Stored Plaid items (sync_state ${plaidItemsStateKey}) could not be decoded: ${reason}. ` +
+        "The value was left untouched; restore it from a backup or relink the banks."
+    );
+    this.name = "PlaidStoredItemsCorruptError";
+  }
+}
+
 export function parseStoredPlaidItems(value: string | undefined): StoredPlaidItem[] {
   if (!value) {
     return [];
   }
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.flatMap((item) => normalizeStoredPlaidItem(item));
+    parsed = JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
   } catch {
-    return [];
+    throw new PlaidStoredItemsCorruptError("not base64-encoded JSON");
   }
+
+  if (!Array.isArray(parsed)) {
+    throw new PlaidStoredItemsCorruptError("not a list");
+  }
+
+  return parsed.map((item, index) => {
+    const [normalized] = normalizeStoredPlaidItem(item);
+    if (!normalized) {
+      throw new PlaidStoredItemsCorruptError(`entry ${index} has no item id or access token`);
+    }
+    return normalized;
+  });
 }
 
 export async function readStoredPlaidItems(): Promise<StoredPlaidItem[]> {
@@ -413,6 +433,45 @@ export async function readStoredPlaidItems(): Promise<StoredPlaidItem[]> {
   }
 
   return seedStoredPlaidItemsFromEnv();
+}
+
+/**
+ * The one write path for the stored item list. The read, the change and the
+ * write happen under the sync_state row lock inside the DB write queue, so a
+ * bank linked during a sync and the sync's cursor update both survive.
+ */
+async function mutateStoredPlaidItems(
+  mutate: (items: StoredPlaidItem[]) => StoredPlaidItem[]
+): Promise<StoredPlaidItem[]> {
+  return withLockedSyncStateValue(plaidItemsStateKey, async (value) => {
+    const current = value === undefined ? parseSeedPlaidItemsFromEnv() : parseStoredPlaidItems(value);
+    const next = dedupeByItemId(mutate(current));
+    return { result: next, value: encodeStoredPlaidItems(next) };
+  });
+}
+
+/**
+ * Apply a sync's per-item results to the list as it is now. Items linked while
+ * the sync ran are kept, items removed meanwhile are not brought back, and an
+ * item whose access token changed meanwhile keeps the newer token and state.
+ */
+export function mergeSyncedPlaidItems(current: StoredPlaidItem[], synced: StoredPlaidItem[]): StoredPlaidItem[] {
+  const syncedById = new Map(synced.map((item) => [item.itemId, item]));
+
+  return current.map((item) => {
+    const result = syncedById.get(item.itemId);
+    if (!result || result.accessToken !== item.accessToken) {
+      return item;
+    }
+
+    return {
+      ...item,
+      errorMessage: result.errorMessage,
+      institutionName: result.institutionName,
+      lastSyncedAt: result.lastSyncedAt,
+      nextCursor: result.nextCursor
+    };
+  });
 }
 
 export function providerConnectionIdForPlaid(itemId: string): string {
@@ -601,11 +660,13 @@ async function syncPlaidDataInternal(client: PlaidApiClient = createPlaidClient(
     removedTransactionIds,
     startedAt,
     successfulProviderConnectionIds,
-    syncState: {
-      [plaidItemsStateKey]: encodeStoredPlaidItems(nextItems)
-    },
+    syncState: {},
     transactions: dedupeById(transactions).sort((left, right) => right.date.localeCompare(left.date))
   });
+
+  // Cursors are saved after the ledger write. If this step fails the next sync
+  // replays from the old cursor, which Plaid's transactions/sync allows.
+  await mutateStoredPlaidItems((current) => mergeSyncedPlaidItems(current, nextItems));
 
   invalidateShellDataCache();
 
@@ -698,20 +759,17 @@ function removedTransactionIdForPlaid(transaction: RemovedTransaction): string {
 }
 
 async function seedStoredPlaidItemsFromEnv(): Promise<StoredPlaidItem[]> {
-  const env = readWorkspaceEnv();
-  const encoded = cleanString(env.PLAID_ITEMS_B64);
-
-  if (!encoded) {
+  if (parseSeedPlaidItemsFromEnv().length === 0) {
     return [];
   }
 
-  const items = parseSeedPlaidItems(encoded);
+  // Seeds only while nothing is stored; a list written meanwhile wins.
+  return mutateStoredPlaidItems((items) => items);
+}
 
-  if (items.length > 0) {
-    await writeStoredPlaidItems(items);
-  }
-
-  return items;
+function parseSeedPlaidItemsFromEnv(): StoredPlaidItem[] {
+  const encoded = cleanString(readWorkspaceEnv().PLAID_ITEMS_B64);
+  return encoded ? parseSeedPlaidItems(encoded) : [];
 }
 
 function parseSeedPlaidItems(value: string): StoredPlaidItem[] {
@@ -748,10 +806,6 @@ function parseSeedPlaidItems(value: string): StoredPlaidItem[] {
   } catch {
     return [];
   }
-}
-
-async function writeStoredPlaidItems(items: StoredPlaidItem[]): Promise<void> {
-  await writeSyncStateValue(plaidItemsStateKey, encodeStoredPlaidItems(dedupeByItemId(items)));
 }
 
 function normalizeStoredPlaidItem(value: unknown): StoredPlaidItem[] {

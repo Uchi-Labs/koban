@@ -5,7 +5,7 @@ import type { Pool } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isInDbWriteScope, runInDbWriteScope } from "@/lib/db/db-write-context";
 import { enqueueDbWriteForTests } from "@/lib/db/finance-db";
-import { PgFinanceDbDriver } from "@/lib/db/pg-driver";
+import { PgFinanceDbDriver, PgTransactionTimeoutError } from "@/lib/db/pg-driver";
 
 function createDriverHarness() {
   const clientQuery = vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [] }));
@@ -116,6 +116,71 @@ describe("Postgres DB write scope routing", () => {
 
     expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "COMMIT"]);
     expect(poolQuery).toHaveBeenCalledWith("SELECT after_commit", undefined);
+  });
+});
+
+describe("Postgres transaction watchdog", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rolls back a timed-out queued transaction and refuses the rest of that write", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { clientQuery, clientRelease, driver, poolQuery } = createDriverHarness();
+
+    const write = runInDbWriteScope(async () => {
+      await driver.exec("BEGIN");
+      await driver.query("INSERT INTO rows VALUES (1)");
+      await vi.advanceTimersByTimeAsync(120_001);
+      try {
+        await driver.query("INSERT INTO rows VALUES (2)");
+        await driver.exec("COMMIT");
+      } catch (error) {
+        await driver.exec("ROLLBACK");
+        throw error;
+      }
+    });
+
+    await expect(write).rejects.toThrow(PgTransactionTimeoutError);
+    await vi.waitFor(() => expect(clientRelease).toHaveBeenCalledTimes(1));
+    expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "INSERT INTO rows VALUES (1)", "ROLLBACK"]);
+    expect(poolQuery).not.toHaveBeenCalled();
+  });
+
+  it("refuses COMMIT from a timed-out write even when no other statement follows", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { driver, poolQuery } = createDriverHarness();
+
+    const write = runInDbWriteScope(async () => {
+      await driver.exec("BEGIN");
+      await vi.advanceTimersByTimeAsync(120_001);
+      await driver.exec("COMMIT");
+    });
+
+    await expect(write).rejects.toThrow(PgTransactionTimeoutError);
+    expect(poolQuery).not.toHaveBeenCalledWith("COMMIT", undefined);
+  });
+
+  it("lets the next queued write run normally after a timeout", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { clientQuery, driver } = createDriverHarness();
+
+    await runInDbWriteScope(async () => {
+      await driver.exec("BEGIN");
+      await vi.advanceTimersByTimeAsync(120_001);
+    });
+    clientQuery.mockClear();
+
+    await runInDbWriteScope(async () => {
+      await driver.exec("BEGIN");
+      await driver.query("SELECT next_write");
+      await driver.exec("COMMIT");
+    });
+
+    expect(clientQuery.mock.calls.map(([sql]) => sql)).toEqual(["BEGIN", "SELECT next_write", "COMMIT"]);
   });
 });
 

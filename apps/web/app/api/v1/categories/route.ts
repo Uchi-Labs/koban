@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api-error";
+import { errorResponse, unknownCursorResponse } from "@/lib/api-error";
 import { readJsonObject } from "@/lib/api-request";
 import { applyBudgetOverrides, getCategoryBudgetOverrides, setCategoryBudgetOverride } from "@/lib/category-budgets";
 import { resolveCategoryEmoji } from "@/lib/category-suggestions";
@@ -24,7 +24,11 @@ export async function GET(request: NextRequest) {
     .sort((left, right) => left.category.sortOrder - right.category.sortOrder);
   const serialized = rows.map((row) => serializeCategory(row.category, row.transactionCount, row.spending));
 
-  return NextResponse.json(paginateById(serialized, { limit, startingAfter }));
+  try {
+    return NextResponse.json(paginateById(serialized, { limit, startingAfter }));
+  } catch (error) {
+    return unknownCursorResponse(error) ?? Promise.reject(error);
+  }
 }
 
 export async function POST(request: NextRequest) {

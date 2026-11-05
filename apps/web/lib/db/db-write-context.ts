@@ -18,17 +18,32 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // Same failure mode and same fix as the duplicated PGlite handle in
 // finance-db.ts — see `getFinanceDbState`.
 const dbWriteContextGlobal = globalThis as typeof globalThis & {
-  __aiFinancesDbWriteScope?: AsyncLocalStorage<true>;
+  __aiFinancesDbWriteScope?: AsyncLocalStorage<DbWriteScope>;
 };
 
-function getDbWriteScope(): AsyncLocalStorage<true> {
-  return (dbWriteContextGlobal.__aiFinancesDbWriteScope ??= new AsyncLocalStorage<true>());
+/**
+ * Per-operation state for one queued write. The pg driver marks it when the
+ * operation's transaction is rolled back by the watchdog, so the rest of that
+ * operation fails instead of running as autocommit statements.
+ */
+export interface DbWriteScope {
+  abortedTransaction?: Error;
+}
+
+function getDbWriteScope(): AsyncLocalStorage<DbWriteScope> {
+  return (dbWriteContextGlobal.__aiFinancesDbWriteScope ??= new AsyncLocalStorage<DbWriteScope>());
 }
 
 export function runInDbWriteScope<T>(operation: () => Promise<T>): Promise<T> {
-  return getDbWriteScope().run(true, operation);
+  return getDbWriteScope().run({}, operation);
 }
 
 export function isInDbWriteScope(): boolean {
-  return getDbWriteScope().getStore() === true;
+  return getDbWriteScope().getStore() !== undefined;
+}
+
+export function currentDbWriteScope(): DbWriteScope | undefined {
+  const store = getDbWriteScope().getStore();
+  // A store left by an older module version during dev reload may not be an object.
+  return typeof store === "object" ? store : undefined;
 }

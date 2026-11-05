@@ -41,6 +41,21 @@ describe("auth middleware", () => {
     }
   );
 
+  it("answers 404 in the public demo for an API read outside the allowlist", async () => {
+    process.env.KOBAN_PUBLIC_DEMO = "1";
+    try {
+      const verify = await middleware(createRequest("/api/v1/mail-accounts/icloud_1/verify"));
+      expect(verify.status).toBe(404);
+      expect(verify.headers.get("x-middleware-next")).toBeNull();
+
+      const transactions = await middleware(createRequest("/api/v1/transactions"));
+      expect(transactions.status).toBe(200);
+      expect(transactions.headers.get("x-middleware-next")).toBe("1");
+    } finally {
+      delete process.env.KOBAN_PUBLIC_DEMO;
+    }
+  });
+
   it("keeps static assets outside the auth matcher", () => {
     expect(unstable_doesMiddlewareMatch({ config, url: "/_next/static/app.js" })).toBe(false);
     expect(unstable_doesMiddlewareMatch({ config, url: "/icons/icon-192.png" })).toBe(false);

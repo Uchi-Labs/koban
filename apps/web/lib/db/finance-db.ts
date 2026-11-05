@@ -41,10 +41,7 @@ import { createDbWriteQueue, type DbWriteQueue } from "@/lib/db/db-write-queue";
 import type { FinanceDbDriver } from "@/lib/db/finance-db-driver";
 import { PgFinanceDbDriver } from "@/lib/db/pg-driver";
 import {
-  hasActivePglitePostmaster,
-  isRecoverablePgliteStartupError,
-  openPgliteFinanceDb,
-  quarantinePgliteDirectory
+  openLockedPgliteFinanceDb
 } from "@/lib/db/pglite-driver";
 import {
   activeEmbeddingModel,
@@ -2900,10 +2897,12 @@ export async function ensureSemanticIndex(): Promise<SemanticIndexRefreshResult>
 
   await ensureSourceItemSemanticDocuments();
 
-  return enqueueDbWrite(async () => {
+  // Three steps so the embedding network call never holds the write queue:
+  // a short queued read of what is missing, the provider call with a timeout,
+  // then a short queued write that skips any document edited in between.
+  const pending = await enqueueDbWrite(async () => {
     const db = await getFinanceDb();
     const modelRefresh = await ensureActiveEmbeddingModel(db);
-    const activeModel = modelRefresh.activeModel;
     const documents = await db.query<SemanticDocumentRow>(
       `SELECT d.id, d.body_hash, d.body
       FROM semantic_documents d
@@ -2913,14 +2912,41 @@ export async function ensureSemanticIndex(): Promise<SemanticIndexRefreshResult>
        AND e.body_hash = d.body_hash
       WHERE e.id IS NULL
       ORDER BY d.updated_at ASC`,
-      [activeModel.id]
+      [modelRefresh.activeModel.id]
     );
-    const embeddings = await embedTexts(
-      documents.rows.map((document) => document.body),
-      { inputType: "document", model: activeModel }
-    );
+    return { documents: documents.rows, modelRefresh };
+  });
+  const { documents, modelRefresh } = pending;
+  const activeModel = modelRefresh.activeModel;
 
-    for (const [index, document] of documents.rows.entries()) {
+  const embeddings = await embedTexts(
+    documents.map((document) => document.body),
+    { inputType: "document", model: activeModel, timeoutMs: SEMANTIC_INDEX_EMBEDDING_TIMEOUT_MS }
+  );
+
+  if (documents.length === 0) {
+    return { ...modelRefresh, documentsEmbedded: 0 };
+  }
+
+  return enqueueDbWrite(async () => {
+    if (activeEmbeddingModel().id !== activeModel.id) {
+      // The embedding model changed while this batch was in flight.
+      return { ...modelRefresh, documentsEmbedded: 0 };
+    }
+
+    const db = await getFinanceDb();
+    const current = await db.query<{ body_hash: string; id: string }>(
+      "SELECT id, body_hash FROM semantic_documents WHERE id = ANY($1)",
+      [documents.map((document) => document.id)]
+    );
+    const currentHashById = new Map(current.rows.map((row) => [row.id, row.body_hash]));
+    let documentsEmbedded = 0;
+
+    for (const [index, document] of documents.entries()) {
+      if (currentHashById.get(document.id) !== document.body_hash) {
+        continue;
+      }
+
       await db.query("DELETE FROM semantic_embeddings WHERE document_id = $1 AND model_id = $2", [
         document.id,
         activeModel.id
@@ -2949,11 +2975,12 @@ export async function ensureSemanticIndex(): Promise<SemanticIndexRefreshResult>
           new Date().toISOString()
         ]
       );
+      documentsEmbedded += 1;
     }
 
     return {
       ...modelRefresh,
-      documentsEmbedded: documents.rows.length
+      documentsEmbedded
     };
   });
 }
@@ -5545,8 +5572,8 @@ export async function closeFinanceDbForTests(): Promise<void> {
     return;
   }
 
-  const db = await state.promise;
-  await db.close();
+  const db = await state.promise.catch(() => null);
+  await db?.close();
   state.promise = null;
   state.recoveryEvent = null;
   state.writeQueue = createFinanceDbWriteQueue();
@@ -5628,6 +5655,9 @@ export async function deleteSyncStateValue(key: string): Promise<void> {
 // never on slow-but-progressing work.
 const DB_WRITE_TIMEOUT_MS = 90_000;
 
+// Bound for the semantic index's embedding call, which runs outside the queue.
+const SEMANTIC_INDEX_EMBEDDING_TIMEOUT_MS = 60_000;
+
 /**
  * Balance-snapshot write sizing.
  *
@@ -5646,7 +5676,15 @@ function enqueueDbWrite<T>(operation: (signal: AbortSignal) => Promise<T>): Prom
 async function getFinanceDb(): Promise<FinanceDb> {
   const state = getFinanceDbState();
   if (!state.promise) {
-    state.promise = createFinanceDb();
+    const opening = createFinanceDb();
+    state.promise = opening;
+    // A failed open (for example, another process holds the store) must not be
+    // cached, or the store stays unusable after the other process exits.
+    opening.catch(() => {
+      if (state.promise === opening) {
+        state.promise = null;
+      }
+    });
   }
 
   return state.promise;
@@ -5659,22 +5697,16 @@ async function createFinanceDb(): Promise<FinanceDb> {
     return openMigratedFinanceDb(PgFinanceDbDriver.open(env.DATABASE_URL));
   }
 
-  const dbPath = getFinanceDbPath();
+  const { db, quarantinedPath } = await openLockedPgliteFinanceDb(getFinanceDbPath(), runMigrations);
 
-  try {
-    return await openMigratedFinanceDb(await openPgliteFinanceDb(dbPath));
-  } catch (error) {
-    if (dbPath === ":memory:" || hasActivePglitePostmaster(dbPath) || !isRecoverablePgliteStartupError(error)) {
-      throw error;
-    }
-
-    const originalPath = quarantinePgliteDirectory(dbPath);
+  if (quarantinedPath) {
     getFinanceDbState().recoveryEvent = {
-      originalPath,
+      originalPath: quarantinedPath,
       recoveredAt: new Date().toISOString()
     };
-    return openMigratedFinanceDb(await openPgliteFinanceDb(dbPath));
   }
+
+  return db;
 }
 
 async function openMigratedFinanceDb(db: FinanceDb): Promise<FinanceDb> {

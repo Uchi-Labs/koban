@@ -293,10 +293,25 @@ async function readJsonResponse(response) {
 }
 
 function httpErrorMessage(status, payload, token) {
-  const detail = cleanString(payload?.error) ?? cleanString(payload?.message);
+  const detail = backendErrorDetail(payload);
   return detail
     ? `Koban backend returned HTTP ${status}: ${safeErrorDetail(detail, token)}`
     : `Koban backend returned HTTP ${status}.`;
+}
+
+// Routes answer either {error: "message"} or {error: {message, type, code, param}}.
+function backendErrorDetail(payload) {
+  const error = payload?.error;
+  if (error && typeof error === "object" && !Array.isArray(error)) {
+    const message = cleanString(error.message);
+    const labels = [cleanString(error.type), cleanString(error.code), cleanString(error.param) && `param ${error.param.trim()}`]
+      .filter(Boolean);
+    if (message) {
+      return labels.length ? `${message} (${labels.join(", ")})` : message;
+    }
+    return labels.length ? labels.join(", ") : undefined;
+  }
+  return cleanString(error) ?? cleanString(payload?.message);
 }
 
 function safeErrorDetail(value, token) {

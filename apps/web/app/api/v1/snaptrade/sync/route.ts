@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api-error";
+import { errorResponse, syncInProgressResponse } from "@/lib/api-error";
 import { readOptionalJsonObject } from "@/lib/api-request";
 import { appSyncRunRecordToPayload } from "@/lib/app-sync-runs";
 import { runSnapTradeSync } from "@/lib/app-sync-service";
+import { appSyncScheduleId, snapTradeSyncScheduleId } from "@/lib/db/finance-db";
+import { runExclusiveSync } from "@/lib/sync-schedule-coordinator";
 import { serializeSnapTradeStatus } from "@/lib/snaptrade-api";
 
 export const runtime = "nodejs";
@@ -15,7 +18,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { run, snaptrade } = await runSnapTradeSync();
+    const result = await runExclusiveSync(
+      { claimedBy: `snaptrade-sync-api:${process.pid}:${randomUUID()}`, scheduleIds: [appSyncScheduleId, snapTradeSyncScheduleId] },
+      (signal) => runSnapTradeSync(signal)
+    );
+
+    if (result.status === "skipped") {
+      return syncInProgressResponse();
+    }
+
+    const { run, snaptrade } = result.value;
 
     return NextResponse.json({
       object: "snaptrade_sync_run",
