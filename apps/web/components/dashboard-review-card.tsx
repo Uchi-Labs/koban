@@ -162,7 +162,7 @@ export function DashboardReviewCard({
                   ) : (
                     <span
                       aria-hidden="true"
-                      className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/50 text-[10px] font-semibold text-muted-foreground"
+                      className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/50 text-3xs font-semibold text-muted-foreground"
                     >
                       {transaction.merchant.charAt(0).toUpperCase() || "?"}
                     </span>

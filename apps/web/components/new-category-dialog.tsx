@@ -174,7 +174,7 @@ export function NewCategoryDialog({
         showCloseButton
       >
         <form className="flex flex-col items-center gap-5" onSubmit={save}>
-          <DialogTitle className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">New category</DialogTitle>
+          <DialogTitle className="text-2xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">New category</DialogTitle>
 
           <div className="grid w-full grid-cols-2 gap-1 rounded-full bg-muted/60 p-1">
             {(["regular", "excluded"] as const).map((value) => (
@@ -294,7 +294,7 @@ export function NewCategoryDialog({
                   value={budget}
                 />
               </span>
-              <span className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">Monthly budget — optional</span>
+              <span className="text-2xs tracking-[0.14em] text-muted-foreground uppercase">Monthly budget — optional</span>
             </label>
           ) : (
             <p className="text-xs text-muted-foreground">Excluded categories are left out of spending totals and budgets.</p>

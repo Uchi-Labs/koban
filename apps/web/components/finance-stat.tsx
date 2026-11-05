@@ -83,7 +83,7 @@ export function FinanceStatItem({
           )}
         </span>
         {/* Unit on its own line because inline unit text can collapse long currency values. */}
-        {unit ? <span className="text-[10px] font-medium text-muted-foreground">{unit}</span> : null}
+        {unit ? <span className="text-2xs font-medium text-muted-foreground">{unit}</span> : null}
       </span>
     </div>
   );

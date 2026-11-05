@@ -24,10 +24,14 @@ a {
   text-underline-offset: 0.16em;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  letter-spacing: 0;
+/* Layered so a control's own text-* utility wins; unlayered, this reset beat
+   every Tailwind size on buttons and inputs and they all inherited instead. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    letter-spacing: 0;
+  }
 }

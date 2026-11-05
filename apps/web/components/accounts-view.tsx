@@ -222,7 +222,7 @@ export function AccountsView({
                               {change !== null ? (
                                 <span
                                   className={cn(
-                                    "hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums sm:inline-flex",
+                                    "hidden shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums sm:inline-flex",
                                     changePositive ? "bg-(--positive)/10 text-(--positive)" : "bg-destructive/10 text-destructive"
                                   )}
                                 >
@@ -316,7 +316,7 @@ export function AccountsView({
 function RowStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 text-right">
-      <p className="truncate text-[11px] text-muted-foreground">{label}</p>
+      <p className="truncate text-2xs text-muted-foreground">{label}</p>
       <p className="truncate text-sm font-medium tabular-nums">{value}</p>
     </div>
   );

@@ -286,7 +286,7 @@ function ShimmerLabel({
 }) {
   if (!(active && !reduceMotion)) {
     return (
-      <span className="font-medium text-[13px] text-foreground">
+      <span className="font-medium text-ui text-foreground">
         {children}
       </span>
     );
@@ -295,7 +295,7 @@ function ShimmerLabel({
   return (
     <motion.span
       animate={{ backgroundPosition: "0% center" }}
-      className="bg-[length:250%_100%,auto] bg-clip-text font-medium text-[13px] text-transparent [--rs-base:var(--muted-foreground)] [--rs-sheen:var(--foreground)] [background-repeat:no-repeat,padding-box]"
+      className="bg-[length:250%_100%,auto] bg-clip-text font-medium text-ui text-transparent [--rs-base:var(--muted-foreground)] [--rs-sheen:var(--foreground)] [background-repeat:no-repeat,padding-box]"
       initial={{ backgroundPosition: "100% center" }}
       style={
         {
@@ -326,7 +326,7 @@ function TriggerPreview({
       <AnimatePresence initial={false} mode="popLayout">
         <motion.span
           animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
-          className="block truncate text-[12px] text-muted-foreground"
+          className="block truncate text-xs text-muted-foreground"
           exit={
             reduceMotion
               ? undefined
@@ -376,7 +376,7 @@ function TriggerLabel({
           {title}
         </ShimmerLabel>
         {shownDuration > 0 ? (
-          <span className="text-[12px] text-muted-foreground tabular-nums">
+          <span className="text-xs text-muted-foreground tabular-nums">
             {shownDuration}s
           </span>
         ) : null}
@@ -680,14 +680,14 @@ function ReasoningStep({
         <div className="min-w-0 flex-1">
           <p
             className={cn(
-              "text-[13px] leading-5 transition-colors duration-300 motion-reduce:transition-none",
+              "text-ui leading-5 transition-colors duration-300 motion-reduce:transition-none",
               isActive ? "font-medium text-foreground" : "text-foreground/80"
             )}
           >
             {label}
           </p>
           {description ? (
-            <p className="mt-0.5 text-[12px] text-muted-foreground leading-5">
+            <p className="mt-0.5 text-xs text-muted-foreground leading-5">
               {description}
             </p>
           ) : null}
@@ -721,7 +721,7 @@ function ReasoningStepDetails({
       open={open}
     >
       <CollapsiblePrimitive.Trigger
-        className="flex items-center gap-1.5 rounded-md px-1 py-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+        className="flex items-center gap-1.5 rounded-md px-1 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
         render={(triggerProps) => (
           <button {...triggerProps} type="button">
             {summary}
@@ -733,7 +733,7 @@ function ReasoningStepDetails({
         open={open}
         reduceMotion={reduceMotion}
       >
-        <div className="flex flex-col gap-1 text-[12px] text-muted-foreground leading-5">
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground leading-5">
           {children}
         </div>
       </MorphPanel>
@@ -770,7 +770,7 @@ function ReasoningStepSource({
 }: ReasoningStepSourceProps) {
   const { reduceMotion } = useReasoningStepsContext("ReasoningStepSource");
   const pillClassName = cn(
-    "inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-muted/60 px-2 py-0.5 text-[11px] text-foreground/70 transition-colors motion-reduce:transition-none",
+    "inline-flex items-center gap-1 rounded-full border border-foreground/10 bg-muted/60 px-2 py-0.5 text-2xs text-foreground/70 transition-colors motion-reduce:transition-none",
     href && "hover:bg-muted hover:text-foreground",
     className
   );
@@ -840,7 +840,7 @@ function ReasoningStepImage({
         width={220}
       />
       {caption ? (
-        <figcaption className="mt-1 text-[11px] text-muted-foreground">
+        <figcaption className="mt-1 text-2xs text-muted-foreground">
           {caption}
         </figcaption>
       ) : null}

@@ -42,7 +42,7 @@ export function SyncStatusIsland({ state }: { state: SyncIslandState }) {
           <Loader className="shrink-0" label="Syncing" size={16} variant="dots" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold">Syncing {state.phaseLabel}</p>
-            <p className="truncate text-[11px] text-current/70">{state.detail}</p>
+            <p className="truncate text-2xs text-current/70">{state.detail}</p>
           </div>
         </div>
       </DynamicIslandView>

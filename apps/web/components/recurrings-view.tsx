@@ -53,7 +53,7 @@ function MerchantAvatar({ color, merchant }: { color: string; merchant: string }
     return (
       <span
         aria-hidden="true"
-        className="flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+        className="flex size-7 shrink-0 items-center justify-center rounded-full text-2xs font-semibold"
         style={{
           backgroundColor: `color-mix(in oklab, ${accentColor} 18%, transparent)`,
           color: accentColor
@@ -103,7 +103,7 @@ export function RecurringsView({
             </CardHeader>
             <CardContent className="flex flex-col gap-0.5">
               {candidateRows.length > 0 ? (
-                <div className={`${RECURRING_ROW_GRID} px-3 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase`}>
+                <div className={`${RECURRING_ROW_GRID} px-3 pb-1.5 text-2xs font-medium tracking-wide text-muted-foreground uppercase`}>
                   <span aria-hidden="true" />
                   <span>Merchant</span>
                   <span className="text-right">Amount</span>
@@ -130,7 +130,7 @@ export function RecurringsView({
                       the narrower xl column widths. Mirrors the two-line merchant cell. */}
                   <div className="min-w-0 text-right">
                     <p className="font-medium tabular-nums">{formatCurrency(candidate.averageAmount)}</p>
-                    <p className="text-[11px] text-muted-foreground">{candidate.frequency}</p>
+                    <p className="text-2xs text-muted-foreground">{candidate.frequency}</p>
                   </div>
                   <div className="text-right tabular-nums">{candidate.nextDateLabel}</div>
                   <div className={`${RECURRING_WIDE_CELL} text-right tabular-nums`}>{candidate.lastChargedLabel}</div>

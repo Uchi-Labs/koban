@@ -65,7 +65,7 @@ export function SearchView({ categories, query, results }: SearchViewProps) {
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{result.body.split("\n").slice(0, 4).join(" · ")}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="text-[11px] text-muted-foreground">{result.resourceType === "source_item" ? "Evidence" : "Transaction"}</span>
+                <span className="text-2xs text-muted-foreground">{result.resourceType === "source_item" ? "Evidence" : "Transaction"}</span>
                 <b className="text-sm font-semibold tabular-nums">{Math.round(result.score * 100)}%</b>
                 {category ? <CategoryPill category={category} /> : null}
                 {transaction ? <Amount amount={transaction.amount} currency={transaction.currency} /> : null}

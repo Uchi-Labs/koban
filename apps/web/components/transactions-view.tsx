@@ -2266,7 +2266,7 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
           <TabsTrigger value="review">
             Review
             {model.reviewTransactions.length > 0 ? (
-              <Badge className="ml-1 h-4 min-w-4 px-1 text-[10px] tabular-nums" variant="review">
+              <Badge className="ml-1 h-4 min-w-4 px-1 text-3xs tabular-nums" variant="review">
                 {model.reviewTotalCount.toLocaleString("en-US")}
               </Badge>
             ) : null}
@@ -2349,8 +2349,8 @@ function TransactionsHeader({ model }: { model: TransactionsViewModel }) {
                 aria-label="Command K"
                 className="inline-flex items-center gap-0.5 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-muted-foreground"
               >
-                <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
-                <span className="text-[10px] leading-none">K</span>
+                <span aria-hidden="true" className="text-2xs leading-none">⌘</span>
+                <span className="text-3xs leading-none">K</span>
               </kbd>
             </InputGroupText>
           </InputGroupAddon>
@@ -2862,7 +2862,7 @@ function TransactionRowButton({
         ) : null}
 
         {assignedGoal ? (
-          <span className="hidden h-4 max-w-28 shrink-0 items-center gap-1 rounded-full border border-border/70 px-1.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+          <span className="hidden h-4 max-w-28 shrink-0 items-center gap-1 rounded-full border border-border/70 px-1.5 text-3xs font-medium text-muted-foreground sm:inline-flex">
             <span aria-hidden="true" className="leading-none">
               {assignedGoal.emoji ?? "🎯"}
             </span>
@@ -3391,7 +3391,7 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
           <div className="flex flex-wrap items-center gap-2">
             <button
               aria-label={`Use default color for ${tagDraft}`}
-              className="h-5 rounded-2xl border border-border px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+              className="h-5 rounded-2xl border border-border px-2 text-2xs text-muted-foreground transition-colors hover:bg-muted"
               onClick={() => model.updateTagColor(tagDraft, null)}
               type="button"
             >
@@ -3442,10 +3442,10 @@ function TransactionInspectorTags({ model, transaction }: { model: TransactionsV
       ) : null}
       {sourceTags.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
-          <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
+          <span className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">Source tags</span>
           {sourceTags.map((tag) => (
             <TagChip
-              className="h-5 border-border/60 bg-muted/50 text-[11px] text-muted-foreground"
+              className="h-5 border-border/60 bg-muted/50 text-2xs text-muted-foreground"
               color={model.tagStyleByName.get(tag.toLowerCase())?.color}
               key={tag}
               tag={tag}
@@ -3939,7 +3939,7 @@ function MerchantReviewGroup({
 
 function MerchantAvatar({ name }: { name: string }) {
   return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-medium text-muted-foreground">
       {name.trim().charAt(0).toUpperCase() || "?"}
     </span>
   );

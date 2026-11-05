@@ -452,7 +452,7 @@ function AppShellContent({
                 <Link
                   aria-current={active ? "page" : undefined}
                   aria-label={item.label}
-                  className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground motion-reduce:transition-none"
+                  className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-3xs font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground motion-reduce:transition-none"
                   href={item.href}
                 >
                   <Icon className="size-4" />
@@ -468,7 +468,7 @@ function AppShellContent({
             className="rounded-xl"
             onClick={() => (agentPanel.open ? agentPanel.closeAgent() : agentPanel.openAgent())}
           >
-            <span className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none">
+            <span className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-3xs font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none">
               <Image
                 alt=""
                 aria-hidden="true"
@@ -486,7 +486,7 @@ function AppShellContent({
             className="rounded-xl"
             onClick={() => changePaletteOpen(true)}
           >
-            <span className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-[9px] font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none">
+            <span className="relative z-10 flex size-full flex-col items-center justify-center gap-0.5 rounded-xl text-3xs font-medium text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none">
               <Search className="size-4" />
               <span>Search</span>
             </span>
@@ -582,7 +582,7 @@ function AppSidebarSections({
           </span>
           {demoMode || publicDemo ? (
             <span
-              className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase group-data-[collapsible=icon]:hidden"
+              className="rounded-full px-1.5 py-0.5 text-2xs font-semibold tracking-wide uppercase group-data-[collapsible=icon]:hidden"
               style={{
                 backgroundColor: "color-mix(in oklab, oklch(0.78 0.15 72) 16%, transparent)",
                 color: "oklch(0.78 0.15 72)"
@@ -625,8 +625,8 @@ function AppSidebarSections({
                 <MessageCircle aria-hidden="true" className="size-4 shrink-0" />
                 <span className="flex-1 truncate text-left group-data-[collapsible=icon]:hidden">Ask a question…</span>
                 <kbd className="inline-flex items-center gap-0.5 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-2 py-0.5 font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
-                  <span className="text-[10px] leading-none">J</span>
+                  <span aria-hidden="true" className="text-2xs leading-none">⌘</span>
+                  <span className="text-3xs leading-none">J</span>
                 </kbd>
               </button>
               <button
@@ -639,8 +639,8 @@ function AppSidebarSections({
                 <Search aria-hidden="true" className="size-4 shrink-0" />
                 <span className="flex-1 text-left group-data-[collapsible=icon]:hidden">Search</span>
                 <kbd className="inline-flex items-center gap-0.5 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-2 py-0.5 font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-                  <span aria-hidden="true" className="text-[11px] leading-none">⌘</span>
-                  <span className="text-[10px] leading-none">K</span>
+                  <span aria-hidden="true" className="text-2xs leading-none">⌘</span>
+                  <span className="text-3xs leading-none">K</span>
                 </kbd>
               </button>
             </div>

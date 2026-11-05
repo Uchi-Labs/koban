@@ -1144,7 +1144,7 @@ function SourceAdapterFileActions({ adapter, model }: { adapter: SourceAdapterVi
         )}
       >
         <span>{model.importingSourceId === adapter.id ? "Importing…" : "Import JSON/JSONL/CSV/EML/MBOX/ICS/ZIP"}</span>
-        <em className="text-[10px] font-normal not-italic text-muted-foreground">Up to {sourceImportLimitLabel}</em>
+        <em className="text-2xs font-normal not-italic text-muted-foreground">Up to {sourceImportLimitLabel}</em>
         <input
           accept={model.fileInputAccept}
           className="sr-only"
@@ -1164,7 +1164,7 @@ function SourceAdapterFileActions({ adapter, model }: { adapter: SourceAdapterVi
         )}
       >
         <span>{model.importingSourceId === adapter.id ? "Checking…" : "Validate import file"}</span>
-        <em className="text-[10px] font-normal not-italic text-muted-foreground">No records saved</em>
+        <em className="text-2xs font-normal not-italic text-muted-foreground">No records saved</em>
         <input
           accept={model.fileInputAccept}
           className="sr-only"

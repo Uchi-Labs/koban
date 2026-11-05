@@ -102,7 +102,7 @@ export function DashboardView({
           <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:items-end min-[390px]:justify-between min-[390px]:gap-3">
             <div className="min-w-0">
               <MoneyHero amount={monthlySpending} currency={dashboardSummary.currency} />
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-xs text-muted-foreground tabular-nums">
                 of {formatCurrency(monthlyBudget, dashboardSummary.currency)} budgeted
               </div>
             </div>

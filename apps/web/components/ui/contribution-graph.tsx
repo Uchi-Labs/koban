@@ -371,7 +371,7 @@ const ContributionGraphBlockTooltip = () => {
     >
       <div className="relative rounded-lg border border-border bg-popover px-2.5 py-1 text-popover-foreground shadow-[0_8px_26px_-8px_color-mix(in_oklab,var(--foreground)_28%,transparent)]">
         {payload.content ?? (
-          <div className="flex items-baseline gap-1.5 whitespace-nowrap text-[11px] leading-none">
+          <div className="flex items-baseline gap-1.5 whitespace-nowrap text-2xs leading-none">
             <span className="font-semibold">
               {formatCommitLabel(payload.activity.count)}
             </span>

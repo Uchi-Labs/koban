@@ -344,7 +344,7 @@ function ConversationRow({
               value={draft}
             />
             {renameError ? (
-              <p className="px-2 pt-1 text-[11px] leading-tight text-destructive" id={renameErrorId} role="alert">
+              <p className="px-2 pt-1 text-2xs leading-tight text-destructive" id={renameErrorId} role="alert">
                 {renameError}
               </p>
             ) : null}

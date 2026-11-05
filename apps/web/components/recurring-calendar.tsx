@@ -242,7 +242,7 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
       <div className="w-full max-w-xl">
         <div className="grid grid-cols-7 gap-1.5 pb-1.5">
           {WEEKDAY_LABELS.map((label, index) => (
-            <span className="text-center text-[10px] font-medium tracking-wide text-muted-foreground" key={`${label}-${index}`}>
+            <span className="text-center text-2xs font-medium tracking-wide text-muted-foreground" key={`${label}-${index}`}>
               {label}
             </span>
           ))}
@@ -272,7 +272,7 @@ export function RecurringCalendar({ initialMonth, items, segments, today }: {
           {hoveredDay && hoveredDay.items.length > 1 ? (
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute top-full left-1/2 z-30 mt-2 flex w-max max-w-full -translate-x-1/2 flex-col gap-1 rounded-lg border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-popover-foreground shadow-lg"
+              className="pointer-events-none absolute top-full left-1/2 z-30 mt-2 flex w-max max-w-full -translate-x-1/2 flex-col gap-1 rounded-lg border border-border bg-popover px-2.5 py-1.5 text-2xs font-medium text-popover-foreground shadow-lg"
             >
               {hoveredDay.items.map((item) => (
                 <span className="flex items-center gap-3" key={item.id}>
@@ -375,7 +375,7 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
     isToday && "ring-1 ring-ring/60"
   );
   const dayLabel = (
-    <span className="pointer-events-none absolute right-1.5 bottom-1 text-[10px] text-muted-foreground/80 tabular-nums">
+    <span className="pointer-events-none absolute right-1.5 bottom-1 text-3xs text-muted-foreground/80 tabular-nums">
       {dayNumber}
     </span>
   );
@@ -414,7 +414,7 @@ function DayCell({ date, dayNumber, entry, isToday, onHover, onLeave, onOpen }: 
           <ItemAvatar color={item.color} name={item.name} key={item.id} size="sm" />
         ))}
         {overflow > 0 ? (
-          <span className="grid size-5 place-items-center rounded-full bg-background text-[9px] font-medium text-muted-foreground ring-1 ring-border">
+          <span className="grid size-5 place-items-center rounded-full bg-background text-3xs font-medium text-muted-foreground ring-1 ring-border">
             +{overflow}
           </span>
         ) : null}
@@ -444,7 +444,7 @@ function ItemAvatar({ color, name, size = "md" }: { color: string; name: string;
       aria-hidden="true"
       className={cn(
         "grid shrink-0 place-items-center rounded-full font-semibold ring-1 ring-background/60",
-        size === "md" ? "size-8 text-sm" : "size-5 text-[10px]"
+        size === "md" ? "size-8 text-sm" : "size-5 text-3xs"
       )}
       style={{
         backgroundColor: `color-mix(in oklab, ${accentColor} 30%, var(--background))`,

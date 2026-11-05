@@ -231,7 +231,7 @@ function InvestmentTotalsSection({
           <>
             <LivelineChart className="mt-4" height={188} points={data.history} showValue />
             {historySpan ? (
-              <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+              <div className="mt-2 flex items-center justify-between text-2xs text-muted-foreground">
                 <span>{historySpan}</span>
                 <span className="tabular-nums">{data.history.length} snapshots</span>
               </div>
@@ -313,7 +313,7 @@ function InvestmentAccountsSection({
                 </div>
               </div>
               <LivelineChart className="mt-1" height={44} points={account.history} sparkline emptyText="No history yet" />
-              <div className="pl-1 text-[11px] text-muted-foreground tabular-nums">
+              <div className="pl-1 text-2xs text-muted-foreground tabular-nums">
                 {account.positions.length.toLocaleString()} holdings
               </div>
             </div>
@@ -645,7 +645,7 @@ function HoldingDetailRow({
                 <DetailStat accent={accent} label="Weight" value={`${holding.weight.toFixed(1)}%`} />
               </div>
 
-              <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">Price & performance</div>
+              <div className="mb-2 text-2xs uppercase tracking-wide text-muted-foreground">Price & performance</div>
               <TradingViewAdvancedChart height={620} symbol={holding.tradingViewSymbol} theme={theme} />
               <div className="mt-2 text-xs text-muted-foreground">{holding.accountName}</div>
             </div>
@@ -693,7 +693,7 @@ function DetailStat({
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div
         className={cn(
           "truncate text-sm tabular-nums",

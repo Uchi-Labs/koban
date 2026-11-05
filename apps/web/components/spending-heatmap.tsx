@@ -73,7 +73,7 @@ export function SpendingHeatmap({ all, categories, currency }: {
             const detail = activityByDate.get(activity.date);
             return (
               <ContributionGraphBlock activity={activity} dayIndex={dayIndex} weekIndex={weekIndex}>
-                <div className="grid gap-1 whitespace-nowrap text-[11px] leading-none">
+                <div className="grid gap-1 whitespace-nowrap text-2xs leading-none">
                   <span className="font-semibold tabular-nums">{formatCurrency(detail?.spend ?? 0, currency)}</span>
                   <span className="text-muted-foreground">
                     {formatHeatmapDate(activity.date)} · {activity.count} {activity.count === 1 ? "transaction" : "transactions"}
