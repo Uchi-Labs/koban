@@ -1,49 +1,47 @@
-import { NextResponse } from "next/server";
-import { readJsonObject } from "@/lib/api-request";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { deleteFinancialGoal, listFinancialGoals, updateFinancialGoal } from "@/lib/db/finance-db";
+import { InvalidRequest, ResourceNotFound } from "@/lib/effect/errors";
+import { fromPromise, handler, JsonObjectBody } from "@/lib/effect/http";
 import { parseGoalWriteBody, serializeGoal } from "@/lib/goals-api";
 
 export const runtime = "nodejs";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ goalId: string }> }) {
-  const { goalId } = await params;
-  const parsed = await readJsonObject(request);
+const GoalParams = Schema.Struct({ goalId: Schema.String });
 
-  if (!parsed.ok) {
-    return parsed.response;
-  }
+export const PATCH = handler(
+  { body: JsonObjectBody, operation: "Goals.update", params: GoalParams },
+  ({ body, params }) =>
+    Effect.gen(function* () {
+      const id = decodeURIComponent(params.goalId);
+      const validation = parseGoalWriteBody(body, { requireName: false });
 
-  const validation = parseGoalWriteBody(parsed.body, { requireName: false });
+      if (!validation.ok) {
+        return yield* new InvalidRequest({ reason: validation.error });
+      }
 
-  if (!validation.ok) {
-    return NextResponse.json({ error: validation.error }, { status: 400 });
-  }
+      const updated = yield* fromPromise("Goals.update", () => updateFinancialGoal(id, validation.value));
 
-  const updated = await updateFinancialGoal(decodeURIComponent(goalId), validation.value);
+      if (!updated) {
+        return yield* new ResourceNotFound({ id, resource: "Financial goal" });
+      }
 
-  if (!updated) {
-    return NextResponse.json({ error: "Financial goal not found." }, { status: 404 });
-  }
+      const goals = yield* fromPromise("Goals.list", () => listFinancialGoals());
+      const withStats = goals.find((goal) => goal.id === updated.id);
 
-  const goals = await listFinancialGoals();
-  const withStats = goals.find((goal) => goal.id === updated.id);
+      return serializeGoal(withStats ?? { ...updated, savedAmountMinor: 0, transactionCount: 0 });
+    })
+);
 
-  return NextResponse.json(
-    serializeGoal(withStats ?? { ...updated, savedAmountMinor: 0, transactionCount: 0 })
-  );
-}
+export const DELETE = handler({ operation: "Goals.delete", params: GoalParams }, ({ params }) =>
+  Effect.gen(function* () {
+    const id = decodeURIComponent(params.goalId);
+    const deleted = yield* fromPromise("Goals.delete", () => deleteFinancialGoal(id));
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ goalId: string }> }) {
-  const { goalId } = await params;
-  const deleted = await deleteFinancialGoal(decodeURIComponent(goalId));
+    if (!deleted) {
+      return yield* new ResourceNotFound({ id, resource: "Financial goal" });
+    }
 
-  if (!deleted) {
-    return NextResponse.json({ error: "Financial goal not found." }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    object: "financial_goal",
-    id: decodeURIComponent(goalId),
-    deleted: true
-  });
-}
+    return { deleted: true, id, object: "financial_goal" };
+  })
+);

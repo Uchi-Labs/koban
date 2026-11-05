@@ -647,8 +647,13 @@ test("rules page lists local transaction rules surface", async ({ page }) => {
     }
   });
   expect(unsafePatchResponse.status()).toBe(400);
-  expect(await unsafePatchResponse.json()).toMatchObject({
-    error: "Contains rule pattern is too broad for automatic transaction updates."
+  expect(unsafePatchResponse.headers()["x-request-id"]).toMatch(/^req_[0-9a-f]{32}$/);
+  expect(await unsafePatchResponse.json()).toEqual({
+    error: {
+      code: "parameter_invalid",
+      message: "Contains rule pattern is too broad for automatic transaction updates.",
+      type: "invalid_request_error"
+    }
   });
 
   const regexRuleResponse = await page.request.post("/api/v1/rules", {

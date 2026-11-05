@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/b-progress";
 import { RollingDigits } from "@/components/ui/rolling-digits";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { apiErrorMessage } from "@/lib/api-error-envelope";
 import { financeEmojiOptions } from "@/lib/category-style";
 import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
@@ -233,8 +234,8 @@ function GoalRow({ goal }: { goal: GoalView }) {
         method: "PATCH"
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Unable to update goal.");
+        const body: unknown = await response.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(body, "Unable to update goal."));
       }
       router.refresh();
     } catch (error) {
@@ -250,8 +251,8 @@ function GoalRow({ goal }: { goal: GoalView }) {
     try {
       const response = await fetch(`/api/v1/goals/${encodeURIComponent(goal.id)}`, { method: "DELETE" });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Unable to delete goal.");
+        const body: unknown = await response.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(body, "Unable to delete goal."));
       }
       router.refresh();
     } catch (error) {

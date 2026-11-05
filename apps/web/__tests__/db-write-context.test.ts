@@ -202,9 +202,9 @@ describe("Effect DB write scope propagation", () => {
       }),
       catch: (error) => error instanceof Error ? error : new Error("write failed")
     }).pipe(
-      Effect.timeoutFail({
+      Effect.timeoutOrElse({
         duration: "1 second",
-        onTimeout: () => new Error("write timed out")
+        orElse: () => Effect.fail(new Error("write timed out"))
       }),
       Effect.retry(Schedule.recurs(1))
     );

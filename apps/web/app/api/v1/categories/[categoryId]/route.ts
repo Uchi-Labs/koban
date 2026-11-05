@@ -1,69 +1,66 @@
-import { NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api-error";
-import { readJsonObject } from "@/lib/api-request";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { setCategoryBudgetOverride } from "@/lib/category-budgets";
 import { deleteCustomCategoryAndReassign, updateCategory } from "@/lib/db/finance-db";
+import { InvalidRequest, ResourceNotFound } from "@/lib/effect/errors";
+import { fromPromise, handler, JsonObjectBody, type LegacyCallError } from "@/lib/effect/http";
 import { serializeCategory } from "@/lib/finance-api";
 
 export const runtime = "nodejs";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ categoryId: string }> }) {
-  const { categoryId } = await params;
-  const parsed = await readJsonObject(request);
+const CategoryParams = Schema.Struct({ categoryId: Schema.String });
 
-  if (!parsed.ok) {
-    return parsed.response;
-  }
+// finance-db throws plain Errors for both bad input ("System categories cannot
+// be deleted.") and storage failures, so a failed write stays a 400 with the
+// route's message, as before. E2's typed repository errors replace this.
+const asInvalidRequest = (reason: string) => (error: LegacyCallError) =>
+  Effect.logWarning(reason, error.cause).pipe(Effect.andThen(Effect.fail(new InvalidRequest({ reason }))));
 
-  const id = decodeURIComponent(categoryId);
-  const hasBudget = Object.prototype.hasOwnProperty.call(parsed.body, "budget_amount");
-  const rawBudget = parsed.body.budget_amount;
-  const nextBudget =
-    typeof rawBudget === "number" && Number.isFinite(rawBudget) && rawBudget > 0 ? rawBudget : null;
+export const PATCH = handler(
+  { body: JsonObjectBody, operation: "Categories.update", params: CategoryParams },
+  ({ body, params }) =>
+    Effect.gen(function* () {
+      const id = decodeURIComponent(params.categoryId);
+      const hasBudget = Object.prototype.hasOwnProperty.call(body, "budget_amount");
+      const rawBudget = body.budget_amount;
+      const nextBudget =
+        typeof rawBudget === "number" && Number.isFinite(rawBudget) && rawBudget > 0 ? rawBudget : null;
 
-  try {
-    const category = await updateCategory(id, {
-      archived: typeof parsed.body.archived === "boolean" ? parsed.body.archived : undefined,
-      color: typeof parsed.body.color === "string" ? parsed.body.color : undefined,
-      emoji: typeof parsed.body.emoji === "string" ? parsed.body.emoji : undefined,
-      name: typeof parsed.body.name === "string" ? parsed.body.name : undefined,
-      sortOrder: typeof parsed.body.sort_order === "number" ? parsed.body.sort_order : undefined
-    });
+      const category = yield* fromPromise("Categories.update", () =>
+        updateCategory(id, {
+          archived: typeof body.archived === "boolean" ? body.archived : undefined,
+          color: typeof body.color === "string" ? body.color : undefined,
+          emoji: typeof body.emoji === "string" ? body.emoji : undefined,
+          name: typeof body.name === "string" ? body.name : undefined,
+          sortOrder: typeof body.sort_order === "number" ? body.sort_order : undefined
+        })
+      );
 
-    if (!category) {
-      return NextResponse.json({ error: "Category not found." }, { status: 404 });
-    }
+      if (!category) {
+        return yield* new ResourceNotFound({ id, resource: "Category" });
+      }
 
-    if (hasBudget) {
-      await setCategoryBudgetOverride(id, nextBudget);
-    }
+      if (hasBudget) {
+        yield* fromPromise("Categories.setBudget", () => setCategoryBudgetOverride(id, nextBudget));
+      }
 
-    return NextResponse.json(serializeCategory({ ...category, budgetAmount: hasBudget ? nextBudget ?? undefined : category.budgetAmount }));
-  } catch (error) {
-    return errorResponse(error, "Unable to update category.", 400);
-  }
-}
+      return serializeCategory({ ...category, budgetAmount: hasBudget ? nextBudget ?? undefined : category.budgetAmount });
+    }).pipe(Effect.catchTags({ LegacyCallError: asInvalidRequest("Unable to update category.") }))
+);
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ categoryId: string }> }) {
-  const { categoryId } = await params;
-  const parsed = await readJsonObject(request);
-  if (!parsed.ok) return parsed.response;
-  const replacementId = typeof parsed.body.reassign_to === "string" ? parsed.body.reassign_to : "cat_other";
-  const id = decodeURIComponent(categoryId);
+export const DELETE = handler(
+  { body: JsonObjectBody, operation: "Categories.delete", params: CategoryParams },
+  ({ body, params }) =>
+    Effect.gen(function* () {
+      const replacementId = typeof body.reassign_to === "string" ? body.reassign_to : "cat_other";
+      const id = decodeURIComponent(params.categoryId);
 
-  try {
-    const deleted = await deleteCustomCategoryAndReassign(id, replacementId);
-    if (!deleted) {
-      return NextResponse.json({ error: "Category not found." }, { status: 404 });
-    }
-    await setCategoryBudgetOverride(id, null);
+      const deleted = yield* fromPromise("Categories.delete", () => deleteCustomCategoryAndReassign(id, replacementId));
+      if (!deleted) {
+        return yield* new ResourceNotFound({ id, resource: "Category" });
+      }
+      yield* fromPromise("Categories.clearBudget", () => setCategoryBudgetOverride(id, null));
 
-    return NextResponse.json({
-      deleted: true,
-      id,
-      object: "category"
-    });
-  } catch (error) {
-    return errorResponse(error, "Unable to delete category.", 400);
-  }
-}
+      return { deleted: true, id, object: "category" };
+    }).pipe(Effect.catchTags({ LegacyCallError: asInvalidRequest("Unable to delete category.") }))
+);

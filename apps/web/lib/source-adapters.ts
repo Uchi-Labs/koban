@@ -34,7 +34,7 @@ const execFileAsync = promisify(execFile);
 const maxSourceItemsPerSync = 250;
 const gmailAuthCommand = "gog login <email> --readonly --services=gmail,calendar --gmail-no-send";
 const outlookAuthCommand = "outlook-email-pp-cli auth login --device-code";
-const sourceRefreshRetryPolicy = Schedule.exponential("50 millis").pipe(Schedule.compose(Schedule.recurs(2)));
+const sourceRefreshRetryPolicy = Schedule.max([Schedule.exponential("50 millis"), Schedule.recurs(2)]);
 
 export interface SourceAdapterDefinition {
   mailAccount?: MailAccount;
@@ -554,7 +554,7 @@ function syncInstalledSourceAdapterEffect(
       object: "source_sync_run"
     } satisfies SourceSyncResult;
   }).pipe(
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       Effect.gen(function* () {
         const finishedAt = new Date().toISOString();
         const errorMessage = syncErrorMessage(error, "Source sync failed.");
@@ -2669,9 +2669,9 @@ function fetchAdapterItemsEffect(
     () => fetchAdapterItems(adapter),
     `Source refresh failed for ${adapter.displayName}.`
   ).pipe(
-    Effect.timeoutFail({
+    Effect.timeoutOrElse({
       duration: "35 seconds",
-      onTimeout: () => new SourceRefreshError({ message: `Source refresh timed out for ${adapter.displayName}.` })
+      orElse: () => Effect.fail(new SourceRefreshError({ message: `Source refresh timed out for ${adapter.displayName}.` }))
     }),
     Effect.retry(sourceRefreshRetryPolicy)
   );
