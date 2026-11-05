@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { BlossomPicker } from "@/components/ui/blossom-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { apiErrorMessage } from "@/lib/api-error-envelope";
 import { categoryColorPalette, financeEmojiOptions, inferCategoryEmoji, neutralCategoryEmoji } from "@/lib/category-style";
 import { EASE_OUT } from "@/lib/motion";
 
@@ -83,9 +84,9 @@ export function CategoryEditDialog({
         headers: { "Content-Type": "application/json" },
         method: "PATCH"
       });
-      const body = (await response.json()) as { error?: string };
+      const body: unknown = await response.json();
       if (!response.ok) {
-        throw new Error(body.error ?? "Unable to save category.");
+        throw new Error(apiErrorMessage(body, "Unable to save category."));
       }
       router.refresh();
       onOpenChange(false);
@@ -104,8 +105,8 @@ export function CategoryEditDialog({
         body: JSON.stringify({ archived: !category.archived }), headers: { "Content-Type": "application/json" }, method: "PATCH"
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Unable to update category visibility.");
+        const body: unknown = await response.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(body, "Unable to update category visibility."));
       }
       router.refresh();
       onOpenChange(false);
@@ -124,8 +125,8 @@ export function CategoryEditDialog({
         body: JSON.stringify({ reassign_to: replacementId }), headers: { "Content-Type": "application/json" }, method: "DELETE"
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Unable to delete category.");
+        const body: unknown = await response.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(body, "Unable to delete category."));
       }
       router.refresh();
       onOpenChange(false);

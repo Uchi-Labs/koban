@@ -18,6 +18,7 @@ import { MorphingPanel } from "@/components/ui/morphing-modal";
 import { ProviderStatusBadge } from "@/components/provider-status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { apiErrorMessage } from "@/lib/api-error-envelope";
 import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, EASE_SMOOTH_OUT } from "@/lib/motion";
 import { useShakeReplay } from "@/lib/transitions";
@@ -523,10 +524,10 @@ function useRulesPanelModel({
       },
       method: "PATCH"
     });
-    const body = (await response.json()) as RuleApiResponse & { error?: string };
+    const body = (await response.json()) as RuleApiResponse & { error?: unknown };
 
     if (!response.ok || !body.rule) {
-      setMessage(body.error ?? "Unable to update rule.");
+      setMessage(apiErrorMessage(body, "Unable to update rule."));
       return;
     }
 
@@ -543,10 +544,10 @@ function useRulesPanelModel({
     const response = await fetch(`/api/v1/rules/${encodeURIComponent(rule.id)}`, {
       method: "DELETE"
     });
-    const body = (await response.json()) as { error?: string };
+    const body: unknown = await response.json();
 
     if (!response.ok) {
-      setMessage(body.error ?? "Unable to delete rule.");
+      setMessage(apiErrorMessage(body, "Unable to delete rule."));
       return;
     }
 

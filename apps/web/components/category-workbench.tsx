@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card as IconiqCard, CardContent as IconiqCardContent } from "@/components/ui/iconiq-card";
 import { RollingDigits } from "@/components/ui/rolling-digits";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { apiErrorMessage } from "@/lib/api-error-envelope";
 import { formatCurrency } from "@/lib/format";
 import { EASE_OUT, EASE_SMOOTH_OUT, ROLLING_DIGITS_HERO } from "@/lib/motion";
 import { categoryColorPalette } from "@/lib/category-style";
@@ -622,8 +623,8 @@ function CategoryInlineEditor({
         method: "PATCH"
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Couldn't save this category.");
+        const body: unknown = await response.json().catch(() => ({}));
+        throw new Error(apiErrorMessage(body, "Couldn't save this category."));
       }
       router.refresh();
       onClose();

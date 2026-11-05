@@ -206,6 +206,9 @@ describe("financial goals API", () => {
     );
 
     expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: { code: "resource_missing", message: "Financial goal not found.", type: "invalid_request_error" }
+    });
   });
 
   it("assigns and unassigns a transaction goal through the transaction PATCH route", async () => {

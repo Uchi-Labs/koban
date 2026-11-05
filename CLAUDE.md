@@ -30,6 +30,7 @@ All four checks must pass before any change is considered done.
 - ChatGPT OAuth tokens are stored in `sync_state` via `lib/db/finance-db.ts`; `CHATGPT_OAUTH_TOKENS_B64` is a one-time seed, not the runtime source of truth.
 - UI: shadcn primitives in `components/ui/` (Base UI — use the `render` prop, not `asChild`); theme tokens and motion tokens in `app/shadcn.css` (Ink & Mint; `--positive`/`--negative` for money semantics); amounts always `tabular-nums`; every animation gets a `prefers-reduced-motion` guard.
 - Money: outflow negative, income positive; transfers excluded from spending metrics (`lib/transaction-classification.ts`).
+- Effect v4 (`effect` 4.1.2) on the server: one runtime in `lib/effect/runtime.ts`, route handlers via `handler()` in `lib/effect/http.ts`, one error envelope from `lib/effect/errors.ts`, config through `lib/config/AppConfig.ts` (shell env wins over `.env`). Rules: `docs/architecture/effect.md`.
 - Model-facing code goes through the AI SDK (`lib/ai/`, `lib/embeddings.ts`) — no hand-rolled provider fetches.
 - Goals: `app/goals/`, `lib/goals-api.ts`, `app/api/v1/goals` — user overlay must survive provider resync like other overlays.
 - Cash flow: `lib/cashflow.ts`, `components/cashflow-view.tsx` — monthly aggregation is computed client-side and excludes transfers.

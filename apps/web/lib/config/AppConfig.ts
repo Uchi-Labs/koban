@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import { isLoopbackHost } from "@/lib/loopback";
 import { findWorkspaceRoot, readWorkspaceEnv } from "@/lib/workspace-env";
 
 /** A configuration the server refuses to boot with. The message names the setting to change. */
@@ -70,13 +71,6 @@ const rawConfig = Config.all({
     voyageApiKey: optionalSecret("VOYAGE_API_KEY")
   })
 });
-
-const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-
-export function isLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase();
-  return loopbackHosts.has(normalized) || /^127(?:\.\d{1,3}){3}$/.test(normalized);
-}
 
 /** The database name in a Postgres URL contains "demo"; the public demo serves nothing else. */
 export function isDemoDatabaseUrl(databaseUrl: string): boolean {

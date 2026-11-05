@@ -17,6 +17,7 @@ import {
   publicDemoRefusalMessage,
   publicDemoRefusalStatus
 } from "@/lib/public-demo";
+import { hostFromHostHeader, isLoopbackHost } from "@/lib/loopback";
 import { readWorkspaceEnv } from "@/lib/workspace-env";
 
 const publicPaths = new Set([
@@ -41,6 +42,16 @@ export async function proxy(request: NextRequest) {
 
   if (isPublicRequest(request)) {
     return NextResponse.next();
+  }
+
+  // Local open mode (no DATABASE_URL, no token) trusts whoever can reach the
+  // port, so it answers only requests addressed to this machine. `next dev`
+  // binds every interface by default; a LAN or DNS-rebinding request names
+  // another host. The boot check in lib/config/AppConfig.ts covers production
+  // binds; a hand-crafted Host header can still pass this one, so set
+  // AI_FINANCES_AUTH_TOKEN whenever the port is reachable from other machines.
+  if (!expectedToken && !isHostedAuthMode(env) && !isLoopbackRequest(request)) {
+    return openModeRemoteRefusal(request);
   }
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
@@ -101,6 +112,24 @@ async function publicDemoResponse(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(home);
   }
   return NextResponse.next();
+}
+
+const openModeRemoteMessage =
+  "This Koban server has no sign-in, so it only answers requests to localhost. Set AI_FINANCES_AUTH_TOKEN to use it from another machine.";
+
+function isLoopbackRequest(request: NextRequest): boolean {
+  const host = request.headers.get("host");
+  return isLoopbackHost(host ? hostFromHostHeader(host) : request.nextUrl.hostname);
+}
+
+function openModeRemoteRefusal(request: NextRequest): NextResponse {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      { error: { code: "local_only", message: openModeRemoteMessage, type: "permission_error" } },
+      { status: 403 }
+    );
+  }
+  return new NextResponse(openModeRemoteMessage, { status: 403, headers: { "content-type": "text/plain; charset=utf-8" } });
 }
 
 function redirectToLogin(request: NextRequest): NextResponse {

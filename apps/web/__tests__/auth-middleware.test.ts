@@ -67,6 +67,25 @@ describe("auth middleware", () => {
     expect(response.status).toBe(200);
   });
 
+  it("refuses requests addressed to another host when no token is set", async () => {
+    const lan = { headers: { host: "192.168.1.20:3007" } };
+
+    const api = await middleware(createRequest("/api/v1/transactions", lan));
+    expect(api.status).toBe(403);
+    await expect(api.json()).resolves.toMatchObject({ error: { code: "local_only", type: "permission_error" } });
+    expect((await middleware(createRequest("/transactions", lan))).status).toBe(403);
+    expect((await middleware(createRequest("/api/health", lan))).headers.get("x-middleware-next")).toBe("1");
+
+    const loopback = await middleware(createRequest("/api/v1/transactions", { headers: { host: "127.0.0.1:3007" } }));
+    expect(loopback.headers.get("x-middleware-next")).toBe("1");
+
+    process.env.AI_FINANCES_AUTH_TOKEN = testToken;
+    const withToken = await middleware(
+      createRequest("/api/v1/transactions", { headers: { authorization: `Bearer ${testToken}`, host: "192.168.1.20:3007" } })
+    );
+    expect(withToken.headers.get("x-middleware-next")).toBe("1");
+  });
+
   it("requires auth for API requests when hosted auth is configured", async () => {
     process.env.AI_FINANCES_AUTH_TOKEN = testToken;
 
