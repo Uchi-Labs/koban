@@ -7,7 +7,9 @@
 // wipes edits every few hours. The database name must still contain "demo"
 // (assertDemoSeedTarget) before a reseed writes.
 //
-// The finance agent answers through the stateless stream endpoint only.
+// The finance agent answers through the stateless stream endpoint, or, with a
+// model the visitor runs in their own browser, through the stateless prompt and
+// read-only tool endpoints.
 // Conversations would be shared by every visitor, so the browser keeps each
 // visitor's chats (agent-conversations-local.ts) and the server routes stay
 // closed. The model account behind the agent is the owner's, so its provider,
@@ -20,7 +22,11 @@ export const publicDemoReadOnlyMessage = "This demo saves categories, reviews, a
 export const publicDemoAgentMessage = "Chats in this demo stay in your browser.";
 export const publicDemoUnavailableMessage = "This is not available in the public demo.";
 
-const publicDemoAssistantStreamPath = "/api/v1/assistant/stream";
+const publicDemoAssistantPostRoutes: readonly RegExp[] = [
+  /^\/api\/v1\/assistant\/stream$/,
+  /^\/api\/v1\/assistant\/prompt$/,
+  /^\/api\/v1\/assistant\/tools\/[a-z_]+$/
+];
 
 export function publicDemoRefusalMessage(pathname: string, method = "POST"): string {
   if (pathname.startsWith("/api/v1/assistant") || pathname.startsWith("/api/v1/conversations")) {
@@ -71,7 +77,7 @@ const publicDemoApiReadRoutes: readonly RegExp[] = [
 // Pages are readable; API reads only from the allowlist above. Writes, OAuth
 // starts for real providers, and auth endpoints are not.
 export function isPublicDemoRequestAllowed(method: string, pathname: string): boolean {
-  if (method === "POST") return pathname === publicDemoAssistantStreamPath;
+  if (method === "POST") return publicDemoAssistantPostRoutes.some((route) => route.test(pathname));
   if (method !== "GET" && method !== "HEAD") return false;
   if (pathname === "/api" || pathname.startsWith("/api/")) {
     return publicDemoApiReadRoutes.some((route) => route.test(pathname));

@@ -11,6 +11,7 @@ import {
   type ToolSet
 } from "ai";
 import type { z } from "zod";
+import { agentMaxSteps } from "@/lib/agent-answer";
 import { createChatGptLanguageModel } from "@/lib/ai/chatgpt-oauth";
 import {
   claudeSubscriptionMinTimeoutMs,
@@ -183,7 +184,7 @@ export const aiSdkLlmClient: LlmGenerationClient = {
       messages,
       model: await buildConfiguredLanguageModel(provider, env, fetcher),
       timeout: { totalMs: provider.timeoutMs },
-      ...(tools ? { stopWhen: isStepCount(6), tools } : {}),
+      ...(tools ? { stopWhen: isStepCount(agentMaxSteps), tools } : {}),
       ...chatGptMultiStepOptions(provider),
       ...samplingOptions(provider)
     });

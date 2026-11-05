@@ -17,11 +17,13 @@ import {
 import { lineItemQuestion } from "@/lib/line-item-questions";
 import {
   answerFinanceQuestion,
+  buildAssistantPrompt,
   createThinkTagFilter,
   emptyModelAnswerMessage,
   goalsToolResult,
   lineItemToolResult,
   recurringChargesToolResult,
+  runAssistantDataTool,
   sourceSetupActionsFromDiagnostics,
   streamFinanceAnswer,
   transactionSearchToolResult,
@@ -414,6 +416,59 @@ describe("finance assistant", () => {
     expect(events.filter((event) => event.type === "delta")).toEqual([]);
     expect(events.at(-1)).toEqual({ message: emptyModelAnswerMessage, type: "error" });
     expect(emptyModelAnswerMessage).toContain("may have run out of output tokens");
+  });
+
+  it("gives a browser model the same messages and tools server Ask gives its model", async () => {
+    useTempDb();
+    await replaceLedgerInDb(createLedger());
+    let served: LlmTextGenerationInput | undefined;
+
+    for await (const event of streamFinanceAnswer("What is our Netflix charge?", {
+      llmEnv: { AI_FINANCES_LLM_API_KEY: "test-key", AI_FINANCES_LLM_MODEL: "gpt-test", AI_FINANCES_LLM_PROVIDER: "openai_compatible" },
+      llmClient: createAssistantLlmClient({
+        streamText: async (input: LlmTextGenerationInput) => {
+          served = input;
+          return {
+            getText: async () => "ok",
+            parts: (async function* () {
+              yield { text: "ok", type: "text" as const };
+            })(),
+            textStream: (async function* () {})()
+          };
+        }
+      })
+    })) {
+      void event;
+    }
+
+    const prompt = await buildAssistantPrompt("What is our Netflix charge?");
+
+    // The first answer starts indexing embeddings in the background, so only that count may differ.
+    const withoutIndexCounts = (messages: Array<{ content: unknown; role: string }> = []) =>
+      messages.map((message) =>
+        message.role === "user" ? { ...JSON.parse(String(message.content)), semantic_index: null } : message
+      );
+    expect(withoutIndexCounts(prompt.messages)).toEqual(withoutIndexCounts(served?.messages as never));
+    expect(prompt.tools.map((tool) => tool.name)).toEqual(Object.keys(served?.tools ?? {}));
+    expect(prompt.tools.find((tool) => tool.name === "search_transactions")?.parameters).toMatchObject({
+      properties: { category: { type: "string" }, from: { pattern: "^\\d{4}-\\d{2}-\\d{2}$", type: "string" }, merchant: { type: "string" } },
+      type: "object"
+    });
+    expect(prompt.max_steps).toBe(6);
+    expect(prompt.meta).toMatchObject({ mode: "llm_finance_agent", question: "What is our Netflix charge?", type: "meta" });
+  });
+
+  it("runs a data tool for the browser only with input its schema accepts", async () => {
+    useTempDb();
+    await replaceLedgerInDb(createLedger());
+
+    await expect(runAssistantDataTool("search_transactions", { from: "October" })).resolves.toEqual({
+      error: expect.stringContaining("from"),
+      ok: false
+    });
+    const run = await runAssistantDataTool("search_transactions", { merchant: "Netflix" });
+    expect(run.ok).toBe(true);
+    expect(run.ok && run.result).toMatchObject({ transactions_matched: expect.any(Number) });
   });
 
   it("reports a failed model call as an error, not as a local answer", async () => {

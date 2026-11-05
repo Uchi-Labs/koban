@@ -9,6 +9,7 @@ import type {
   FinanceAssistantResponse
 } from "@/lib/finance-assistant";
 import type { AgentVisual } from "@/lib/agent-visual";
+import { readBrowserModelSettings } from "@/lib/browser-llm/settings";
 
 export interface AgentMeta {
   chart?: AssistantChart;
@@ -111,6 +112,22 @@ async function readAgentStream(
   const pacer = createAnswerPacer(controller, controllerRef, setState);
 
   try {
+    // A model turned on in this browser answers here; Settings stores that per browser.
+    if (!localOnly && readBrowserModelSettings().enabled) {
+      const { askBrowserModel } = await import("@/lib/browser-llm/ask");
+      let completed = false;
+
+      for await (const event of askBrowserModel(question, controller.signal)) {
+        completed = applyAgentEvents([event], controller, controllerRef, setState, pacer) || completed;
+      }
+
+      if (!controller.signal.aborted && controllerRef.current === controller && !completed) {
+        pacer.finish(() => setState((current) => ({ ...current, status: "done" })));
+      }
+
+      return;
+    }
+
     const response = await fetch("/api/v1/assistant/stream", {
       body: JSON.stringify({ local_only: localOnly, question }),
       headers: {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { AskModelSettings } from "@/components/ask-model-settings";
+import { AskModelSettings, DemoBrowserModelSettings } from "@/components/ask-model-settings";
 import { AppearanceSettingsPanel } from "@/components/appearance-settings-panel";
 import { ApiTokensPanel } from "@/components/api-tokens-panel";
 import { ConnectionsSettings } from "@/components/connections-settings";
@@ -104,7 +104,7 @@ export function SettingsView({
 
         <TabsContent value="sync-ai" className="flex flex-col gap-5">
           <SyncEverythingPanel initialSchedule={syncSchedule} initialStatus={syncStatus} />
-          {isPublicDemo() ? null : <AskModelSettings chatGptEnabled={aiProvider.chatgpt_oauth_enabled ?? false} />}
+          {isPublicDemo() ? <DemoBrowserModelSettings /> : <AskModelSettings chatGptEnabled={aiProvider.chatgpt_oauth_enabled ?? false} />}
           {isPublicDemo() ? null : <AiProviderPanel initialProvider={aiProvider} />}
         </TabsContent>
 
