@@ -379,8 +379,8 @@ const FaviconBadge = React.forwardRef<HTMLSpanElement, FaviconBadgeProps>(
         <span
           aria-hidden
           className={cn(
-            "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-[0.5px] border-border/60 bg-muted p-1",
-            showError && "border-destructive/30",
+            "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted p-1 outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10",
+            showError && "outline-destructive/30 dark:outline-destructive/30",
             config.badge,
             badgeClassName
           )}

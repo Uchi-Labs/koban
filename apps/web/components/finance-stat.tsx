@@ -29,7 +29,7 @@ export function FinanceStatStrip({
         // Items never shrink below their own content width (see FinanceStatItem below),
         // so on narrow viewports the strip itself scrolls horizontally instead of any
         // individual amount getting ellipsis-clipped. scroll-fade-x hints there's more.
-        "min-w-0 rounded-2xl border border-border bg-muted/25",
+        "min-w-0 rounded-lg border border-border bg-muted/25",
         className
       )}
       orientation="horizontal"

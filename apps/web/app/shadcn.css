@@ -791,34 +791,6 @@
   }
 }
 
-/* Chat-history insertions can push the last row through the sidebar fold.
-   The ScrollArea mask handles opacity; this viewport-edge veil adds the soft
-   blur visible in the reference while remaining truthful to overflow state. */
-.sidebar-fold-blur::after {
-  position: absolute;
-  z-index: 10;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: var(--scroll-fade-size, 2.25rem);
-  pointer-events: none;
-  content: "";
-  opacity: 0;
-  backdrop-filter: blur(2px);
-  mask-image: linear-gradient(to bottom, transparent, black);
-  transition: opacity 180ms var(--ease-smooth-out);
-}
-
-.sidebar-fold-blur:has([data-overflow-y-end])::after {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-fold-blur::after {
-    transition: none;
-  }
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -882,10 +854,24 @@
     var(--background);
 }
 
-:root:not(.dark) [data-slot="card"] {
-  box-shadow:
+/* Card elevation: a 1px ring stands in for the border, then a crisp contact
+   shadow and a soft ambient one. Dark mode can't show drop shadows on near
+   black, so it collapses to the top highlight plus a faint white ring. */
+:root {
+  --elevation-card:
+    0 0 0 1px oklch(0.2 0.014 60 / 0.06),
     0 1px 2px oklch(0.2 0.014 60 / 0.05),
     0 12px 32px -24px oklch(0.25 0.03 60 / 0.24);
+}
+
+.dark {
+  --elevation-card:
+    inset 0 1px 0 oklch(1 0 0 / 0.055),
+    0 0 0 1px oklch(1 0 0 / 0.06);
+}
+
+[data-slot="card"] {
+  box-shadow: var(--elevation-card);
 }
 
 .dark [data-slot="card"] {
@@ -893,10 +879,6 @@
     linear-gradient(180deg, oklch(1 0 0 / 0.025), transparent 34%),
     var(--card);
   border-color: oklch(0.94 0.01 230 / 7%);
-  box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.055),
-    0 1px 2px oklch(0 0 0 / 0.35),
-    0 8px 24px -12px oklch(0 0 0 / 0.5);
 }
 
 .dark [data-dashboard-card="layered"] {

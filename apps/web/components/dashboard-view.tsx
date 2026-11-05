@@ -234,7 +234,7 @@ export function DashboardView({
 
                   return (
                     <Link href="/recurrings" key={item.id}>
-                      <div className="gap-0 rounded-xl border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
+                      <div className="gap-0 rounded-lg border border-border/50 bg-background/45 py-0 transition-colors hover:bg-muted/40 motion-reduce:transition-none">
                         <div className="@container flex items-center gap-3 px-3 py-2.5">
                           <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{item.nextDateLabel}</span>
                           {domain ? <FaviconBadge badgeClassName="bg-background" size="sm" website={domain} /> : null}

@@ -385,7 +385,7 @@ function SidebarContent({ children, className, ...props }: React.ComponentProps<
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        "sidebar-fold-blur min-h-0 flex-1 [--radius:var(--radius-xl)]",
+        "min-h-0 flex-1 [--radius:var(--radius-xl)]",
         className
       )}
       viewportClassName="scroll-fade-y overscroll-contain group-data-[collapsible=icon]:overflow-hidden!"
